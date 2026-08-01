@@ -1,0 +1,232 @@
+"use client";
+
+import * as React from "react";
+import { Plus, Trash2 } from "lucide-react";
+
+import { PageHeader } from "@/components/app-shell/page-header";
+import { LoadingBlock } from "@/components/app-shell/loading";
+import { Tabs } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
+import { EmptyState } from "@/components/dashboards/empty-state";
+import { useSession } from "@/lib/session";
+import { formatMoney, todayISO, uid } from "@/lib/mock";
+import type { HorarioDia } from "@/lib/types";
+
+const SECTIONS = [
+  { value: "horario", label: "Horario" },
+  { value: "excepciones", label: "Excepciones" },
+  { value: "servicios", label: "Servicios" },
+];
+
+export default function ConfiguracionPage() {
+  const { session, ready, update } = useSession();
+  const [tab, setTab] = React.useState("horario");
+  const [addExcepcion, setAddExcepcion] = React.useState(false);
+  const [addServicio, setAddServicio] = React.useState(false);
+
+  if (!ready || !session) return <LoadingBlock />;
+
+  const data = session.barberia!;
+
+  function actualizarDia(dia: HorarioDia["dia"], cambios: Partial<HorarioDia>) {
+    update((prev) => {
+      const b = prev.barberia!;
+      return { ...prev, barberia: { ...b, horario: b.horario.map((h) => (h.dia === dia ? { ...h, ...cambios } : h)) } };
+    });
+  }
+
+  function borrarExcepcion(id: string) {
+    update((prev) => {
+      const b = prev.barberia!;
+      return { ...prev, barberia: { ...b, excepciones: b.excepciones.filter((e) => e.id !== id) } };
+    });
+  }
+
+  function borrarServicio(id: string) {
+    update((prev) => {
+      const b = prev.barberia!;
+      return { ...prev, barberia: { ...b, servicios: b.servicios.filter((s) => s.id !== id) } };
+    });
+  }
+
+  return (
+    <>
+      <PageHeader title="Configuración" />
+      <div className="px-4 pb-4">
+        <Tabs value={tab} onValueChange={setTab} tabs={SECTIONS} />
+      </div>
+
+      {tab === "horario" && (
+        <div className="flex flex-col gap-2 px-4 pb-6">
+          {data.horario.map((h) => (
+            <div key={h.dia} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+              <span className="w-10 shrink-0 text-sm font-medium">{h.dia}</span>
+              <Switch checked={h.abierto} onCheckedChange={(v) => actualizarDia(h.dia, { abierto: v })} />
+              {h.abierto ? (
+                <div className="flex flex-1 items-center gap-2">
+                  <Input type="time" value={h.inicio} onChange={(e) => actualizarDia(h.dia, { inicio: e.target.value })} className="h-9" />
+                  <span className="text-xs text-muted-foreground">a</span>
+                  <Input type="time" value={h.fin} onChange={(e) => actualizarDia(h.dia, { fin: e.target.value })} className="h-9" />
+                </div>
+              ) : (
+                <span className="flex-1 text-sm text-muted-foreground">Cerrado</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "excepciones" && (
+        <div className="flex flex-col gap-2 px-4 pb-6">
+          <Button size="sm" variant="outline" className="self-start" onClick={() => setAddExcepcion(true)}>
+            <Plus className="h-4 w-4" /> Agregar excepción
+          </Button>
+          {data.excepciones.length === 0 ? (
+            <EmptyState texto="Sin días especiales configurados" />
+          ) : (
+            data.excepciones.map((e) => (
+              <div key={e.id} className="flex items-center justify-between rounded-xl border border-border bg-card p-3">
+                <div>
+                  <p className="text-sm font-medium">{e.etiqueta}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {e.fecha} · {e.cerrado ? "Cerrado" : `Cierra a las ${e.horaEspecialFin}`}
+                  </p>
+                </div>
+                <button onClick={() => borrarExcepcion(e.id)} className="text-muted-foreground hover:text-destructive">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {tab === "servicios" && (
+        <div className="flex flex-col gap-2 px-4 pb-6">
+          <Button size="sm" variant="outline" className="self-start" onClick={() => setAddServicio(true)}>
+            <Plus className="h-4 w-4" /> Agregar servicio
+          </Button>
+          {data.servicios.map((s) => (
+            <div key={s.id} className="flex items-center justify-between rounded-xl border border-border bg-card p-3">
+              <div>
+                <p className="text-sm font-medium">{s.nombre}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatMoney(s.precio)} · {s.duracion_min} min
+                </p>
+              </div>
+              <button onClick={() => borrarServicio(s.id)} className="text-muted-foreground hover:text-destructive">
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Sheet open={addExcepcion} onOpenChange={setAddExcepcion}>
+        <NuevaExcepcionForm onClose={() => setAddExcepcion(false)} update={update} />
+      </Sheet>
+      <Sheet open={addServicio} onOpenChange={setAddServicio}>
+        <NuevoServicioForm onClose={() => setAddServicio(false)} update={update} />
+      </Sheet>
+    </>
+  );
+}
+
+function NuevaExcepcionForm({ onClose, update }: { onClose: () => void; update: ReturnType<typeof useSession>["update"] }) {
+  const [etiqueta, setEtiqueta] = React.useState("");
+  const [fecha, setFecha] = React.useState(todayISO(1));
+  const [cerrado, setCerrado] = React.useState(true);
+  const [horaEspecialFin, setHoraEspecialFin] = React.useState("14:00");
+
+  const puedeGuardar = etiqueta.trim().length > 1;
+
+  function guardar() {
+    if (!puedeGuardar) return;
+    update((prev) => {
+      const b = prev.barberia!;
+      const excepcion = { id: uid("exc"), etiqueta: etiqueta.trim(), fecha, cerrado, horaEspecialFin: cerrado ? undefined : horaEspecialFin };
+      return { ...prev, barberia: { ...b, excepciones: [excepcion, ...b.excepciones] } };
+    });
+    onClose();
+  }
+
+  return (
+    <>
+      <SheetHeader title="Nueva excepción" description="Ej. Vacaciones, cierro temprano..." onClose={onClose} />
+      <div className="flex flex-col gap-4">
+        <div className="space-y-1.5">
+          <Label>Etiqueta</Label>
+          <Input autoFocus value={etiqueta} onChange={(e) => setEtiqueta(e.target.value)} placeholder="Ej. Vacaciones" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Fecha</Label>
+          <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        </div>
+        <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+          <p className="text-sm font-medium">Cerrado todo el día</p>
+          <Switch checked={cerrado} onCheckedChange={setCerrado} />
+        </div>
+        {!cerrado && (
+          <div className="space-y-1.5">
+            <Label>Cierro a las</Label>
+            <Input type="time" value={horaEspecialFin} onChange={(e) => setHoraEspecialFin(e.target.value)} />
+          </div>
+        )}
+      </div>
+      <SheetFooter>
+        <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>
+          Guardar
+        </Button>
+      </SheetFooter>
+    </>
+  );
+}
+
+function NuevoServicioForm({ onClose, update }: { onClose: () => void; update: ReturnType<typeof useSession>["update"] }) {
+  const [nombre, setNombre] = React.useState("");
+  const [precio, setPrecio] = React.useState("");
+  const [duracion, setDuracion] = React.useState("30");
+
+  const puedeGuardar = nombre.trim().length > 1 && Number(precio) > 0;
+
+  function guardar() {
+    if (!puedeGuardar) return;
+    update((prev) => {
+      const b = prev.barberia!;
+      const servicio = { id: uid("srv"), nombre: nombre.trim(), precio: Number(precio), duracion_min: Number(duracion) || 30 };
+      return { ...prev, barberia: { ...b, servicios: [servicio, ...b.servicios] } };
+    });
+    onClose();
+  }
+
+  return (
+    <>
+      <SheetHeader title="Nuevo servicio" onClose={onClose} />
+      <div className="flex flex-col gap-4">
+        <div className="space-y-1.5">
+          <Label>Nombre</Label>
+          <Input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej. Corte + diseño" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Precio</Label>
+            <Input type="number" inputMode="decimal" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="$0" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Duración (min)</Label>
+            <Input type="number" inputMode="numeric" value={duracion} onChange={(e) => setDuracion(e.target.value)} />
+          </div>
+        </div>
+      </div>
+      <SheetFooter>
+        <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>
+          Guardar servicio
+        </Button>
+      </SheetFooter>
+    </>
+  );
+}

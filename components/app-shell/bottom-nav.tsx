@@ -1,0 +1,84 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  Home,
+  CalendarDays,
+  Users,
+  Wallet,
+  Settings,
+  ClipboardList,
+  UtensilsCrossed,
+  Receipt,
+  Boxes,
+  HandCoins,
+  CalendarClock,
+} from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import type { BusinessType } from "@/lib/types";
+
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+const NAV_BARBERIA: NavItem[] = [
+  { href: "/app", label: "Hoy", icon: Home },
+  { href: "/app/agenda", label: "Agenda", icon: CalendarDays },
+  { href: "/app/clientes", label: "Clientes", icon: Users },
+  { href: "/app/caja", label: "Caja", icon: Wallet },
+  { href: "/app/mas", label: "Más", icon: Settings },
+];
+
+const NAV_FONDA: NavItem[] = [
+  { href: "/app", label: "Hoy", icon: Home },
+  { href: "/app/pedidos", label: "Pedidos", icon: ClipboardList },
+  { href: "/app/menu", label: "Menú", icon: UtensilsCrossed },
+  { href: "/app/gastos", label: "Gastos", icon: Receipt },
+];
+
+const NAV_ABARROTES: NavItem[] = [
+  { href: "/app", label: "Hoy", icon: Home },
+  { href: "/app/inventario", label: "Inventario", icon: Boxes },
+  { href: "/app/fiados", label: "Fiados", icon: HandCoins },
+  { href: "/app/apartados", label: "Apartados", icon: CalendarClock },
+  { href: "/app/gastos", label: "Gastos", icon: Receipt },
+];
+
+const NAV_BY_TYPE: Record<BusinessType, NavItem[]> = {
+  barberia: NAV_BARBERIA,
+  fonda: NAV_FONDA,
+  abarrotes: NAV_ABARROTES,
+};
+
+export function BottomNav({ tipo }: { tipo: BusinessType }) {
+  const pathname = usePathname();
+  const items = NAV_BY_TYPE[tipo];
+
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+      <div className="mx-auto flex max-w-md items-stretch justify-around">
+        {items.map((item) => {
+          const active = pathname === item.href;
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors",
+                active ? "text-primary" : "text-muted-foreground"
+              )}
+            >
+              <Icon className="h-5 w-5" />
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}

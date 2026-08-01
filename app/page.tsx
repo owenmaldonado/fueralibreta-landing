@@ -19,9 +19,11 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { ContactForm } from "@/components/contact-form";
+import { WA_CONTACTO } from "@/lib/mock";
 
 const NEGOCIOS = [
   {
+    tipo: "barberia",
     icon: Scissors,
     nombre: "Barberías",
     problema: "Cortes fiados anotados en la libreta que nadie encuentra el día de pago.",
@@ -32,6 +34,7 @@ const NEGOCIOS = [
     ],
   },
   {
+    tipo: "fonda",
     icon: UtensilsCrossed,
     nombre: "Fondas",
     problema: "Comandas en papelitos sueltos y el corte del día cuadrado a mano.",
@@ -42,6 +45,7 @@ const NEGOCIOS = [
     ],
   },
   {
+    tipo: "abarrotes",
     icon: ShoppingBasket,
     nombre: "Abarrotes",
     problema: "El fiado de los caseros lleno de tachones y páginas arrancadas.",
@@ -136,10 +140,10 @@ export default function Home() {
 
           <div className="flex flex-wrap gap-3 pt-2">
             <Button asChild size="lg">
-              <Link href="#demo">Ver Demo</Link>
+              <Link href="#servicios">Ver Demo</Link>
             </Button>
             <Button asChild size="lg" variant="outline">
-              <Link href="https://wa.me/523110000000" target="_blank">
+              <Link href={WA_CONTACTO} target="_blank">
                 <MessageCircle className="h-4 w-4" />
                 WhatsApp
               </Link>
@@ -179,7 +183,7 @@ export default function Home() {
         </div>
 
         <div className="grid gap-8 md:grid-cols-3">
-          {NEGOCIOS.map(({ icon: Icon, nombre, problema, features }, i) => (
+          {NEGOCIOS.map(({ tipo, icon: Icon, nombre, problema, features }, i) => (
             <Card
               key={nombre}
               className="perforation group relative flex flex-col justify-between overflow-hidden border-dashed border-border bg-card/60 pt-1 transition-all hover:-translate-y-1 hover:border-primary/50 hover:shadow-[0_0_30px_-10px_hsl(var(--primary)/0.35)]"
@@ -207,7 +211,7 @@ export default function Home() {
               </div>
               <CardContent className="pt-2">
                 <Button asChild variant="outline" className="w-full">
-                  <Link href="#demo">Ver Demo</Link>
+                  <Link href={`/demo/${tipo}`}>Ver Demo {nombre}</Link>
                 </Button>
               </CardContent>
             </Card>
