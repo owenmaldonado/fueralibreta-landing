@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, LogOut, X } from "lucide-react";
 
-import { writeSession } from "@/lib/session";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { clearDemoPreview } from "@/lib/demoPreview";
 import { universalSearch } from "@/lib/search";
 import type { TenantData } from "@/lib/types";
 
@@ -20,8 +21,11 @@ export function TopBar({ data }: { data: TenantData }) {
     setQ("");
   }
 
-  function logout() {
-    writeSession(null);
+  async function logout() {
+    clearDemoPreview();
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut();
+    }
     router.push("/login");
   }
 

@@ -8,7 +8,7 @@ import { ArrowLeft, ArrowRight, Loader2, Scissors, UtensilsCrossed, ShoppingBask
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { writeSession } from "@/lib/session";
+import { writeDemoPreview } from "@/lib/demoPreview";
 import {
   generateDemoAbarrotes,
   generateDemoBarberia,
@@ -129,7 +129,7 @@ export default function DemoIntakePage() {
           : tipo === "fonda"
             ? generateDemoFonda({ ...base, platillo1: form.extra1, platillo2: form.extra2 })
             : generateDemoAbarrotes({ ...base, producto1: form.extra1, producto2: form.extra2 });
-      writeSession(tenant);
+      writeDemoPreview(tenant);
       router.push("/app");
     }, 900);
   }

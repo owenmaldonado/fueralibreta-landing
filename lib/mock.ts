@@ -9,8 +9,13 @@ import type {
 
 // ---------- Helpers generales ----------
 
-export function uid(prefix = "id"): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
+/**
+ * Genera un id. Siempre es un UUID v4 válido (aunque se ignore el prefijo)
+ * porque estos ids se insertan tal cual como primary key `uuid` en Supabase
+ * cuando el negocio se conecta a la base de datos real.
+ */
+export function uid(_prefix = "id"): string {
+  return crypto.randomUUID();
 }
 
 export function slugify(nombre: string): string {

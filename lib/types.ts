@@ -6,6 +6,7 @@ export type BusinessType = "barberia" | "fonda" | "abarrotes";
 
 export interface Business {
   id: string;
+  ownerId?: string; // auth.users.id en Supabase; ausente mientras es solo una demo local
   slug: string;
   nombre: string;
   tipo: BusinessType;

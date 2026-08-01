@@ -2,15 +2,18 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Loader2, Scissors, ShoppingBasket, UtensilsCrossed, PartyPopper } from "lucide-react";
+import { AlertCircle, ArrowRight, Loader2, Scissors, ShoppingBasket, UtensilsCrossed, PartyPopper } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
-import { readSession, writeSession } from "@/lib/session";
-import { createEmptyTenant, todayISO } from "@/lib/mock";
-import type { BusinessType } from "@/lib/types";
+import { useSession } from "@/lib/session";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { fetchNegocioByOwner } from "@/lib/data";
+import { readDemoPreview } from "@/lib/demoPreview";
+import { createEmptyTenant } from "@/lib/mock";
+import type { BusinessType, TenantData } from "@/lib/types";
 
 const TIPOS: { value: BusinessType; label: string; icon: typeof Scissors }[] = [
   { value: "barberia", label: "Barbería", icon: Scissors },
@@ -20,9 +23,13 @@ const TIPOS: { value: BusinessType; label: string; icon: typeof Scissors }[] = [
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { claim } = useSession();
+
   const [checking, setChecking] = React.useState(true);
-  const [demoToActivate, setDemoToActivate] = React.useState<{ nombre: string; dueno: string } | null>(null);
+  const [userId, setUserId] = React.useState<string | null>(null);
+  const [demoTenant, setDemoTenant] = React.useState<TenantData | null>(null);
   const [activating, setActivating] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const [step, setStep] = React.useState(0);
   const [tipo, setTipo] = React.useState<BusinessType | null>(null);
@@ -32,43 +39,63 @@ export default function OnboardingPage() {
   const [creating, setCreating] = React.useState(false);
 
   React.useEffect(() => {
-    const existing = readSession();
-    if (existing && !existing.business.demo) {
-      router.replace("/app");
-      return;
+    async function check() {
+      if (!isSupabaseConfigured) {
+        router.replace("/login");
+        return;
+      }
+      const { data } = await supabase.auth.getSession();
+      const user = data.session?.user;
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+      setUserId(user.id);
+
+      try {
+        const business = await fetchNegocioByOwner(user.id);
+        if (business) {
+          router.replace("/app");
+          return;
+        }
+      } catch (err) {
+        console.error("No se pudo verificar si ya tienes un negocio:", err);
+      }
+
+      const demo = readDemoPreview();
+      if (demo) setDemoTenant(demo);
+      setChecking(false);
     }
-    if (existing && existing.business.demo) {
-      setDemoToActivate({ nombre: existing.business.nombre, dueno: existing.business.dueno });
-    }
-    setChecking(false);
+    check();
   }, [router]);
 
-  function activateDemo() {
-    const existing = readSession();
-    if (!existing) return;
+  async function activateDemo() {
+    if (!demoTenant || !userId) return;
     setActivating(true);
-    setTimeout(() => {
-      writeSession({
-        ...existing,
-        business: {
-          ...existing.business,
-          demo: false,
-          is_active: true,
-          trial_fin: todayISO(7),
-        },
-      });
+    setError(null);
+    try {
+      await claim(demoTenant, userId);
       router.push("/app");
-    }, 600);
+    } catch (err) {
+      console.error("No se pudo activar la demo:", err);
+      setError("No se pudo activar tu demo. Intenta de nuevo.");
+      setActivating(false);
+    }
   }
 
-  function createBusinessAndGo() {
-    if (!tipo) return;
+  async function createBusinessAndGo() {
+    if (!tipo || !userId) return;
     setCreating(true);
-    setTimeout(() => {
+    setError(null);
+    try {
       const tenant = createEmptyTenant({ dueno, nombre: negocio, telefono, tipo });
-      writeSession(tenant);
+      await claim(tenant, userId);
       router.push("/app");
-    }, 600);
+    } catch (err) {
+      console.error("No se pudo crear el negocio:", err);
+      setError("No se pudo crear tu sistema. Intenta de nuevo.");
+      setCreating(false);
+    }
   }
 
   if (checking) {
@@ -79,21 +106,25 @@ export default function OnboardingPage() {
     );
   }
 
-  if (demoToActivate) {
+  if (demoTenant) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background px-6 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
           <PartyPopper className="h-8 w-8 text-primary" />
         </div>
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight">
-            ¡Listo, {demoToActivate.dueno}!
-          </h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight">¡Listo, {demoTenant.business.dueno}!</h1>
           <p className="mt-2 max-w-xs text-sm text-muted-foreground">
-            Vamos a activar <span className="text-foreground">{demoToActivate.nombre}</span> con 7
-            días gratis. Tu demo se queda tal cual la armaste.
+            Vamos a activar <span className="text-foreground">{demoTenant.business.nombre}</span> con 7 días
+            gratis. Tu demo se queda tal cual la armaste.
           </p>
         </div>
+        {error && (
+          <div className="flex max-w-xs items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-xs text-destructive">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            {error}
+          </div>
+        )}
         <Button size="lg" className="w-full max-w-xs" onClick={activateDemo} disabled={activating}>
           {activating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Activar mi sistema — 7 días gratis"}
         </Button>
@@ -202,6 +233,13 @@ export default function OnboardingPage() {
                   className="mt-3 h-14 text-lg"
                 />
               </>
+            )}
+
+            {error && (
+              <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-xs text-destructive">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                {error}
+              </div>
             )}
 
             <div className="mt-auto pt-10">

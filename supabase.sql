@@ -417,12 +417,17 @@ create policy "contactos_public_insert" on contactos for insert
 -- ============================================================================
 -- Notas de integración
 -- ============================================================================
--- 1. /login ya usa supabase.auth.signInWithOAuth({ provider: 'google' }).
--- 2. /onboarding debe hacer un INSERT en `negocios` con owner_id = auth.uid()
---    en vez de (o además de) guardar en localStorage.
--- 3. /app, /demo, /admin y /reserva/[slug] hoy leen/escriben lib/session.ts
---    (localStorage). Para pasarlos a Supabase, cambia esos hooks para
---    hacer SELECT/INSERT/UPDATE contra estas tablas usando `negocio.id`
---    como llave, manteniendo el mismo shape de lib/types.ts.
--- 4. El panel /admin necesita la service_role key (server-side, nunca en
---    el cliente) para poder pausar/activar cualquier negocio sin RLS.
+-- 1. /login usa supabase.auth.signInWithOAuth({ provider: 'google' }).
+-- 2. /app, /onboarding y /reserva/[slug] ya leen y escriben estas tablas vía
+--    lib/data.ts (fetchTenantData, persistTenant, syncTenantDiff) en vez de
+--    localStorage — ver lib/session.ts (useSession) y lib/demoPreview.ts.
+-- 3. /demo/[tipo] sigue generando la demo solo en el navegador (localStorage,
+--    clave fl_demo_preview) hasta que el usuario inicia sesión y la activa
+--    desde /onboarding; ahí recién se inserta en Supabase con persistTenant().
+--    Es la única parte del flujo que no toca la base de datos todavía, a
+--    propósito: antes de loguearse no hay auth.uid() al que asociar el
+--    negocio, y así se puede seguir probando la demo sin cuenta.
+-- 4. El panel /admin sigue usando datos de ejemplo en memoria (sampleAdminBusinesses
+--    en lib/mock.ts), no está conectado a Supabase. Para conectarlo de verdad
+--    necesita la service_role key desde el servidor (nunca en el cliente) para
+--    poder pausar/activar cualquier negocio sin las restricciones de RLS.

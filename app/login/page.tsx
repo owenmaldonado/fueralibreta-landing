@@ -6,7 +6,7 @@ import { AlertCircle, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { readSession } from "@/lib/session";
+import { fetchNegocioByOwner } from "@/lib/data";
 
 function GoogleIcon() {
   return (
@@ -36,10 +36,18 @@ export default function LoginPage() {
   const [loading, setLoading] = React.useState(false);
   const [checking, setChecking] = React.useState(true);
 
-  const redirectAfterLogin = React.useCallback(() => {
-    const existing = readSession();
-    router.push(existing ? "/app" : "/onboarding");
-  }, [router]);
+  const redirectAfterLogin = React.useCallback(
+    async (userId: string) => {
+      try {
+        const business = await fetchNegocioByOwner(userId);
+        router.push(business ? "/app" : "/onboarding");
+      } catch (err) {
+        console.error("No se pudo verificar el negocio del usuario:", err);
+        router.push("/onboarding");
+      }
+    },
+    [router]
+  );
 
   React.useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -47,14 +55,14 @@ export default function LoginPage() {
       return;
     }
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        redirectAfterLogin();
+      if (data.session?.user) {
+        redirectAfterLogin(data.session.user.id);
       } else {
         setChecking(false);
       }
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) redirectAfterLogin();
+      if (session?.user) redirectAfterLogin(session.user.id);
     });
     return () => sub.subscription.unsubscribe();
   }, [redirectAfterLogin]);

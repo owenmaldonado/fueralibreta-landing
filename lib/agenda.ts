@@ -1,10 +1,14 @@
 import { todayISO } from "./mock";
-import type { BarberiaData } from "./types";
+import type { Appointment, BarberiaData } from "./types";
 
 const DIAS_SEMANA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"] as const;
 
+type SlotSource = Pick<BarberiaData, "horario" | "excepciones"> & {
+  citas: Pick<Appointment, "fecha" | "hora" | "estado">[];
+};
+
 /** Calcula los huecos disponibles reales según horario, excepciones y citas ya tomadas. */
-export function getAvailableSlots(barberia: BarberiaData, fecha: string): string[] {
+export function getAvailableSlots(barberia: SlotSource, fecha: string): string[] {
   const date = new Date(`${fecha}T00:00:00`);
   const diaCodigo = DIAS_SEMANA[date.getDay()];
   const horarioDia = barberia.horario.find((h) => h.dia === diaCodigo);
