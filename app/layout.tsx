@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 
 import "./globals.css";
 
@@ -52,6 +53,7 @@ export default function RootLayout({
         className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
         {children}
+        <Toaster theme="dark" richColors position="top-right" />
       </body>
     </html>
   );

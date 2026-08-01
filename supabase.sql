@@ -415,6 +415,147 @@ create policy "contactos_public_insert" on contactos for insert
 -- Table Editor de Supabase (con tu cuenta) o con la service_role key.
 
 -- ============================================================================
+-- PANEL DE ADMIN (/admin) — profiles, roles y acceso de dios
+-- ============================================================================
+-- profiles espeja auth.users (que no es accesible desde el cliente) para que
+-- el panel pueda listar/buscar/filtrar usuarios, y para poder marcar quién
+-- es admin. Se llena sola con un trigger cuando alguien se registra.
+
+create table if not exists profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text,
+  avatar_url text,
+  role text not null default 'user' check (role in ('admin', 'user')),
+  plan text not null default 'free' check (plan in ('free', 'pro')),
+  is_banned boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+-- Si ya tenías una tabla profiles de antes, esto agrega lo que falte sin tronar.
+alter table profiles add column if not exists role text not null default 'user';
+alter table profiles add column if not exists plan text not null default 'free';
+alter table profiles add column if not exists is_banned boolean not null default false;
+alter table profiles add column if not exists email text;
+alter table profiles add column if not exists avatar_url text;
+alter table profiles add column if not exists created_at timestamptz not null default now();
+
+create index if not exists profiles_email_idx on profiles(email);
+
+-- Crea (o actualiza el email/avatar de) el profile cada vez que alguien se
+-- registra o cambia sus datos. raw_user_meta_data trae avatar_url (o
+-- picture, según el proveedor) del login con Google.
+create or replace function handle_new_or_updated_user()
+returns trigger
+language plpgsql
+security definer
+as $$
+begin
+  insert into public.profiles (id, email, avatar_url)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data->>'avatar_url', new.raw_user_meta_data->>'picture')
+  )
+  on conflict (id) do update
+    set email = excluded.email,
+        avatar_url = excluded.avatar_url;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function handle_new_or_updated_user();
+
+drop trigger if exists on_auth_user_updated on auth.users;
+create trigger on_auth_user_updated
+  after update of email on auth.users
+  for each row execute function handle_new_or_updated_user();
+
+-- Backfill: crea el profile de quien ya se había registrado antes de correr esto.
+insert into public.profiles (id, email)
+select id, email from auth.users
+on conflict (id) do nothing;
+
+-- Función helper: ¿el usuario autenticado es admin? security definer para no
+-- caer en recursión infinita con las policies de profiles que la usan.
+create or replace function is_admin()
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (
+    select 1 from profiles p where p.id = auth.uid() and p.role = 'admin'
+  );
+$$;
+
+alter table profiles enable row level security;
+
+drop policy if exists "profiles_self_select" on profiles;
+create policy "profiles_self_select" on profiles for select
+  using (id = auth.uid());
+
+drop policy if exists "profiles_admin_all" on profiles;
+create policy "profiles_admin_all" on profiles for all
+  using (is_admin()) with check (is_admin());
+
+-- Da al admin control total (lectura y escritura) sobre todas las tablas del
+-- negocio, además de las policies de dueño que ya existían. "for all" cubre
+-- select/insert/update/delete, así se puede administrar todo desde /admin
+-- sin tocar el Table Editor de Supabase.
+drop policy if exists "negocios_admin_all" on negocios;
+create policy "negocios_admin_all" on negocios for all using (is_admin()) with check (is_admin());
+
+drop policy if exists "barberia_servicios_admin_all" on barberia_servicios;
+create policy "barberia_servicios_admin_all" on barberia_servicios for all using (is_admin()) with check (is_admin());
+drop policy if exists "barberia_horario_admin_all" on barberia_horario;
+create policy "barberia_horario_admin_all" on barberia_horario for all using (is_admin()) with check (is_admin());
+drop policy if exists "barberia_excepciones_admin_all" on barberia_excepciones;
+create policy "barberia_excepciones_admin_all" on barberia_excepciones for all using (is_admin()) with check (is_admin());
+drop policy if exists "barberia_clientes_admin_all" on barberia_clientes;
+create policy "barberia_clientes_admin_all" on barberia_clientes for all using (is_admin()) with check (is_admin());
+drop policy if exists "barberia_citas_admin_all" on barberia_citas;
+create policy "barberia_citas_admin_all" on barberia_citas for all using (is_admin()) with check (is_admin());
+drop policy if exists "barberia_caja_admin_all" on barberia_caja;
+create policy "barberia_caja_admin_all" on barberia_caja for all using (is_admin()) with check (is_admin());
+drop policy if exists "barberia_productos_admin_all" on barberia_productos;
+create policy "barberia_productos_admin_all" on barberia_productos for all using (is_admin()) with check (is_admin());
+
+drop policy if exists "fonda_platillos_admin_all" on fonda_platillos;
+create policy "fonda_platillos_admin_all" on fonda_platillos for all using (is_admin()) with check (is_admin());
+drop policy if exists "fonda_pedidos_admin_all" on fonda_pedidos;
+create policy "fonda_pedidos_admin_all" on fonda_pedidos for all using (is_admin()) with check (is_admin());
+drop policy if exists "fonda_pedido_items_admin_all" on fonda_pedido_items;
+create policy "fonda_pedido_items_admin_all" on fonda_pedido_items for all using (is_admin()) with check (is_admin());
+drop policy if exists "fonda_gastos_admin_all" on fonda_gastos;
+create policy "fonda_gastos_admin_all" on fonda_gastos for all using (is_admin()) with check (is_admin());
+
+drop policy if exists "abarrotes_productos_admin_all" on abarrotes_productos;
+create policy "abarrotes_productos_admin_all" on abarrotes_productos for all using (is_admin()) with check (is_admin());
+drop policy if exists "abarrotes_lotes_admin_all" on abarrotes_lotes;
+create policy "abarrotes_lotes_admin_all" on abarrotes_lotes for all using (is_admin()) with check (is_admin());
+drop policy if exists "abarrotes_ventas_admin_all" on abarrotes_ventas;
+create policy "abarrotes_ventas_admin_all" on abarrotes_ventas for all using (is_admin()) with check (is_admin());
+drop policy if exists "abarrotes_fiados_admin_all" on abarrotes_fiados;
+create policy "abarrotes_fiados_admin_all" on abarrotes_fiados for all using (is_admin()) with check (is_admin());
+drop policy if exists "abarrotes_fiado_movimientos_admin_all" on abarrotes_fiado_movimientos;
+create policy "abarrotes_fiado_movimientos_admin_all" on abarrotes_fiado_movimientos for all using (is_admin()) with check (is_admin());
+drop policy if exists "abarrotes_apartados_admin_all" on abarrotes_apartados;
+create policy "abarrotes_apartados_admin_all" on abarrotes_apartados for all using (is_admin()) with check (is_admin());
+drop policy if exists "abarrotes_gastos_admin_all" on abarrotes_gastos;
+create policy "abarrotes_gastos_admin_all" on abarrotes_gastos for all using (is_admin()) with check (is_admin());
+
+drop policy if exists "contactos_admin_all" on contactos;
+create policy "contactos_admin_all" on contactos for all using (is_admin()) with check (is_admin());
+
+-- Seed: te hace admin a ti. Seguro de volver a correr; si todavía no te has
+-- registrado con Google, no hace nada (corre este UPDATE de nuevo después
+-- de tu primer login).
+update profiles set role = 'admin' where email = 'owen.maldonado.549@gmail.com';
+
+-- ============================================================================
 -- Notas de integración
 -- ============================================================================
 -- 1. /login usa supabase.auth.signInWithOAuth({ provider: 'google' }).
@@ -427,7 +568,15 @@ create policy "contactos_public_insert" on contactos for insert
 --    Es la única parte del flujo que no toca la base de datos todavía, a
 --    propósito: antes de loguearse no hay auth.uid() al que asociar el
 --    negocio, y así se puede seguir probando la demo sin cuenta.
--- 4. El panel /admin sigue usando datos de ejemplo en memoria (sampleAdminBusinesses
---    en lib/mock.ts), no está conectado a Supabase. Para conectarlo de verdad
---    necesita la service_role key desde el servidor (nunca en el cliente) para
---    poder pausar/activar cualquier negocio sin las restricciones de RLS.
+-- 4. /admin ya está conectado de verdad: lee/escribe profiles y negocios con
+--    tu propia sesión de admin (las policies "*_admin_all" de arriba se
+--    encargan de darte acceso a todo). Solo dos acciones necesitan la
+--    service_role key en el servidor porque tocan auth.users, que no es
+--    accesible desde el cliente aunque seas admin: eliminar una cuenta por
+--    completo (auth.admin.deleteUser) y "ver como este usuario"
+--    (auth.admin.generateLink). Pon SUPABASE_SERVICE_ROLE_KEY (Settings →
+--    API → service_role, NUNCA con prefijo NEXT_PUBLIC_) en tus variables de
+--    entorno del servidor para que esas dos acciones funcionen.
+-- 5. Después de tu primer login con Google, vuelve a correr el UPDATE de
+--    arriba (o cualquiera con permisos de Supabase puede correrlo por ti)
+--    para confirmar que quedaste como admin.

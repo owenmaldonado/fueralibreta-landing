@@ -26,6 +26,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   const { session, ready, update } = useSession();
   const router = useRouter();
   const [quickAdd, setQuickAdd] = React.useState<string | null>(null);
+  const [banned, setBanned] = React.useState(false);
 
   React.useEffect(() => {
     if (!ready || session) return;
@@ -40,10 +41,44 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
     });
   }, [ready, session, router]);
 
+  React.useEffect(() => {
+    if (!isSupabaseConfigured || !session) return;
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) return;
+      supabase
+        .from("profiles")
+        .select("is_banned")
+        .eq("id", data.user.id)
+        .single()
+        .then(({ data: profile }) => setBanned(Boolean(profile?.is_banned)));
+    });
+  }, [session]);
+
   if (!ready || !session) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </main>
+    );
+  }
+
+  if (banned) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-5 bg-background px-6 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-destructive/10">
+          <Lock className="h-8 w-8 text-destructive" />
+        </div>
+        <div>
+          <h1 className="font-display text-xl font-bold">Cuenta bloqueada</h1>
+          <p className="mt-2 max-w-xs text-sm text-muted-foreground">
+            Tu cuenta fue bloqueada por un administrador. Contáctanos si crees que es un error.
+          </p>
+        </div>
+        <Button asChild size="lg">
+          <Link href={waLink(NUMERO_CONTACTO, "Hola, mi cuenta está bloqueada y quiero saber por qué")} target="_blank">
+            Contactar 33 2909 8631
+          </Link>
+        </Button>
       </main>
     );
   }
