@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 16% 7%;
+    --surface: 220 14% 11%;
+    --foreground: 42 24% 95%;
+
+    --card: 220 14% 12%;
+    --card-foreground: 42 24% 95%;
+
+    --popover: 220 14% 11%;
+    --popover-foreground: 42 24% 95%;
+
+    /* Marigold / cempasúchil amber — botón principal "Ver Demo" */
+    --primary: 38 92% 56%;
+    --primary-foreground: 220 20% 10%;
+
+    --secondary: 220 12% 16%;
+    --secondary-foreground: 42 24% 95%;
+
+    --muted: 220 12% 16%;
+    --muted-foreground: 220 8% 63%;
+
+    --accent: 220 12% 16%;
+    --accent-foreground: 42 24% 95%;
+
+    /* Verde talavera — check / acentos secundarios */
+    --ledger: 168 55% 45%;
+    --ledger-foreground: 220 20% 8%;
+
+    --destructive: 4 78% 58%;
+    --destructive-foreground: 42 24% 95%;
+
+    --border: 220 10% 22%;
+    --input: 220 10% 22%;
+    --ring: 38 92% 56%;
+
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "ss01" on, "ss02" on;
+  }
+}
+
+@layer utilities {
+  .ruled-bg {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 30px,
+      hsl(var(--border) / 0.45) 31px
+    );
+  }
+  .margin-rule {
+    background-image: linear-gradient(
+      to right,
+      transparent,
+      transparent 63px,
+      hsl(var(--destructive) / 0.35) 64px,
+      hsl(var(--destructive) / 0.35) 65px,
+      transparent 66px
+    );
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .perforation {
+    background-image: radial-gradient(circle, hsl(var(--background)) 2.5px, transparent 2.6px);
+    background-size: 14px 14px;
+    background-position: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
