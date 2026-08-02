@@ -61,7 +61,7 @@ export default function LoginPage() {
       </div>
 
       <div className="flex w-full max-w-xs flex-col gap-3">
-        <GoogleSignInButton size="lg" variant="outline" className="w-full gap-3 bg-card" redirectTo="/onboarding" />
+        <GoogleSignInButton size="lg" variant="outline" className="w-full gap-3 bg-card" />
 
         {!isSupabaseConfigured && (
           <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-xs text-destructive">

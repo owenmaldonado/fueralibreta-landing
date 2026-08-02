@@ -30,13 +30,18 @@ function GoogleIcon() {
 }
 
 interface GoogleSignInButtonProps extends Omit<ButtonProps, "onClick"> {
-  /** Ruta a la que Supabase regresa después del login (decide /app vs /onboarding). */
+  /**
+   * Ruta final a la que llega el navegador ya con sesión (después de pasar
+   * por /auth/callback). "/" por defecto: app/page.tsx decide solo entre
+   * <Landing/> y <App/>, y si estás logueado pero sin negocio todavía,
+   * AuthenticatedShell te manda a /onboarding.
+   */
   redirectTo?: string;
 }
 
 /** Botón "Continuar con Google" que llama directo a supabase.auth.signInWithOAuth. */
 export const GoogleSignInButton = React.forwardRef<HTMLButtonElement, GoogleSignInButtonProps>(
-  ({ children, redirectTo = "/onboarding", disabled, ...props }, ref) => {
+  ({ children, redirectTo = "/", disabled, ...props }, ref) => {
     const [loading, setLoading] = React.useState(false);
 
     async function handleClick() {

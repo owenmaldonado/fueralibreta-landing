@@ -113,7 +113,7 @@ export function Landing() {
             </Link>
           </nav>
           <div className="flex items-center gap-2">
-            <GoogleSignInButton variant="ghost" size="sm" redirectTo="/onboarding" className="hidden gap-1.5 sm:inline-flex">
+            <GoogleSignInButton variant="ghost" size="sm" className="hidden gap-1.5 sm:inline-flex">
               <LogIn className="h-3.5 w-3.5" />
               ¿Ya tienes una cuenta? Inicia sesión
             </GoogleSignInButton>
@@ -123,7 +123,7 @@ export function Landing() {
           </div>
         </div>
         <div className="container flex justify-end pb-3 sm:hidden">
-          <GoogleSignInButton variant="ghost" size="sm" redirectTo="/onboarding" className="gap-1.5 text-xs">
+          <GoogleSignInButton variant="ghost" size="sm" className="gap-1.5 text-xs">
             <LogIn className="h-3.5 w-3.5" />
             ¿Ya tienes cuenta? Inicia sesión
           </GoogleSignInButton>

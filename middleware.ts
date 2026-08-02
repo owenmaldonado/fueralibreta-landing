@@ -9,6 +9,24 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
 export async function middleware(req: NextRequest) {
+  const url = req.nextUrl;
+
+  // Red de seguridad: el OAuth de Google/Supabase debería volver por
+  // /auth/callback (que hace el exchangeCodeForSession server-side), pero
+  // si el dominio no está en la lista de Redirect URLs permitidas en el
+  // dashboard de Supabase (Authentication -> URL Configuration), Supabase
+  // ignora el redirectTo que le mandamos y aterriza el ?code= directo en
+  // cualquier página — dejando que el navegador lo intercambie solo y
+  // corriendo la carrera que causaba el doble login. Si eso pasa, lo
+  // interceptamos aquí antes de que la página cliente vea el ?code=.
+  const strayCode = url.searchParams.get("code");
+  if (strayCode && url.pathname !== "/auth/callback") {
+    const target = new URL("/auth/callback", url.origin);
+    target.searchParams.set("code", strayCode);
+    target.searchParams.set("next", url.pathname);
+    return NextResponse.redirect(target);
+  }
+
   // Refresca la sesión de Supabase (guardada en cookies) en cada request.
   // Sin esto, los Server Components verían tokens vencidos con getUser().
   let response = NextResponse.next({ request: req });
@@ -31,7 +49,6 @@ export async function middleware(req: NextRequest) {
 
   const host = req.headers.get("host") ?? "";
   const hostname = host.split(":")[0];
-  const url = req.nextUrl;
 
   const isRootHost =
     ROOT_HOSTS.includes(hostname) || hostname.endsWith(".vercel.app") || hostname.endsWith(".vercel.dev");
