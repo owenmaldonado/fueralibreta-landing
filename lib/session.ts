@@ -35,24 +35,14 @@ export function useSession() {
   useEffect(() => {
     let cancelled = false;
 
-    async function resolve() {
-      if (!isSupabaseConfigured) {
-        loadFromDemoPreview();
-        setReady(true);
-        return;
-      }
-
-      const { data } = await supabase.auth.getSession();
-      const user = data.session?.user;
-
-      if (!user) {
+    async function resolveForUser(userId: string | null) {
+      if (!userId) {
         loadFromDemoPreview();
         if (!cancelled) setReady(true);
         return;
       }
-
       try {
-        const business = await fetchNegocioByOwner(user.id);
+        const business = await fetchNegocioByOwner(userId);
         if (cancelled) return;
         if (business) {
           const tenant = await fetchTenantData(business);
@@ -71,7 +61,41 @@ export function useSession() {
       }
     }
 
-    resolve();
+    if (!isSupabaseConfigured) {
+      loadFromDemoPreview();
+      setReady(true);
+      return;
+    }
+
+    // onAuthStateChange dispara "INITIAL_SESSION" en cuanto el cliente
+    // termina de leer la sesión guardada en cookies — más confiable que un
+    // getSession() suelto justo al montar, que en algunos casos alcanzaba a
+    // resolver antes de que el cliente terminara de hidratarse y devolvía
+    // null aunque las cookies de sesión ya estuvieran puestas (el "hay que
+    // darle dos veces a Continuar con Google").
+    let resolvedOnce = false;
+    const {
+      data: { subscription: authSub },
+    } = supabase.auth.onAuthStateChange((event, authSession) => {
+      if (event === "SIGNED_OUT") {
+        resolvedOnce = true;
+        sourceRef.current = null;
+        setSessionState(null);
+        setReady(true);
+        return;
+      }
+      if (event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
+        resolvedOnce = true;
+        resolveForUser(authSession?.user?.id ?? null);
+      }
+    });
+
+    // Red de seguridad: si el evento inicial nunca llega, no te quedes
+    // cargando para siempre.
+    const fallbackTimer = setTimeout(() => {
+      if (resolvedOnce || cancelled) return;
+      supabase.auth.getSession().then(({ data }) => resolveForUser(data.session?.user?.id ?? null));
+    }, 1500);
 
     const onDemoChange = () => {
       if (sourceRef.current !== "supabase") loadFromDemoPreview();
@@ -79,20 +103,12 @@ export function useSession() {
     window.addEventListener(DEMO_PREVIEW_EVENT, onDemoChange);
     window.addEventListener("storage", onDemoChange);
 
-    const authSub = isSupabaseConfigured
-      ? supabase.auth.onAuthStateChange((event) => {
-          if (event === "SIGNED_OUT") {
-            sourceRef.current = null;
-            setSessionState(null);
-          }
-        }).data.subscription
-      : null;
-
     return () => {
       cancelled = true;
+      clearTimeout(fallbackTimer);
       window.removeEventListener(DEMO_PREVIEW_EVENT, onDemoChange);
       window.removeEventListener("storage", onDemoChange);
-      authSub?.unsubscribe();
+      authSub.unsubscribe();
     };
   }, [loadFromDemoPreview]);
 
