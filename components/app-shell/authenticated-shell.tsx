@@ -27,6 +27,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   const router = useRouter();
   const [quickAdd, setQuickAdd] = React.useState<string | null>(null);
   const [banned, setBanned] = React.useState(false);
+  const [isAdmin, setIsAdmin] = React.useState(false);
 
   React.useEffect(() => {
     if (!ready || session) return;
@@ -47,10 +48,13 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
       if (!data.user) return;
       supabase
         .from("profiles")
-        .select("is_banned")
+        .select("is_banned, role")
         .eq("id", data.user.id)
         .single()
-        .then(({ data: profile }) => setBanned(Boolean(profile?.is_banned)));
+        .then(({ data: profile }) => {
+          setBanned(Boolean(profile?.is_banned));
+          setIsAdmin(profile?.role === "admin");
+        });
     });
   }, [session]);
 
@@ -113,7 +117,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <TopBar data={session} />
+      <TopBar data={session} isAdmin={isAdmin} />
 
       {business.demo && (
         <div className="sticky top-14 z-20 flex items-center justify-between gap-3 border-b border-primary/30 bg-primary/10 px-4 py-2.5">

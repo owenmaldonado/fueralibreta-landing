@@ -10,7 +10,7 @@ import { clearDemoPreview } from "@/lib/demoPreview";
 import { universalSearch } from "@/lib/search";
 import type { TenantData } from "@/lib/types";
 
-export function TopBar({ data }: { data: TenantData }) {
+export function TopBar({ data, isAdmin }: { data: TenantData; isAdmin?: boolean }) {
   const [searching, setSearching] = React.useState(false);
   const [q, setQ] = React.useState("");
   const router = useRouter();
@@ -54,6 +54,14 @@ export function TopBar({ data }: { data: TenantData }) {
                 {data.business.demo ? "Modo demo" : data.business.dueno}
               </span>
             </div>
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+              >
+                <span aria-hidden="true">👑</span> Admin
+              </Link>
+            )}
             <button
               type="button"
               onClick={() => setSearching(true)}

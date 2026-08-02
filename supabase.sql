@@ -443,18 +443,21 @@ create index if not exists profiles_email_idx on profiles(email);
 
 -- Crea (o actualiza el email/avatar de) el profile cada vez que alguien se
 -- registra o cambia sus datos. raw_user_meta_data trae avatar_url (o
--- picture, según el proveedor) del login con Google.
+-- picture, según el proveedor) del login con Google. Si es tu correo, te
+-- deja como admin desde el insert (no toca el role en updates, para no
+-- pisar un rol que hayas cambiado a mano desde /admin).
 create or replace function handle_new_or_updated_user()
 returns trigger
 language plpgsql
 security definer
 as $$
 begin
-  insert into public.profiles (id, email, avatar_url)
+  insert into public.profiles (id, email, avatar_url, role)
   values (
     new.id,
     new.email,
-    coalesce(new.raw_user_meta_data->>'avatar_url', new.raw_user_meta_data->>'picture')
+    coalesce(new.raw_user_meta_data->>'avatar_url', new.raw_user_meta_data->>'picture'),
+    case when new.email = 'owenxmaldonado100@gmail.com' then 'admin' else 'user' end
   )
   on conflict (id) do update
     set email = excluded.email,
@@ -553,7 +556,7 @@ create policy "contactos_admin_all" on contactos for all using (is_admin()) with
 -- Seed: te hace admin a ti. Seguro de volver a correr; si todavía no te has
 -- registrado con Google, no hace nada (corre este UPDATE de nuevo después
 -- de tu primer login).
-update profiles set role = 'admin' where email = 'owen.maldonado.549@gmail.com';
+update profiles set role = 'admin' where email = 'owenxmaldonado100@gmail.com';
 
 -- ============================================================================
 -- Notas de integración

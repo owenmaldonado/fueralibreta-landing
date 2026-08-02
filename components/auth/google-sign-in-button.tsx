@@ -40,17 +40,31 @@ export const GoogleSignInButton = React.forwardRef<HTMLButtonElement, GoogleSign
     const [loading, setLoading] = React.useState(false);
 
     async function handleClick() {
+      if (loading) return;
       setLoading(true);
+      const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`;
       await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: `${window.location.origin}${redirectTo}` },
+        options: { redirectTo: callbackUrl },
       });
+      // No hace falta setLoading(false): signInWithOAuth ya está navegando
+      // fuera de la página. Si se queda pegado (red caída, popup bloqueado),
+      // el disabled de abajo sigue evitando el doble click.
     }
 
     return (
       <Button ref={ref} onClick={handleClick} disabled={disabled || loading || !isSupabaseConfigured} {...props}>
-        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
-        {children ?? "Continuar con Google"}
+        {loading ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Redirigiendo...
+          </>
+        ) : (
+          <>
+            <GoogleIcon />
+            {children ?? "Continuar con Google"}
+          </>
+        )}
       </Button>
     );
   }
