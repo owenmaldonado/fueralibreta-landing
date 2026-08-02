@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, ScanLine, Plus, Pencil, Trash2 } from "lucide-react";
+import { Search, ScanLine, Plus, Minus, Pencil, Trash2 } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -13,12 +13,13 @@ import { Button } from "@/components/ui/button";
 import { Tabs } from "@/components/ui/tabs";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import { useSession } from "@/lib/session";
 import { formatMoney, todayISO, uid } from "@/lib/mock";
 import { cn } from "@/lib/utils";
-import type { GroceryProduct, GrocerySale } from "@/lib/types";
+import type { GroceryProduct, GrocerySale, GrocerySaleItem } from "@/lib/types";
 
 export default function InventarioPage() {
   const { session, ready, update } = useSession();
@@ -150,12 +151,17 @@ export default function InventarioPage() {
           {ventas.length === 0 ? (
             <EmptyState texto="Sin ventas registradas" />
           ) : (
-            ventas.map((v) => (
+            ventas.map((v) => {
+              const resumen =
+                v.items.length === 1
+                  ? `${v.items[0].cantidad} ${v.items[0].productoNombre}`
+                  : `${v.items.reduce((acc, it) => acc + it.cantidad, 0)} piezas · ${v.items.length} productos`;
+              return (
               <div key={v.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{v.productoNombre}</p>
+                  <p className="truncate text-sm font-medium">{resumen}</p>
                   <p className="text-xs text-muted-foreground">
-                    {v.cantidad} pza · {new Date(v.fecha).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    {new Date(v.fecha).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                   </p>
                 </div>
                 <span className="shrink-0 font-mono text-sm text-ledger">{formatMoney(v.total)}</span>
@@ -176,7 +182,8 @@ export default function InventarioPage() {
                   </button>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
@@ -214,7 +221,7 @@ export default function InventarioPage() {
       <ConfirmDialog
         open={!!borrandoVenta}
         title="Eliminar venta"
-        description={`Se borrará la venta de "${borrandoVenta?.productoNombre}". El stock no se ajusta automáticamente.`}
+        description={`Se borrará esta venta por ${borrandoVenta ? formatMoney(borrandoVenta.total) : ""}. El stock no se ajusta automáticamente.`}
         onClose={() => setBorrandoVenta(null)}
         onConfirm={eliminarVenta}
       />
@@ -373,10 +380,22 @@ function VentaForm({
   onClose: () => void;
   update: ReturnType<typeof useSession>["update"];
 }) {
-  const [cantidad, setCantidad] = React.useState(String(venta.cantidad));
-  const [total, setTotal] = React.useState(String(venta.total));
+  const [items, setItems] = React.useState<GrocerySaleItem[]>(venta.items);
 
-  const puedeGuardar = Number(cantidad) > 0 && Number(total) > 0;
+  const total = items.reduce((acc, it) => acc + it.subtotal, 0);
+  const puedeGuardar = items.length > 0;
+
+  function cambiarCantidad(itemId: string, cantidad: number) {
+    setItems((prev) =>
+      cantidad <= 0
+        ? prev.filter((it) => it.id !== itemId)
+        : prev.map((it) => (it.id === itemId ? { ...it, cantidad, subtotal: cantidad * it.precioUnitario } : it))
+    );
+  }
+
+  function quitar(itemId: string) {
+    setItems((prev) => prev.filter((it) => it.id !== itemId));
+  }
 
   function guardar() {
     if (!puedeGuardar) return;
@@ -384,10 +403,7 @@ function VentaForm({
       const a = prev.abarrotes!;
       return {
         ...prev,
-        abarrotes: {
-          ...a,
-          ventas: a.ventas.map((v) => (v.id === venta.id ? { ...v, cantidad: Number(cantidad), total: Number(total) } : v)),
-        },
+        abarrotes: { ...a, ventas: a.ventas.map((v) => (v.id === venta.id ? { ...v, items, total } : v)) },
       };
     });
     onClose();
@@ -395,15 +411,60 @@ function VentaForm({
 
   return (
     <>
-      <SheetHeader title="Editar venta" description={venta.productoNombre} onClose={onClose} />
+      <SheetHeader title="Editar venta" description="El stock no se ajusta automáticamente" onClose={onClose} />
       <div className="flex flex-col gap-4">
-        <div className="space-y-1.5">
-          <Label>Cantidad</Label>
-          <Input autoFocus type="number" inputMode="numeric" value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Total</Label>
-          <Input type="number" inputMode="decimal" value={total} onChange={(e) => setTotal(e.target.value)} />
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Producto</TableHead>
+              <TableHead className="text-center">Cant</TableHead>
+              <TableHead className="text-right">Subtotal</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((it) => (
+              <TableRow key={it.id}>
+                <TableCell className="max-w-[100px] whitespace-normal text-sm font-medium">{it.productoNombre}</TableCell>
+                <TableCell>
+                  <div className="flex items-center justify-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => cambiarCantidad(it.id, it.cantidad - 1)}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border hover:bg-secondary"
+                      aria-label="Restar"
+                    >
+                      <Minus className="h-3 w-3" />
+                    </button>
+                    <span className="w-4 text-center font-mono text-xs tabular-nums">{it.cantidad}</span>
+                    <button
+                      type="button"
+                      onClick={() => cambiarCantidad(it.id, it.cantidad + 1)}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border hover:bg-secondary"
+                      aria-label="Sumar"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </button>
+                  </div>
+                </TableCell>
+                <TableCell className="text-right font-mono text-sm font-semibold">{formatMoney(it.subtotal)}</TableCell>
+                <TableCell>
+                  <button
+                    type="button"
+                    onClick={() => quitar(it.id)}
+                    className="rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    aria-label="Quitar"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        <div className="flex items-center justify-between rounded-lg bg-secondary px-4 py-3">
+          <span className="text-sm font-medium text-muted-foreground">Total</span>
+          <span className="font-display text-xl font-bold">{formatMoney(total)}</span>
         </div>
       </div>
       <SheetFooter>

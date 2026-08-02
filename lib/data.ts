@@ -18,6 +18,7 @@ import type {
   Expense,
   GroceryProduct,
   GrocerySale,
+  GrocerySaleItem,
   Fiado,
   Apartado,
 } from "./types";
@@ -351,22 +352,19 @@ const loteToRow = (l: { cantidad: number; fecha: string }, productoId: string): 
   fecha_caducidad: l.fecha,
 });
 
-const ventaFromRow = (r: Row): GrocerySale => ({
-  id: r.id as string,
-  productoId: (r.producto_id as string) ?? "",
-  productoNombre: r.producto_nombre as string,
-  cantidad: r.cantidad as number,
-  total: Number(r.total),
-  fecha: r.fecha as string,
-});
 const ventaToRow = (v: GrocerySale, negocioId: string): Row => ({
   id: v.id,
   negocio_id: negocioId,
-  producto_id: v.productoId || null,
-  producto_nombre: v.productoNombre,
-  cantidad: v.cantidad,
   total: v.total,
   fecha: v.fecha,
+});
+const ventaItemToRow = (it: GrocerySaleItem, ventaId: string): Row => ({
+  venta_id: ventaId,
+  producto_id: it.productoId || null,
+  producto_nombre: it.productoNombre,
+  cantidad: it.cantidad,
+  precio_unitario: it.precioUnitario,
+  subtotal: it.subtotal,
 });
 
 const fiadoToRow = (f: Fiado, negocioId: string): Row => ({
@@ -431,6 +429,14 @@ async function fetchAbarrotesData(negocioId: string): Promise<AbarrotesData> {
     movimientosData = movRes.data ?? [];
   }
 
+  const ventaIds = (ventasRes.data ?? []).map((v) => v.id as string);
+  let saleItemsData: Row[] = [];
+  if (ventaIds.length) {
+    const itemsRes = await supabase.from("abarrotes_sale_items").select("*").in("venta_id", ventaIds);
+    if (itemsRes.error) throw itemsRes.error;
+    saleItemsData = itemsRes.data ?? [];
+  }
+
   const productos: GroceryProduct[] = (productosRes.data ?? []).map((row) => ({
     id: row.id as string,
     nombre: row.nombre as string,
@@ -456,9 +462,25 @@ async function fetchAbarrotesData(negocioId: string): Promise<AbarrotesData> {
       .map((m) => ({ fecha: m.fecha as string, monto: Number(m.monto), tipo: m.tipo as "cargo" | "abono" })),
   }));
 
+  const ventas: GrocerySale[] = (ventasRes.data ?? []).map((row) => ({
+    id: row.id as string,
+    total: Number(row.total),
+    fecha: row.fecha as string,
+    items: saleItemsData
+      .filter((it) => it.venta_id === row.id)
+      .map((it) => ({
+        id: it.id as string,
+        productoId: (it.producto_id as string) ?? "",
+        productoNombre: it.producto_nombre as string,
+        cantidad: it.cantidad as number,
+        precioUnitario: Number(it.precio_unitario),
+        subtotal: Number(it.subtotal),
+      })),
+  }));
+
   return {
     productos,
-    ventas: (ventasRes.data ?? []).map(ventaFromRow),
+    ventas,
     fiados,
     apartados: (apartadosRes.data ?? []).map(apartadoFromRow),
     gastos: (gastosRes.data ?? []).map(gastoFromRow),
@@ -511,6 +533,10 @@ export async function persistTenant(tenant: TenantData, ownerId: string): Promis
       a.productos.flatMap((p) => (p.lotes ?? []).map((l) => loteToRow(l, p.id)))
     );
     await mustInsert("abarrotes_ventas", a.ventas.map((v) => ventaToRow(v, negocioId)));
+    await mustInsert(
+      "abarrotes_sale_items",
+      a.ventas.flatMap((v) => v.items.map((it) => ventaItemToRow(it, v.id)))
+    );
     await mustInsert("abarrotes_fiados", a.fiados.map((f) => fiadoToRow(f, negocioId)));
     await mustInsert(
       "abarrotes_fiado_movimientos",
@@ -620,6 +646,22 @@ async function syncFondaPedidos(negocioId: string, prevArr: FondaOrder[], nextAr
   }
 }
 
+/** Reemplaza por completo los items de una venta cuando la venta (el ticket) cambió. */
+async function syncAbarrotesVentas(negocioId: string, prevArr: GrocerySale[], nextArr: GrocerySale[]): Promise<void> {
+  await diffAndSync("abarrotes_ventas", prevArr, nextArr, (v) => ventaToRow(v, negocioId));
+
+  const prevMap = new Map(prevArr.map((v) => [v.id, v]));
+  for (const v of nextArr) {
+    const prevV = prevMap.get(v.id);
+    if (prevV && JSON.stringify(prevV.items) === JSON.stringify(v.items)) continue;
+    await supabase.from("abarrotes_sale_items").delete().eq("venta_id", v.id);
+    await mustInsert(
+      "abarrotes_sale_items",
+      v.items.map((it) => ventaItemToRow(it, v.id))
+    );
+  }
+}
+
 // ---------- reserva pública (/reserva/[slug]) ----------
 
 export interface PublicBookingData {
@@ -687,7 +729,7 @@ export async function syncTenantDiff(prev: TenantData, next: TenantData): Promis
     const p = prev.abarrotes;
     const n = next.abarrotes;
     await syncAbarrotesProductos(negocioId, p.productos, n.productos);
-    await diffAndSync("abarrotes_ventas", p.ventas, n.ventas, (v) => ventaToRow(v, negocioId));
+    await syncAbarrotesVentas(negocioId, p.ventas, n.ventas);
     await syncAbarrotesFiados(negocioId, p.fiados, n.fiados);
     await diffAndSync("abarrotes_apartados", p.apartados, n.apartados, (x) => apartadoToRow(x, negocioId));
     await diffAndSync("abarrotes_gastos", p.gastos, n.gastos, (g) => gastoToRow(g, negocioId));

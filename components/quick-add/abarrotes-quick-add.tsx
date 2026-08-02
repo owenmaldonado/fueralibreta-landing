@@ -1,19 +1,20 @@
 "use client";
 
 import * as React from "react";
-import { ShoppingCart, PackagePlus, HandCoins, Receipt } from "lucide-react";
+import { toast } from "sonner";
+import { ShoppingCart, PackagePlus, HandCoins, Receipt, Search, ScanLine, Plus, Minus, Trash2 } from "lucide-react";
 
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
-import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Switch } from "@/components/ui/switch";
-import { Stepper } from "@/components/ui/stepper";
 import { Button } from "@/components/ui/button";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { BarcodeScanner } from "@/components/barcode-scanner";
 import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatMoney, todayISO } from "@/lib/mock";
-import type { TenantData, Expense } from "@/lib/types";
+import type { TenantData, Expense, GroceryProduct, GrocerySale } from "@/lib/types";
 
 export const ABARROTES_ACTIONS: FabAction[] = [
   { key: "venta", label: "Nueva Venta", icon: <ShoppingCart className="h-4 w-4" /> },
@@ -53,6 +54,13 @@ export function AbarrotesQuickAdd({ active, onClose, session, update }: Props) {
   );
 }
 
+interface CartLine {
+  productoId: string;
+  productoNombre: string;
+  cantidad: number;
+  precioUnitario: number;
+}
+
 function NuevaVentaForm({
   data,
   onClose,
@@ -62,26 +70,85 @@ function NuevaVentaForm({
   onClose: () => void;
   update: Props["update"];
 }) {
-  const [productoId, setProductoId] = React.useState(data.productos[0]?.id ?? "");
-  const [cantidad, setCantidad] = React.useState(1);
+  const [query, setQuery] = React.useState("");
+  const [cart, setCart] = React.useState<CartLine[]>([]);
+  const [scanning, setScanning] = React.useState(false);
 
-  const producto = data.productos.find((p) => p.id === productoId);
-  const total = (producto?.precio ?? 0) * cantidad;
-  const puedeGuardar = !!producto && cantidad > 0 && cantidad <= (producto?.stock ?? 0);
+  const resultados = query.trim()
+    ? data.productos.filter((p) => p.nombre.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 6)
+    : [];
 
-  function guardar() {
-    if (!puedeGuardar || !producto) return;
+  function stockDisponible(productoId: string): number {
+    return data.productos.find((p) => p.id === productoId)?.stock ?? 0;
+  }
+
+  function agregarProducto(p: GroceryProduct) {
+    if (p.stock <= 0) {
+      toast.error(`${p.nombre} no tiene stock disponible`);
+      return;
+    }
+    setCart((prev) => {
+      const existente = prev.find((l) => l.productoId === p.id);
+      if (existente) {
+        if (existente.cantidad >= p.stock) {
+          toast.error(`Solo hay ${p.stock} de ${p.nombre} en stock`);
+          return prev;
+        }
+        return prev.map((l) => (l.productoId === p.id ? { ...l, cantidad: l.cantidad + 1 } : l));
+      }
+      return [...prev, { productoId: p.id, productoNombre: p.nombre, cantidad: 1, precioUnitario: p.precio }];
+    });
+    setQuery("");
+  }
+
+  function cambiarCantidad(productoId: string, cantidad: number) {
+    const max = stockDisponible(productoId);
+    setCart((prev) =>
+      cantidad <= 0
+        ? prev.filter((l) => l.productoId !== productoId)
+        : prev.map((l) => (l.productoId === productoId ? { ...l, cantidad: Math.min(cantidad, max) } : l))
+    );
+  }
+
+  function quitar(productoId: string) {
+    setCart((prev) => prev.filter((l) => l.productoId !== productoId));
+  }
+
+  function handleScan(codigo: string) {
+    setScanning(false);
+    const producto = data.productos.find((p) => p.codigo === codigo);
+    if (!producto) {
+      toast.error("No se encontró ningún producto con ese código");
+      return;
+    }
+    agregarProducto(producto);
+    toast.success(`${producto.nombre} agregado al carrito`);
+  }
+
+  const total = cart.reduce((acc, l) => acc + l.cantidad * l.precioUnitario, 0);
+  const puedeCobrar = cart.length > 0;
+
+  function cobrar() {
+    if (!puedeCobrar) return;
     update((prev) => {
       const a = prev.abarrotes!;
-      const venta = {
+      const venta: GrocerySale = {
         id: uid("sale"),
-        productoId: producto.id,
-        productoNombre: producto.nombre,
-        cantidad,
+        items: cart.map((l) => ({
+          id: uid("saleitem"),
+          productoId: l.productoId,
+          productoNombre: l.productoNombre,
+          cantidad: l.cantidad,
+          precioUnitario: l.precioUnitario,
+          subtotal: l.cantidad * l.precioUnitario,
+        })),
         total,
         fecha: new Date().toISOString(),
       };
-      const productos = a.productos.map((p) => (p.id === producto.id ? { ...p, stock: Math.max(0, p.stock - cantidad) } : p));
+      const productos = a.productos.map((p) => {
+        const linea = cart.find((l) => l.productoId === p.id);
+        return linea ? { ...p, stock: Math.max(0, p.stock - linea.cantidad) } : p;
+      });
       return { ...prev, abarrotes: { ...a, ventas: [venta, ...a.ventas], productos } };
     });
     onClose();
@@ -90,28 +157,114 @@ function NuevaVentaForm({
   return (
     <>
       <SheetHeader title="Nueva venta" onClose={onClose} />
-      <div className="flex flex-col gap-4">
-        <div className="space-y-1.5">
-          <Label>Producto</Label>
-          <Select value={productoId} onChange={(e) => setProductoId(e.target.value)}>
-            {data.productos.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre} · Stock {p.stock}
-              </option>
+      <div className="flex flex-col gap-3">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar producto..."
+              className="pl-9"
+            />
+          </div>
+          <Button type="button" size="icon" variant="outline" onClick={() => setScanning(true)} aria-label="Escanear">
+            <ScanLine className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {resultados.length > 0 && (
+          <div className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-lg border border-border">
+            {resultados.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => agregarProducto(p)}
+                disabled={p.stock <= 0}
+                className="flex items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-secondary disabled:opacity-40"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{p.nombre}</p>
+                  <p className="text-xs text-muted-foreground">Stock {p.stock} · {formatMoney(p.precio)}</p>
+                </div>
+                <Plus className="h-4 w-4 shrink-0 text-primary" />
+              </button>
             ))}
-          </Select>
+          </div>
+        )}
+
+        {cart.length === 0 ? (
+          <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-border">
+            <p className="px-4 text-center text-sm text-muted-foreground">Busca o escanea productos para agregarlos</p>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Producto</TableHead>
+                <TableHead className="text-center">Cant</TableHead>
+                <TableHead className="text-right">Precio</TableHead>
+                <TableHead className="text-right">Subtotal</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {cart.map((l) => (
+                <TableRow key={l.productoId}>
+                  <TableCell className="max-w-[100px] whitespace-normal text-sm font-medium">{l.productoNombre}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => cambiarCantidad(l.productoId, l.cantidad - 1)}
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border hover:bg-secondary"
+                        aria-label="Restar"
+                      >
+                        <Minus className="h-3 w-3" />
+                      </button>
+                      <span className="w-4 text-center font-mono text-xs tabular-nums">{l.cantidad}</span>
+                      <button
+                        type="button"
+                        onClick={() => cambiarCantidad(l.productoId, l.cantidad + 1)}
+                        disabled={l.cantidad >= stockDisponible(l.productoId)}
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border hover:bg-secondary disabled:opacity-30"
+                        aria-label="Sumar"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs text-muted-foreground">{formatMoney(l.precioUnitario)}</TableCell>
+                  <TableCell className="text-right font-mono text-sm font-semibold">{formatMoney(l.cantidad * l.precioUnitario)}</TableCell>
+                  <TableCell>
+                    <button
+                      type="button"
+                      onClick={() => quitar(l.productoId)}
+                      className="rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      aria-label="Quitar del carrito"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+
+        <div className="flex items-center justify-between rounded-lg bg-secondary px-4 py-3">
+          <span className="text-sm font-medium text-muted-foreground">Total</span>
+          <span className="font-display text-xl font-bold">{formatMoney(total)}</span>
         </div>
-        <div className="flex items-center justify-between">
-          <Label>Cantidad</Label>
-          <Stepper value={cantidad} onChange={setCantidad} min={1} max={producto?.stock ?? 99} />
-        </div>
-        <p className="text-right font-mono text-lg font-semibold">{formatMoney(total)}</p>
       </div>
       <SheetFooter>
-        <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>
-          Registrar venta
+        <Button size="lg" disabled={!puedeCobrar} onClick={cobrar}>
+          Cobrar
         </Button>
       </SheetFooter>
+
+      {scanning && <BarcodeScanner onScan={handleScan} onClose={() => setScanning(false)} />}
     </>
   );
 }

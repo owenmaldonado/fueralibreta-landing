@@ -364,7 +364,14 @@ export function generateDemoAbarrotes(form: DemoFormAbarrotes): TenantData {
   data.productos = [p1, p2];
 
   data.ventas = [
-    { id: uid("sale"), productoId: p1.id, productoNombre: p1.nombre, cantidad: 2, total: p1.precio * 2, fecha: `${todayISO(0)}T10:15:00` },
+    {
+      id: uid("sale"),
+      items: [
+        { id: uid("saleitem"), productoId: p1.id, productoNombre: p1.nombre, cantidad: 2, precioUnitario: p1.precio, subtotal: p1.precio * 2 },
+      ],
+      total: p1.precio * 2,
+      fecha: `${todayISO(0)}T10:15:00`,
+    },
   ];
 
   data.fiados = [

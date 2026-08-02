@@ -161,11 +161,18 @@ export interface Apartado {
   fechaLimite: string; // ISO date
 }
 
-export interface GrocerySale {
+export interface GrocerySaleItem {
   id: string;
   productoId: string;
   productoNombre: string;
   cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+}
+
+export interface GrocerySale {
+  id: string;
+  items: GrocerySaleItem[];
   total: number;
   fecha: string; // ISO datetime
 }
