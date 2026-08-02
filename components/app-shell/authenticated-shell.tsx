@@ -12,6 +12,7 @@ import { BottomNav } from "./bottom-nav";
 import { Fab } from "./fab";
 import { Button } from "@/components/ui/button";
 import { waLink, NUMERO_CONTACTO } from "@/lib/mock";
+import { ADMIN_EMAIL } from "@/lib/admin-data";
 import { BarberiaQuickAdd, BARBERIA_ACTIONS } from "@/components/quick-add/barberia-quick-add";
 import { FondaQuickAdd, FONDA_ACTIONS } from "@/components/quick-add/fonda-quick-add";
 import { AbarrotesQuickAdd, ABARROTES_ACTIONS } from "@/components/quick-add/abarrotes-quick-add";
@@ -46,15 +47,15 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
     if (!isSupabaseConfigured || !session) return;
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) return;
+      // isAdmin por email: no depende de que la policy de profiles esté
+      // bien puesta para decidir si se muestra el botón (ver lib/admin-data.ts).
+      setIsAdmin(data.user.email === ADMIN_EMAIL);
       supabase
         .from("profiles")
-        .select("is_banned, role")
+        .select("is_banned")
         .eq("id", data.user.id)
         .single()
-        .then(({ data: profile }) => {
-          setBanned(Boolean(profile?.is_banned));
-          setIsAdmin(profile?.role === "admin");
-        });
+        .then(({ data: profile }) => setBanned(Boolean(profile?.is_banned)));
     });
   }, [session]);
 

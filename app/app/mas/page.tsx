@@ -6,6 +6,7 @@ import { Boxes, Settings, ChevronRight, ArrowRight } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { ADMIN_EMAIL } from "@/lib/admin-data";
 
 const LINKS = [
   { href: "/app/productos", label: "Productos", desc: "Inventario de insumos", icon: Boxes },
@@ -16,16 +17,10 @@ export default function MasPage() {
   const [isAdmin, setIsAdmin] = React.useState(false);
 
   React.useEffect(() => {
-    async function checkAdmin() {
-      if (!isSupabaseConfigured) return;
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-      if (profile?.role === "admin") setIsAdmin(true);
-    }
-    checkAdmin();
+    if (!isSupabaseConfigured) return;
+    supabase.auth.getUser().then(({ data }) => {
+      setIsAdmin(data.user?.email === ADMIN_EMAIL);
+    });
   }, []);
 
   return (

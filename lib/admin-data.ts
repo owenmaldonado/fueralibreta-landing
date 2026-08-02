@@ -11,6 +11,16 @@ import type { BusinessType } from "./types";
 export type Role = "admin" | "user";
 export type Plan = "free" | "pro";
 
+/**
+ * Chequeo de admin por email, hardcodeado a propósito: profiles.role
+ * depende de RLS/policies que pueden fallar en silencio (auth.getUser()
+ * nunca falla así), así que esto es lo que decide si se muestra la entrada
+ * a /admin en la UI. La protección real sigue siendo del servidor:
+ * app/admin/page.tsx y /api/admin/* verifican profiles.role ahí mismo con
+ * su propia sesión antes de dejar pasar nada.
+ */
+export const ADMIN_EMAIL = "owenxmaldonado100@gmail.com";
+
 export interface AdminProfile {
   id: string;
   email: string | null;
