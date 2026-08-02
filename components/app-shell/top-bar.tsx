@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, LogOut, X } from "lucide-react";
+import { Search, LogOut, X, ShieldCheck } from "lucide-react";
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { clearDemoPreview } from "@/lib/demoPreview";
@@ -57,9 +57,9 @@ export function TopBar({ data, isAdmin }: { data: TenantData; isAdmin?: boolean 
             {isAdmin && (
               <Link
                 href="/admin"
-                className="flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                className="flex shrink-0 items-center gap-1 rounded-full border border-purple-400/40 bg-purple-500/15 px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide text-purple-300 transition-colors hover:bg-purple-500/25"
               >
-                <span aria-hidden="true">👑</span> Admin
+                <ShieldCheck className="h-3.5 w-3.5" /> Admin
               </Link>
             )}
             <button
