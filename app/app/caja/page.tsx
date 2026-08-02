@@ -7,24 +7,34 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { StatTile } from "@/components/dashboards/stat-tile";
 import { EmptyState } from "@/components/dashboards/empty-state";
+import { TrendBarChart } from "@/components/dashboards/trend-bar-chart";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Chip, ChipGroup } from "@/components/ui/chip";
+import { Tabs } from "@/components/ui/tabs";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useSession } from "@/lib/session";
 import { formatMoney, uid } from "@/lib/mock";
+import { aggregateTwoByRange, type RangoTiempo } from "@/lib/chart-buckets";
 import { cn } from "@/lib/utils";
 import type { CajaEntry } from "@/lib/types";
 
 const ICONS = { venta: Banknote, propina: HandCoins, gasto: Receipt };
+
+const RANGO_TABS = [
+  { value: "semanal", label: "Semanal" },
+  { value: "mensual", label: "Mensual" },
+  { value: "anual", label: "Anual" },
+];
 
 export default function CajaPage() {
   const { session, ready, update } = useSession();
   const [addOpen, setAddOpen] = React.useState(false);
   const [editando, setEditando] = React.useState<CajaEntry | null>(null);
   const [borrando, setBorrando] = React.useState<CajaEntry | null>(null);
+  const [rango, setRango] = React.useState<RangoTiempo>("semanal");
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -35,6 +45,12 @@ export default function CajaPage() {
   const transferencia = data.caja.filter((e) => e.tipo !== "gasto" && e.metodo === "transferencia").reduce((acc, e) => acc + e.monto, 0);
 
   const movimientos = [...data.caja].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const serie = aggregateTwoByRange(
+    data.caja,
+    rango,
+    (m) => m.fecha,
+    (m) => (m.tipo === "gasto" ? { a: 0, b: m.monto } : { a: m.monto, b: 0 })
+  );
 
   function eliminar() {
     if (!borrando) return;
@@ -61,6 +77,18 @@ export default function CajaPage() {
         <StatTile label="Propinas" value={formatMoney(propinas)} />
         <StatTile label="Efectivo" value={formatMoney(efectivo)} />
         <StatTile label="Transferencia" value={formatMoney(transferencia)} />
+      </div>
+
+      <div className="flex flex-col gap-3 px-4 pt-4">
+        <Tabs value={rango} onValueChange={(v) => setRango(v as RangoTiempo)} tabs={RANGO_TABS} />
+        <TrendBarChart
+          data={serie.map((s) => ({ label: s.label, ingreso: s.a, gasto: s.b }))}
+          bars={[
+            { key: "ingreso", name: "Ingresos", color: "hsl(168 55% 45%)" },
+            { key: "gasto", name: "Gastos", color: "hsl(4 78% 58%)" },
+          ]}
+          emptyText="Sin movimientos en este periodo"
+        />
       </div>
 
       <div className="flex flex-col gap-2 px-4 py-6">

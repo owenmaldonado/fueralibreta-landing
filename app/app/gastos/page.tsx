@@ -7,15 +7,24 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { StatTile } from "@/components/dashboards/stat-tile";
 import { EmptyState } from "@/components/dashboards/empty-state";
+import { TrendBarChart } from "@/components/dashboards/trend-bar-chart";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { Tabs } from "@/components/ui/tabs";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useSession } from "@/lib/session";
 import { formatMoney, todayISO, uid } from "@/lib/mock";
+import { aggregateByRange, type RangoTiempo } from "@/lib/chart-buckets";
 import type { Expense, TenantData } from "@/lib/types";
+
+const RANGO_TABS = [
+  { value: "semanal", label: "Semanal" },
+  { value: "mensual", label: "Mensual" },
+  { value: "anual", label: "Anual" },
+];
 
 /** Página compartida por Fonda y Abarrotes: ambas guardan gastos con la misma forma. */
 export default function GastosPage() {
@@ -23,6 +32,7 @@ export default function GastosPage() {
   const [addOpen, setAddOpen] = React.useState(false);
   const [editando, setEditando] = React.useState<Expense | null>(null);
   const [borrando, setBorrando] = React.useState<Expense | null>(null);
+  const [rango, setRango] = React.useState<RangoTiempo>("semanal");
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -30,6 +40,7 @@ export default function GastosPage() {
   const gastos: Expense[] = session.fonda?.gastos ?? session.abarrotes?.gastos ?? [];
   const total = gastos.reduce((acc, g) => acc + g.monto, 0);
   const ordenados = [...gastos].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const serie = aggregateByRange(gastos, rango, (g) => g.fecha, (g) => g.monto);
 
   function withGastos(prev: TenantData, next: (gastos: Expense[]) => Expense[]): TenantData {
     if (prev.fonda) return { ...prev, fonda: { ...prev.fonda, gastos: next(prev.fonda.gastos) } };
@@ -57,6 +68,12 @@ export default function GastosPage() {
       <div className="px-4">
         <StatTile label="Total registrado" value={formatMoney(total)} />
       </div>
+
+      <div className="flex flex-col gap-3 px-4 pt-4">
+        <Tabs value={rango} onValueChange={(v) => setRango(v as RangoTiempo)} tabs={RANGO_TABS} />
+        <TrendBarChart data={serie} bars={[{ key: "value", name: "Gastado", color: "hsl(4 78% 58%)" }]} emptyText="Sin gastos en este periodo" />
+      </div>
+
       <div className="flex flex-col gap-2 px-4 py-6">
         {ordenados.length === 0 ? (
           <EmptyState texto="Sin gastos registrados" />
