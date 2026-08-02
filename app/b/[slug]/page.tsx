@@ -71,7 +71,7 @@ export default function ReservaPublicaPage() {
         <p className="max-w-xs text-sm text-muted-foreground">
           {loadError
             ? "No pudimos cargar esta página de reservas. Intenta de nuevo en un momento."
-            : `No encontramos un negocio activo en /reserva/${params.slug}.`}
+            : `No encontramos un negocio activo en /b/${params.slug}.`}
         </p>
         <Button asChild variant="outline">
           <Link href="/">Ir al inicio</Link>

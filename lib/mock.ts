@@ -37,8 +37,19 @@ export function formatMoney(n: number): string {
   });
 }
 
+/**
+ * Fecha LOCAL en formato YYYY-MM-DD. Ojo: NO usar d.toISOString() aquí —
+ * eso da la fecha en UTC, que se adelanta o atrasa hasta varias horas
+ * respecto al día local (en México, de 6pm a medianoche ya es "mañana" en
+ * UTC). Como los <input type="date"> del navegador siempre devuelven la
+ * fecha local, comparar contra una fecha en UTC hacía que "Hoy" mostrara
+ * citas de ayer o se comiera las de hoy según la hora del día.
+ */
 export function toISODate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export function addDays(base: Date, days: number): Date {
@@ -396,6 +407,7 @@ export function generateDemoAbarrotes(form: DemoFormAbarrotes): TenantData {
       total: 800,
       abonado: 300,
       fechaLimite: todayISO(14),
+      entregado: false,
     },
   ];
 

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { MessageCircle, Trash2 } from "lucide-react";
+import { MessageCircle, Trash2, HandCoins, PackageCheck } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { AbonoDialog } from "@/components/dashboards/abono-dialog";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
 import { formatMoney, waLink } from "@/lib/mock";
@@ -18,11 +19,37 @@ import type { Apartado } from "@/lib/types";
 export default function ApartadosPage() {
   const { session, ready, update } = useSession();
   const [seleccionado, setSeleccionado] = React.useState<Apartado | null>(null);
+  const [abonando, setAbonando] = React.useState<Apartado | null>(null);
+  const [entregando, setEntregando] = React.useState<Apartado | null>(null);
 
   if (!ready || !session) return <LoadingBlock />;
 
   const data = session.abarrotes!;
-  const apartados = [...data.apartados].sort((a, b) => a.fechaLimite.localeCompare(b.fechaLimite));
+  const apartados = [...data.apartados].filter((a) => !a.entregado).sort((a, b) => a.fechaLimite.localeCompare(b.fechaLimite));
+
+  function registrarAbono(monto: number) {
+    if (!abonando) return;
+    update((prev) => {
+      const a = prev.abarrotes!;
+      return {
+        ...prev,
+        abarrotes: {
+          ...a,
+          apartados: a.apartados.map((ap) => (ap.id === abonando.id ? { ...ap, abonado: Math.min(ap.total, ap.abonado + monto) } : ap)),
+        },
+      };
+    });
+    setAbonando(null);
+  }
+
+  function confirmarEntrega() {
+    if (!entregando) return;
+    update((prev) => {
+      const a = prev.abarrotes!;
+      return { ...prev, abarrotes: { ...a, apartados: a.apartados.map((ap) => (ap.id === entregando.id ? { ...ap, entregado: true } : ap)) } };
+    });
+    setEntregando(null);
+  }
 
   return (
     <>
@@ -35,26 +62,32 @@ export default function ApartadosPage() {
             const restante = a.total - a.abonado;
             const pct = Math.min(100, Math.round((a.abonado / a.total) * 100));
             return (
-              <button
-                key={a.id}
-                onClick={() => setSeleccionado(a)}
-                className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3 text-left"
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">{a.clienteNombre}</p>
-                  <span className="text-xs text-muted-foreground">Vence {a.fechaLimite}</span>
+              <div key={a.id} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3">
+                <button type="button" onClick={() => setSeleccionado(a)} className="flex flex-col gap-2 text-left">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">{a.clienteNombre}</p>
+                    <span className="text-xs text-muted-foreground">Vence {a.fechaLimite}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{a.producto}</p>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                    <div className="h-full rounded-full bg-ledger transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">
+                      Abonado {formatMoney(a.abonado)} de {formatMoney(a.total)}
+                    </span>
+                    <span className="font-medium text-primary">Faltan {formatMoney(restante)}</span>
+                  </div>
+                </button>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setAbonando(a)}>
+                    <HandCoins className="h-3.5 w-3.5" /> Abonar
+                  </Button>
+                  <Button size="sm" variant="ledger" className="flex-1" onClick={() => setEntregando(a)}>
+                    <PackageCheck className="h-3.5 w-3.5" /> Entregar
+                  </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">{a.producto}</p>
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                  <div className="h-full rounded-full bg-ledger transition-all" style={{ width: `${pct}%` }} />
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">
-                    Abonado {formatMoney(a.abonado)} de {formatMoney(a.total)}
-                  </span>
-                  <span className="font-medium text-primary">Faltan {formatMoney(restante)}</span>
-                </div>
-              </button>
+              </div>
             );
           })
         )}
@@ -63,6 +96,28 @@ export default function ApartadosPage() {
       <Sheet open={!!seleccionado} onOpenChange={(o) => !o && setSeleccionado(null)}>
         {seleccionado && <ApartadoDetalle apartado={seleccionado} onClose={() => setSeleccionado(null)} update={update} />}
       </Sheet>
+
+      <AbonoDialog
+        open={!!abonando}
+        title={abonando ? `Abono de ${abonando.clienteNombre}` : ""}
+        restante={abonando ? abonando.total - abonando.abonado : 0}
+        onClose={() => setAbonando(null)}
+        onConfirm={registrarAbono}
+      />
+
+      <ConfirmDialog
+        open={!!entregando}
+        title="Marcar como entregado"
+        description={
+          entregando && entregando.abonado < entregando.total
+            ? `Aún debe ${formatMoney(entregando.total - entregando.abonado)}. Se quitará de la lista de apartados activos.`
+            : "Se quitará de la lista de apartados activos."
+        }
+        confirmLabel="Entregar"
+        tone="ledger"
+        onClose={() => setEntregando(null)}
+        onConfirm={confirmarEntrega}
+      />
     </>
   );
 }

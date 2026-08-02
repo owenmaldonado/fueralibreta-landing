@@ -159,6 +159,7 @@ export interface Apartado {
   total: number;
   abonado: number;
   fechaLimite: string; // ISO date
+  entregado: boolean;
 }
 
 export interface GrocerySaleItem {

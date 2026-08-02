@@ -371,8 +371,11 @@ create table if not exists abarrotes_apartados (
   producto text not null,
   total numeric(10, 2) not null,
   abonado numeric(10, 2) not null default 0,
-  fecha_limite date not null
+  fecha_limite date not null,
+  entregado boolean not null default false
 );
+
+alter table abarrotes_apartados add column if not exists entregado boolean not null default false;
 
 create table if not exists abarrotes_gastos (
   id uuid primary key default gen_random_uuid(),

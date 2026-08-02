@@ -61,10 +61,26 @@ export function useSession() {
       }
     }
 
+    // Distintas instancias de useSession() (p.ej. el shell que dueño del FAB
+    // vs. la página de lista actual) tienen cada una su propio useState —
+    // este listener es lo que las mantiene en sync cuando update() escribe
+    // en demoPreview desde OTRA instancia. Se registra siempre, incluso sin
+    // Supabase configurado, porque si no la sincronización entre pantallas
+    // en modo demo se rompe silenciosamente.
+    const onDemoChange = () => {
+      if (sourceRef.current !== "supabase") loadFromDemoPreview();
+    };
+    window.addEventListener(DEMO_PREVIEW_EVENT, onDemoChange);
+    window.addEventListener("storage", onDemoChange);
+
     if (!isSupabaseConfigured) {
       loadFromDemoPreview();
       setReady(true);
-      return;
+      return () => {
+        cancelled = true;
+        window.removeEventListener(DEMO_PREVIEW_EVENT, onDemoChange);
+        window.removeEventListener("storage", onDemoChange);
+      };
     }
 
     // onAuthStateChange dispara "INITIAL_SESSION" en cuanto el cliente
@@ -96,12 +112,6 @@ export function useSession() {
       if (resolvedOnce || cancelled) return;
       supabase.auth.getSession().then(({ data }) => resolveForUser(data.session?.user?.id ?? null));
     }, 1500);
-
-    const onDemoChange = () => {
-      if (sourceRef.current !== "supabase") loadFromDemoPreview();
-    };
-    window.addEventListener(DEMO_PREVIEW_EVENT, onDemoChange);
-    window.addEventListener("storage", onDemoChange);
 
     return () => {
       cancelled = true;

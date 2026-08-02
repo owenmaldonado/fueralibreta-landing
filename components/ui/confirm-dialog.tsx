@@ -6,12 +6,13 @@ import { Loader2 } from "lucide-react";
 import { Dialog, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
-/** Confirmación simple de "¿seguro?" para eliminar algo desde cualquier lista. */
+/** Confirmación simple de "¿seguro?" para eliminar o completar algo desde cualquier lista. */
 export function ConfirmDialog({
   open,
   title,
   description,
   confirmLabel = "Eliminar",
+  tone = "danger",
   onClose,
   onConfirm,
 }: {
@@ -19,6 +20,7 @@ export function ConfirmDialog({
   title: string;
   description: string;
   confirmLabel?: string;
+  tone?: "danger" | "ledger";
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -41,7 +43,8 @@ export function ConfirmDialog({
           Cancelar
         </Button>
         <Button
-          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          variant={tone === "ledger" ? "ledger" : "default"}
+          className={tone === "danger" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : undefined}
           disabled={loading}
           onClick={handleConfirm}
         >

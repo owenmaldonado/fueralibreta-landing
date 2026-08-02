@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { MessageCircle, Trash2 } from "lucide-react";
+import { MessageCircle, Trash2, HandCoins, CircleCheck } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { AbonoDialog } from "@/components/dashboards/abono-dialog";
 import { StatTile } from "@/components/dashboards/stat-tile";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
@@ -19,12 +20,52 @@ import type { Fiado } from "@/lib/types";
 export default function FiadosPage() {
   const { session, ready, update } = useSession();
   const [seleccionado, setSeleccionado] = React.useState<Fiado | null>(null);
+  const [abonando, setAbonando] = React.useState<Fiado | null>(null);
+  const [liquidando, setLiquidando] = React.useState<Fiado | null>(null);
 
   if (!ready || !session) return <LoadingBlock />;
 
   const data = session.abarrotes!;
-  const fiados = [...data.fiados].sort((a, b) => b.saldo - a.saldo);
+  const fiados = [...data.fiados].filter((f) => f.saldo > 0).sort((a, b) => b.saldo - a.saldo);
   const totalFiado = fiados.reduce((acc, f) => acc + f.saldo, 0);
+
+  function registrarAbono(monto: number) {
+    if (!abonando) return;
+    update((prev) => {
+      const a = prev.abarrotes!;
+      return {
+        ...prev,
+        abarrotes: {
+          ...a,
+          fiados: a.fiados.map((f) =>
+            f.id === abonando.id
+              ? { ...f, saldo: Math.max(0, f.saldo - monto), historial: [{ fecha: todayISO(0), monto, tipo: "abono" as const }, ...f.historial] }
+              : f
+          ),
+        },
+      };
+    });
+    setAbonando(null);
+  }
+
+  function confirmarLiquidar() {
+    if (!liquidando) return;
+    update((prev) => {
+      const a = prev.abarrotes!;
+      return {
+        ...prev,
+        abarrotes: {
+          ...a,
+          fiados: a.fiados.map((f) =>
+            f.id === liquidando.id
+              ? { ...f, saldo: 0, historial: [{ fecha: todayISO(0), monto: liquidando.saldo, tipo: "abono" as const }, ...f.historial] }
+              : f
+          ),
+        },
+      };
+    });
+    setLiquidando(null);
+  }
 
   return (
     <>
@@ -37,29 +78,23 @@ export default function FiadosPage() {
           <EmptyState texto="Nadie te debe nada 🎉" />
         ) : (
           fiados.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setSeleccionado(f)}
-              className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{f.clienteNombre}</p>
-                <p className="text-xs text-muted-foreground">{f.telefono}</p>
+            <div key={f.id} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3">
+              <button type="button" onClick={() => setSeleccionado(f)} className="flex items-center gap-3 text-left">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{f.clienteNombre}</p>
+                  <p className="text-xs text-muted-foreground">{f.telefono}</p>
+                </div>
+                <span className="shrink-0 font-mono text-sm font-semibold text-primary">{formatMoney(f.saldo)}</span>
+              </button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="flex-1" onClick={() => setAbonando(f)}>
+                  <HandCoins className="h-3.5 w-3.5" /> Abonar
+                </Button>
+                <Button size="sm" variant="ledger" className="flex-1" onClick={() => setLiquidando(f)}>
+                  <CircleCheck className="h-3.5 w-3.5" /> Liquidar
+                </Button>
               </div>
-              <span className="shrink-0 font-mono text-sm font-semibold text-primary">{formatMoney(f.saldo)}</span>
-              {f.telefono && (
-                <span
-                  role="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    window.open(waLink(f.telefono, `Hola ${f.clienteNombre}, te recuerdo tu saldo de $${f.saldo}`), "_blank");
-                  }}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ledger hover:bg-secondary"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                </span>
-              )}
-            </button>
+            </div>
           ))
         )}
       </div>
@@ -67,6 +102,24 @@ export default function FiadosPage() {
       <Sheet open={!!seleccionado} onOpenChange={(o) => !o && setSeleccionado(null)}>
         {seleccionado && <FiadoDetalle fiado={seleccionado} onClose={() => setSeleccionado(null)} update={update} />}
       </Sheet>
+
+      <AbonoDialog
+        open={!!abonando}
+        title={abonando ? `Abono de ${abonando.clienteNombre}` : ""}
+        restante={abonando?.saldo ?? 0}
+        onClose={() => setAbonando(null)}
+        onConfirm={registrarAbono}
+      />
+
+      <ConfirmDialog
+        open={!!liquidando}
+        title="Liquidar saldo"
+        description={liquidando ? `Se registrará un abono de ${formatMoney(liquidando.saldo)} y quedará saldado.` : ""}
+        confirmLabel="Liquidar"
+        tone="ledger"
+        onClose={() => setLiquidando(null)}
+        onConfirm={confirmarLiquidar}
+      />
     </>
   );
 }

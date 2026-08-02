@@ -27,7 +27,7 @@ import type {
 // Capa de datos: Supabase en vez de localStorage.
 //
 // - fetchNegocioByOwner / fetchTenantData: leer el negocio del dueño logueado
-// - fetchNegocioBySlug: leer un negocio público (para /reserva/[slug])
+// - fetchNegocioBySlug: leer un negocio público (para /b/[slug])
 // - persistTenant: insertar un negocio + todo su contenido inicial de una vez
 //   (onboarding nuevo, o activar una demo local)
 // - syncTenantDiff: comparar el estado anterior vs el nuevo de useSession().update()
@@ -77,7 +77,7 @@ export async function fetchNegocioByOwner(ownerId: string): Promise<Business | n
   return data ? businessFromRow(data) : null;
 }
 
-/** Solo negocios activos (RLS público también lo exige). Usado por /reserva/[slug]. */
+/** Solo negocios activos (RLS público también lo exige). Usado por /b/[slug]. */
 export async function fetchNegocioBySlug(slug: string): Promise<Business | null> {
   const { data, error } = await supabase.from("negocios").select("*").eq("slug", slug).eq("is_active", true).maybeSingle();
   if (error) throw error;
@@ -389,6 +389,7 @@ const apartadoFromRow = (r: Row): Apartado => ({
   total: Number(r.total),
   abonado: Number(r.abonado),
   fechaLimite: r.fecha_limite as string,
+  entregado: (r.entregado as boolean) ?? false,
 });
 const apartadoToRow = (a: Apartado, negocioId: string): Row => ({
   id: a.id,
@@ -399,6 +400,7 @@ const apartadoToRow = (a: Apartado, negocioId: string): Row => ({
   total: a.total,
   abonado: a.abonado,
   fecha_limite: a.fechaLimite,
+  entregado: a.entregado,
 });
 
 async function fetchAbarrotesData(negocioId: string): Promise<AbarrotesData> {
@@ -662,7 +664,7 @@ async function syncAbarrotesVentas(negocioId: string, prevArr: GrocerySale[], ne
   }
 }
 
-// ---------- reserva pública (/reserva/[slug]) ----------
+// ---------- reserva pública (/b/[slug]) ----------
 
 export interface PublicBookingData {
   servicios: BarberService[];
@@ -694,7 +696,7 @@ export async function fetchPublicBookingData(negocioId: string): Promise<PublicB
   };
 }
 
-/** Cliente público reservando desde /reserva/[slug]. RLS solo permite estado='pendiente'. */
+/** Cliente público reservando desde /b/[slug]. RLS solo permite estado='pendiente'. */
 export async function insertPublicCita(negocioId: string, cita: Omit<Appointment, "id">): Promise<void> {
   const { error } = await supabase.from("barberia_citas").insert(citaToRow({ ...cita, id: crypto.randomUUID() }, negocioId));
   if (error) throw error;
