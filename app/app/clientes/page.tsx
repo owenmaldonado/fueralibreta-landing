@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, MessageCircle } from "lucide-react";
+import { Search, MessageCircle, Trash2 } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetHeader } from "@/components/ui/sheet";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
 import { daysSince, formatMoney, waLink } from "@/lib/mock";
@@ -105,19 +106,51 @@ function ClienteDetalle({
   onClose: () => void;
   update: ReturnType<typeof useSession>["update"];
 }) {
+  const [nombre, setNombre] = React.useState(cliente.nombre);
+  const [telefono, setTelefono] = React.useState(cliente.telefono);
   const [notas, setNotas] = React.useState(cliente.notas ?? "");
+  const [confirmando, setConfirmando] = React.useState(false);
 
-  function guardarNotas() {
+  function guardarCampo(cambios: Partial<BarberClient>) {
     update((prev) => {
       const b = prev.barberia!;
-      return { ...prev, barberia: { ...b, clientes: b.clientes.map((c) => (c.id === cliente.id ? { ...c, notas } : c)) } };
+      return { ...prev, barberia: { ...b, clientes: b.clientes.map((c) => (c.id === cliente.id ? { ...c, ...cambios } : c)) } };
     });
+  }
+
+  function eliminar() {
+    update((prev) => {
+      const b = prev.barberia!;
+      return { ...prev, barberia: { ...b, clientes: b.clientes.filter((c) => c.id !== cliente.id) } };
+    });
+    setConfirmando(false);
+    onClose();
   }
 
   return (
     <>
-      <SheetHeader title={cliente.nombre} description={cliente.telefono || "Sin teléfono"} onClose={onClose} />
+      <SheetHeader title="Editar cliente" onClose={onClose} />
       <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Nombre</Label>
+            <Input
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              onBlur={() => nombre.trim() && guardarCampo({ nombre: nombre.trim() })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Teléfono</Label>
+            <Input
+              type="tel"
+              value={telefono}
+              onChange={(e) => setTelefono(e.target.value)}
+              onBlur={() => guardarCampo({ telefono: telefono.trim() })}
+            />
+          </div>
+        </div>
+
         {cliente.telefono && (
           <Button asChild size="lg" variant="ledger">
             <a href={waLink(cliente.telefono, `Hola ${cliente.nombre}, ¿cómo estás?`)} target="_blank" rel="noreferrer">
@@ -128,7 +161,12 @@ function ClienteDetalle({
 
         <div className="space-y-1.5">
           <Label>Notas</Label>
-          <Textarea value={notas} onChange={(e) => setNotas(e.target.value)} onBlur={guardarNotas} placeholder="Preferencias, alergias, etc." />
+          <Textarea
+            value={notas}
+            onChange={(e) => setNotas(e.target.value)}
+            onBlur={() => guardarCampo({ notas })}
+            placeholder="Preferencias, alergias, etc."
+          />
         </div>
 
         <div className="space-y-1.5">
@@ -150,7 +188,23 @@ function ClienteDetalle({
             </div>
           )}
         </div>
+
+        <Button
+          variant="outline"
+          className="border-destructive/40 text-destructive hover:bg-destructive/10"
+          onClick={() => setConfirmando(true)}
+        >
+          <Trash2 className="h-4 w-4" /> Eliminar cliente
+        </Button>
       </div>
+
+      <ConfirmDialog
+        open={confirmando}
+        title="Eliminar cliente"
+        description={`Se borrará a ${cliente.nombre} de tu lista de clientes. Su historial de citas pasadas se conserva.`}
+        onClose={() => setConfirmando(false)}
+        onConfirm={eliminar}
+      />
     </>
   );
 }

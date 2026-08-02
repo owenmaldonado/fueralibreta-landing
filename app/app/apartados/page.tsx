@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Trash2 } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
 import { formatMoney, waLink } from "@/lib/mock";
@@ -75,8 +76,22 @@ function ApartadoDetalle({
   onClose: () => void;
   update: ReturnType<typeof useSession>["update"];
 }) {
+  const [clienteNombre, setClienteNombre] = React.useState(apartado.clienteNombre);
+  const [telefono, setTelefono] = React.useState(apartado.telefono);
+  const [producto, setProducto] = React.useState(apartado.producto);
+  const [total, setTotal] = React.useState(String(apartado.total));
+  const [fechaLimite, setFechaLimite] = React.useState(apartado.fechaLimite);
   const [abono, setAbono] = React.useState("");
+  const [confirmando, setConfirmando] = React.useState(false);
+
   const restante = apartado.total - apartado.abonado;
+
+  function guardarCampo(cambios: Partial<Apartado>) {
+    update((prev) => {
+      const a = prev.abarrotes!;
+      return { ...prev, abarrotes: { ...a, apartados: a.apartados.map((ap) => (ap.id === apartado.id ? { ...ap, ...cambios } : ap)) } };
+    });
+  }
 
   function registrarAbono() {
     const monto = Number(abono);
@@ -96,10 +111,70 @@ function ApartadoDetalle({
     onClose();
   }
 
+  function eliminar() {
+    update((prev) => {
+      const a = prev.abarrotes!;
+      return { ...prev, abarrotes: { ...a, apartados: a.apartados.filter((ap) => ap.id !== apartado.id) } };
+    });
+    setConfirmando(false);
+    onClose();
+  }
+
   return (
     <>
-      <SheetHeader title={apartado.clienteNombre} description={apartado.producto} onClose={onClose} />
+      <SheetHeader title="Editar apartado" onClose={onClose} />
       <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Cliente</Label>
+            <Input
+              value={clienteNombre}
+              onChange={(e) => setClienteNombre(e.target.value)}
+              onBlur={() => clienteNombre.trim() && guardarCampo({ clienteNombre: clienteNombre.trim() })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Teléfono</Label>
+            <Input
+              type="tel"
+              value={telefono}
+              onChange={(e) => setTelefono(e.target.value)}
+              onBlur={() => guardarCampo({ telefono: telefono.trim() })}
+            />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Producto</Label>
+          <Input
+            value={producto}
+            onChange={(e) => setProducto(e.target.value)}
+            onBlur={() => producto.trim() && guardarCampo({ producto: producto.trim() })}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Total</Label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={total}
+              onChange={(e) => setTotal(e.target.value)}
+              onBlur={() => Number(total) > 0 && guardarCampo({ total: Number(total) })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Fecha límite</Label>
+            <Input
+              type="date"
+              value={fechaLimite}
+              onChange={(e) => {
+                setFechaLimite(e.target.value);
+                guardarCampo({ fechaLimite: e.target.value });
+              }}
+            />
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-3 text-center">
           <div className="rounded-lg border border-border p-3">
             <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Abonado</p>
@@ -130,12 +205,28 @@ function ApartadoDetalle({
           <Label>Registrar abono</Label>
           <Input type="number" inputMode="decimal" value={abono} onChange={(e) => setAbono(e.target.value)} placeholder="$0" />
         </div>
+
+        <Button
+          variant="outline"
+          className="border-destructive/40 text-destructive hover:bg-destructive/10"
+          onClick={() => setConfirmando(true)}
+        >
+          <Trash2 className="h-4 w-4" /> Eliminar apartado
+        </Button>
       </div>
       <SheetFooter>
         <Button size="lg" disabled={!(Number(abono) > 0)} onClick={registrarAbono}>
           Guardar abono
         </Button>
       </SheetFooter>
+
+      <ConfirmDialog
+        open={confirmando}
+        title="Eliminar apartado"
+        description={`Se borrará el apartado de ${apartado.clienteNombre}.`}
+        onClose={() => setConfirmando(false)}
+        onConfirm={eliminar}
+      />
     </>
   );
 }

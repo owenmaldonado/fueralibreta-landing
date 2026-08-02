@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, ScanLine, Plus } from "lucide-react";
+import { Search, ScanLine, Plus, Pencil, Trash2 } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -10,21 +10,28 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Stepper } from "@/components/ui/stepper";
 import { Button } from "@/components/ui/button";
+import { Tabs } from "@/components/ui/tabs";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import { useSession } from "@/lib/session";
 import { formatMoney, todayISO, uid } from "@/lib/mock";
 import { cn } from "@/lib/utils";
-import type { GroceryProduct } from "@/lib/types";
+import type { GroceryProduct, GrocerySale } from "@/lib/types";
 
 export default function InventarioPage() {
   const { session, ready, update } = useSession();
+  const [tab, setTab] = React.useState("productos");
   const [q, setQ] = React.useState("");
   const [scanning, setScanning] = React.useState(false);
   const [ajustar, setAjustar] = React.useState<GroceryProduct | null>(null);
   const [nuevoCodigo, setNuevoCodigo] = React.useState<string | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
+  const [editando, setEditando] = React.useState<GroceryProduct | null>(null);
+  const [borrando, setBorrando] = React.useState<GroceryProduct | null>(null);
+  const [editandoVenta, setEditandoVenta] = React.useState<GrocerySale | null>(null);
+  const [borrandoVenta, setBorrandoVenta] = React.useState<GrocerySale | null>(null);
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -32,6 +39,7 @@ export default function InventarioPage() {
   const filtrados = data.productos.filter(
     (p) => p.nombre.toLowerCase().includes(q.toLowerCase()) || p.codigo.includes(q)
   );
+  const ventas = [...data.ventas].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   function handleScan(codigo: string) {
     setScanning(false);
@@ -41,6 +49,24 @@ export default function InventarioPage() {
     } else {
       setNuevoCodigo(codigo);
     }
+  }
+
+  function eliminarProducto() {
+    if (!borrando) return;
+    update((prev) => {
+      const a = prev.abarrotes!;
+      return { ...prev, abarrotes: { ...a, productos: a.productos.filter((p) => p.id !== borrando.id) } };
+    });
+    setBorrando(null);
+  }
+
+  function eliminarVenta() {
+    if (!borrandoVenta) return;
+    update((prev) => {
+      const a = prev.abarrotes!;
+      return { ...prev, abarrotes: { ...a, ventas: a.ventas.filter((v) => v.id !== borrandoVenta.id) } };
+    });
+    setBorrandoVenta(null);
   }
 
   return (
@@ -54,45 +80,106 @@ export default function InventarioPage() {
           </Button>
         }
       />
-      <div className="flex items-center gap-2 px-4 pb-3">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto o código..." className="pl-9" />
-        </div>
-        <Button size="icon" variant="outline" onClick={() => setAddOpen(true)} aria-label="Agregar producto">
-          <Plus className="h-4 w-4" />
-        </Button>
+
+      <div className="px-4 pb-3">
+        <Tabs
+          value={tab}
+          onValueChange={setTab}
+          tabs={[
+            { value: "productos", label: "Productos" },
+            { value: "ventas", label: `Ventas · ${ventas.length}` },
+          ]}
+        />
       </div>
 
-      <div className="flex flex-col gap-2 px-4 pb-6">
-        {filtrados.length === 0 ? (
-          <EmptyState texto="Sin productos" />
-        ) : (
-          filtrados.map((p) => {
-            const bajo = p.stock <= p.minimo;
-            const utilidad = p.precio - p.costo;
-            return (
-              <button
-                key={p.id}
-                onClick={() => setAjustar(p)}
-                className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left"
-              >
+      {tab === "productos" ? (
+        <>
+          <div className="flex items-center gap-2 px-4 pb-3">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto o código..." className="pl-9" />
+            </div>
+            <Button size="icon" variant="outline" onClick={() => setAddOpen(true)} aria-label="Agregar producto">
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="flex flex-col gap-2 px-4 pb-6">
+            {filtrados.length === 0 ? (
+              <EmptyState texto="Sin productos" />
+            ) : (
+              filtrados.map((p) => {
+                const bajo = p.stock <= p.minimo;
+                const utilidad = p.precio - p.costo;
+                return (
+                  <div key={p.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+                    <button onClick={() => setAjustar(p)} className="min-w-0 flex-1 text-left">
+                      <p className="truncate text-sm font-medium">{p.nombre}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {p.categoria} · {formatMoney(p.precio)} <span className="text-ledger">+{formatMoney(utilidad)}</span>
+                        {p.controlCaducidad && " · con caducidad"}
+                      </p>
+                    </button>
+                    <button onClick={() => setAjustar(p)} className={cn("shrink-0 font-mono text-sm", bajo ? "font-semibold text-primary" : "text-muted-foreground")}>
+                      {p.stock}
+                    </button>
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <button
+                        onClick={() => setEditando(p)}
+                        aria-label="Editar producto"
+                        className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setBorrando(p)}
+                        aria-label="Eliminar producto"
+                        className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col gap-2 px-4 pb-6">
+          {ventas.length === 0 ? (
+            <EmptyState texto="Sin ventas registradas" />
+          ) : (
+            ventas.map((v) => (
+              <div key={v.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{p.nombre}</p>
+                  <p className="truncate text-sm font-medium">{v.productoNombre}</p>
                   <p className="text-xs text-muted-foreground">
-                    {p.categoria} · {formatMoney(p.precio)}{" "}
-                    <span className="text-ledger">+{formatMoney(utilidad)}</span>
-                    {p.controlCaducidad && " · con caducidad"}
+                    {v.cantidad} pza · {new Date(v.fecha).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                   </p>
                 </div>
-                <span className={cn("shrink-0 font-mono text-sm", bajo ? "font-semibold text-primary" : "text-muted-foreground")}>
-                  {p.stock}
-                </span>
-              </button>
-            );
-          })
-        )}
-      </div>
+                <span className="shrink-0 font-mono text-sm text-ledger">{formatMoney(v.total)}</span>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <button
+                    onClick={() => setEditandoVenta(v)}
+                    aria-label="Editar venta"
+                    className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setBorrandoVenta(v)}
+                    aria-label="Eliminar venta"
+                    className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {scanning && <BarcodeScanner onScan={handleScan} onClose={() => setScanning(false)} />}
 
@@ -101,14 +188,36 @@ export default function InventarioPage() {
       </Sheet>
 
       <Sheet open={!!nuevoCodigo} onOpenChange={(o) => !o && setNuevoCodigo(null)}>
-        {nuevoCodigo && (
-          <NuevoProductoForm codigo={nuevoCodigo} onClose={() => setNuevoCodigo(null)} update={update} />
-        )}
+        {nuevoCodigo && <ProductoForm codigo={nuevoCodigo} onClose={() => setNuevoCodigo(null)} update={update} />}
       </Sheet>
 
       <Sheet open={addOpen} onOpenChange={setAddOpen}>
-        <NuevoProductoForm codigo={null} onClose={() => setAddOpen(false)} update={update} />
+        <ProductoForm codigo={null} onClose={() => setAddOpen(false)} update={update} />
       </Sheet>
+
+      <Sheet open={!!editando} onOpenChange={(o) => !o && setEditando(null)}>
+        {editando && <ProductoForm producto={editando} codigo={null} onClose={() => setEditando(null)} update={update} />}
+      </Sheet>
+
+      <Sheet open={!!editandoVenta} onOpenChange={(o) => !o && setEditandoVenta(null)}>
+        {editandoVenta && <VentaForm venta={editandoVenta} onClose={() => setEditandoVenta(null)} update={update} />}
+      </Sheet>
+
+      <ConfirmDialog
+        open={!!borrando}
+        title="Eliminar producto"
+        description={`Se borrará "${borrando?.nombre}" de tu inventario.`}
+        onClose={() => setBorrando(null)}
+        onConfirm={eliminarProducto}
+      />
+
+      <ConfirmDialog
+        open={!!borrandoVenta}
+        title="Eliminar venta"
+        description={`Se borrará la venta de "${borrandoVenta?.productoNombre}". El stock no se ajusta automáticamente.`}
+        onClose={() => setBorrandoVenta(null)}
+        onConfirm={eliminarVenta}
+      />
     </>
   );
 }
@@ -148,22 +257,24 @@ function AjustarStockForm({
   );
 }
 
-function NuevoProductoForm({
+function ProductoForm({
+  producto,
   codigo,
   onClose,
   update,
 }: {
+  producto?: GroceryProduct;
   codigo: string | null;
   onClose: () => void;
   update: ReturnType<typeof useSession>["update"];
 }) {
-  const [nombre, setNombre] = React.useState("");
-  const [categoria, setCategoria] = React.useState("");
-  const [costo, setCosto] = React.useState("");
-  const [precio, setPrecio] = React.useState("");
-  const [stock, setStock] = React.useState("1");
-  const [controlCaducidad, setControlCaducidad] = React.useState(false);
-  const [fechaCaducidad, setFechaCaducidad] = React.useState(todayISO(30));
+  const [nombre, setNombre] = React.useState(producto?.nombre ?? "");
+  const [categoria, setCategoria] = React.useState(producto?.categoria ?? "");
+  const [costo, setCosto] = React.useState(String(producto?.costo ?? ""));
+  const [precio, setPrecio] = React.useState(String(producto?.precio ?? ""));
+  const [stock, setStock] = React.useState(String(producto?.stock ?? 1));
+  const [controlCaducidad, setControlCaducidad] = React.useState(producto?.controlCaducidad ?? false);
+  const [fechaCaducidad, setFechaCaducidad] = React.useState(producto?.lotes?.[0]?.fecha ?? todayISO(30));
 
   const utilidad = Number(precio || 0) - Number(costo || 0);
   const puedeGuardar = nombre.trim().length > 1 && Number(precio) > 0;
@@ -172,19 +283,25 @@ function NuevoProductoForm({
     if (!puedeGuardar) return;
     update((prev) => {
       const a = prev.abarrotes!;
-      const producto: GroceryProduct = {
-        id: uid("gp"),
+      const datos = {
         nombre: nombre.trim(),
-        codigo: codigo ?? Math.floor(1000000000 + Math.random() * 8999999999).toString(),
         categoria: categoria.trim() || "General",
         costo: Number(costo) || 0,
         precio: Number(precio),
         stock: Number(stock) || 0,
-        minimo: 5,
         controlCaducidad,
         lotes: controlCaducidad ? [{ cantidad: Number(stock) || 0, fecha: fechaCaducidad }] : [],
       };
-      return { ...prev, abarrotes: { ...a, productos: [producto, ...a.productos] } };
+      if (producto) {
+        return { ...prev, abarrotes: { ...a, productos: a.productos.map((p) => (p.id === producto.id ? { ...p, ...datos } : p)) } };
+      }
+      const nuevo: GroceryProduct = {
+        id: uid("gp"),
+        codigo: codigo ?? Math.floor(1000000000 + Math.random() * 8999999999).toString(),
+        minimo: 5,
+        ...datos,
+      };
+      return { ...prev, abarrotes: { ...a, productos: [nuevo, ...a.productos] } };
     });
     onClose();
   }
@@ -192,8 +309,8 @@ function NuevoProductoForm({
   return (
     <>
       <SheetHeader
-        title="Nuevo producto"
-        description={codigo ? `Código escaneado: ${codigo}` : "Sin escanear"}
+        title={producto ? "Editar producto" : "Nuevo producto"}
+        description={producto ? `Código ${producto.codigo}` : codigo ? `Código escaneado: ${codigo}` : "Sin escanear"}
         onClose={onClose}
       />
       <div className="flex flex-col gap-4">
@@ -221,7 +338,7 @@ function NuevoProductoForm({
           </p>
         )}
         <div className="space-y-1.5">
-          <Label>Stock inicial</Label>
+          <Label>Stock</Label>
           <Input type="number" inputMode="numeric" value={stock} onChange={(e) => setStock(e.target.value)} />
         </div>
         <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
@@ -240,7 +357,58 @@ function NuevoProductoForm({
       </div>
       <SheetFooter>
         <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>
-          Guardar producto
+          {producto ? "Guardar cambios" : "Guardar producto"}
+        </Button>
+      </SheetFooter>
+    </>
+  );
+}
+
+function VentaForm({
+  venta,
+  onClose,
+  update,
+}: {
+  venta: GrocerySale;
+  onClose: () => void;
+  update: ReturnType<typeof useSession>["update"];
+}) {
+  const [cantidad, setCantidad] = React.useState(String(venta.cantidad));
+  const [total, setTotal] = React.useState(String(venta.total));
+
+  const puedeGuardar = Number(cantidad) > 0 && Number(total) > 0;
+
+  function guardar() {
+    if (!puedeGuardar) return;
+    update((prev) => {
+      const a = prev.abarrotes!;
+      return {
+        ...prev,
+        abarrotes: {
+          ...a,
+          ventas: a.ventas.map((v) => (v.id === venta.id ? { ...v, cantidad: Number(cantidad), total: Number(total) } : v)),
+        },
+      };
+    });
+    onClose();
+  }
+
+  return (
+    <>
+      <SheetHeader title="Editar venta" description={venta.productoNombre} onClose={onClose} />
+      <div className="flex flex-col gap-4">
+        <div className="space-y-1.5">
+          <Label>Cantidad</Label>
+          <Input autoFocus type="number" inputMode="numeric" value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Total</Label>
+          <Input type="number" inputMode="decimal" value={total} onChange={(e) => setTotal(e.target.value)} />
+        </div>
+      </div>
+      <SheetFooter>
+        <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>
+          Guardar cambios
         </Button>
       </SheetFooter>
     </>

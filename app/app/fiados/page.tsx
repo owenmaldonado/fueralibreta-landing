@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Trash2 } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { StatTile } from "@/components/dashboards/stat-tile";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
@@ -79,7 +80,17 @@ function FiadoDetalle({
   onClose: () => void;
   update: ReturnType<typeof useSession>["update"];
 }) {
+  const [clienteNombre, setClienteNombre] = React.useState(fiado.clienteNombre);
+  const [telefono, setTelefono] = React.useState(fiado.telefono);
   const [abono, setAbono] = React.useState("");
+  const [confirmando, setConfirmando] = React.useState(false);
+
+  function guardarCampo(cambios: Partial<Fiado>) {
+    update((prev) => {
+      const a = prev.abarrotes!;
+      return { ...prev, abarrotes: { ...a, fiados: a.fiados.map((f) => (f.id === fiado.id ? { ...f, ...cambios } : f)) } };
+    });
+  }
 
   function registrarAbono() {
     const monto = Number(abono);
@@ -105,10 +116,41 @@ function FiadoDetalle({
     onClose();
   }
 
+  function eliminar() {
+    update((prev) => {
+      const a = prev.abarrotes!;
+      return { ...prev, abarrotes: { ...a, fiados: a.fiados.filter((f) => f.id !== fiado.id) } };
+    });
+    setConfirmando(false);
+    onClose();
+  }
+
   return (
     <>
-      <SheetHeader title={fiado.clienteNombre} description={`Debe ${formatMoney(fiado.saldo)}`} onClose={onClose} />
+      <SheetHeader title="Editar fiado" onClose={onClose} />
       <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Cliente</Label>
+            <Input
+              value={clienteNombre}
+              onChange={(e) => setClienteNombre(e.target.value)}
+              onBlur={() => clienteNombre.trim() && guardarCampo({ clienteNombre: clienteNombre.trim() })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Teléfono</Label>
+            <Input
+              type="tel"
+              value={telefono}
+              onChange={(e) => setTelefono(e.target.value)}
+              onBlur={() => guardarCampo({ telefono: telefono.trim() })}
+            />
+          </div>
+        </div>
+
+        <p className="text-center font-display text-2xl font-bold text-primary">Debe {formatMoney(fiado.saldo)}</p>
+
         {fiado.telefono && (
           <Button asChild variant="ledger">
             <a href={waLink(fiado.telefono, `Hola ${fiado.clienteNombre}, te recuerdo tu saldo de $${fiado.saldo}`)} target="_blank" rel="noreferrer">
@@ -138,12 +180,28 @@ function FiadoDetalle({
             ))}
           </div>
         </div>
+
+        <Button
+          variant="outline"
+          className="border-destructive/40 text-destructive hover:bg-destructive/10"
+          onClick={() => setConfirmando(true)}
+        >
+          <Trash2 className="h-4 w-4" /> Eliminar fiado
+        </Button>
       </div>
       <SheetFooter>
         <Button size="lg" disabled={!(Number(abono) > 0)} onClick={registrarAbono}>
           Guardar abono
         </Button>
       </SheetFooter>
+
+      <ConfirmDialog
+        open={confirmando}
+        title="Eliminar fiado"
+        description={`Se borrará el registro de fiado de ${fiado.clienteNombre}.`}
+        onClose={() => setConfirmando(false)}
+        onConfirm={eliminar}
+      />
     </>
   );
 }
