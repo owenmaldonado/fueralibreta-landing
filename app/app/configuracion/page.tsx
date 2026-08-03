@@ -13,13 +13,14 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
-import { formatMoney, todayISO, uid } from "@/lib/mock";
+import { formatMoney, todayISO, toISODate, uid } from "@/lib/mock";
 import type { HorarioDia } from "@/lib/types";
 
 const SECTIONS = [
   { value: "horario", label: "Horario" },
   { value: "excepciones", label: "Excepciones" },
   { value: "servicios", label: "Servicios" },
+  { value: "historial", label: "Historial" },
 ];
 
 export default function ConfiguracionPage() {
@@ -126,6 +127,30 @@ export default function ConfiguracionPage() {
         </div>
       )}
 
+      {tab === "historial" && (
+        <div className="flex flex-col gap-2 px-4 pb-6">
+          <p className="px-1 text-xs text-muted-foreground">Últimos 30 cortes realizados</p>
+          {(() => {
+            const cortes = data.citas
+              .filter((c) => c.estado === "listo")
+              .sort((a, b) => `${b.fecha}${b.hora}`.localeCompare(`${a.fecha}${a.hora}`))
+              .slice(0, 30);
+            if (cortes.length === 0) return <EmptyState texto="Todavía no hay cortes marcados como listos" />;
+            return cortes.map((c) => (
+              <div key={c.id} className="flex items-center justify-between rounded-xl border border-border bg-card p-3">
+                <div>
+                  <p className="text-sm font-medium">{c.clienteNombre}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {c.fecha} {c.hora} · {c.servicioNombre}
+                  </p>
+                </div>
+                <span className="font-mono text-sm text-ledger">{formatMoney(c.precio)}</span>
+              </div>
+            ));
+          })()}
+        </div>
+      )}
+
       <Sheet open={addExcepcion} onOpenChange={setAddExcepcion}>
         <NuevaExcepcionForm onClose={() => setAddExcepcion(false)} update={update} />
       </Sheet>
@@ -136,20 +161,40 @@ export default function ConfiguracionPage() {
   );
 }
 
+function fechasEnRango(inicioISO: string, finISO: string): string[] {
+  const [sy, sm, sd] = inicioISO.split("-").map(Number);
+  const [ey, em, ed] = finISO.split("-").map(Number);
+  const inicio = new Date(sy, sm - 1, sd);
+  const fin = new Date(ey, em - 1, ed);
+  const fechas: string[] = [];
+  for (let d = new Date(inicio); d <= fin && fechas.length < 60; d.setDate(d.getDate() + 1)) {
+    fechas.push(toISODate(new Date(d)));
+  }
+  return fechas;
+}
+
 function NuevaExcepcionForm({ onClose, update }: { onClose: () => void; update: ReturnType<typeof useSession>["update"] }) {
   const [etiqueta, setEtiqueta] = React.useState("");
-  const [fecha, setFecha] = React.useState(todayISO(1));
+  const [fechaInicio, setFechaInicio] = React.useState(todayISO(1));
+  const [fechaFin, setFechaFin] = React.useState(todayISO(1));
   const [cerrado, setCerrado] = React.useState(true);
   const [horaEspecialFin, setHoraEspecialFin] = React.useState("14:00");
 
-  const puedeGuardar = etiqueta.trim().length > 1;
+  const rango = fechaFin >= fechaInicio ? fechasEnRango(fechaInicio, fechaFin) : [];
+  const puedeGuardar = etiqueta.trim().length > 1 && rango.length > 0;
 
   function guardar() {
     if (!puedeGuardar) return;
     update((prev) => {
       const b = prev.barberia!;
-      const excepcion = { id: uid("exc"), etiqueta: etiqueta.trim(), fecha, cerrado, horaEspecialFin: cerrado ? undefined : horaEspecialFin };
-      return { ...prev, barberia: { ...b, excepciones: [excepcion, ...b.excepciones] } };
+      const nuevas = rango.map((fecha) => ({
+        id: uid("exc"),
+        etiqueta: etiqueta.trim(),
+        fecha,
+        cerrado,
+        horaEspecialFin: cerrado ? undefined : horaEspecialFin,
+      }));
+      return { ...prev, barberia: { ...b, excepciones: [...nuevas, ...b.excepciones] } };
     });
     onClose();
   }
@@ -162,10 +207,24 @@ function NuevaExcepcionForm({ onClose, update }: { onClose: () => void; update: 
           <Label>Etiqueta</Label>
           <Input autoFocus value={etiqueta} onChange={(e) => setEtiqueta(e.target.value)} placeholder="Ej. Vacaciones" />
         </div>
-        <div className="space-y-1.5">
-          <Label>Fecha</Label>
-          <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Desde</Label>
+            <Input
+              type="date"
+              value={fechaInicio}
+              onChange={(e) => {
+                setFechaInicio(e.target.value);
+                if (e.target.value > fechaFin) setFechaFin(e.target.value);
+              }}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Hasta</Label>
+            <Input type="date" value={fechaFin} min={fechaInicio} onChange={(e) => setFechaFin(e.target.value)} />
+          </div>
         </div>
+        {rango.length > 1 && <p className="text-xs text-muted-foreground">Se crearán {rango.length} excepciones, una por día.</p>}
         <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
           <p className="text-sm font-medium">Cerrado todo el día</p>
           <Switch checked={cerrado} onCheckedChange={setCerrado} />

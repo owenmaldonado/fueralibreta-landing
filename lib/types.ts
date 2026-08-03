@@ -134,6 +134,7 @@ export interface GroceryProduct {
   stock: number;
   minimo: number;
   controlCaducidad: boolean;
+  unidad: "pieza" | "kg" | "granel";
   lotes?: { cantidad: number; fecha: string }[];
 }
 

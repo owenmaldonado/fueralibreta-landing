@@ -13,7 +13,7 @@ import { Sheet, SheetHeader } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
-import { daysSince, formatMoney, waLink } from "@/lib/mock";
+import { daysSince, formatMoney, statsVisitasCliente, waLink } from "@/lib/mock";
 import type { BarberClient } from "@/lib/types";
 
 export default function ClientesPage() {
@@ -26,6 +26,7 @@ export default function ClientesPage() {
   const data = session.barberia!;
   const filtrados = data.clientes
     .filter((c) => c.nombre.toLowerCase().includes(q.toLowerCase()) || c.telefono.includes(q))
+    .map((c) => ({ ...c, ...statsVisitasCliente(data.citas, c.id) }))
     .sort((a, b) => {
       const da = daysSince(a.ultimaVisita) ?? -1;
       const db = daysSince(b.ultimaVisita) ?? -1;

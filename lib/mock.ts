@@ -73,6 +73,20 @@ export function daysUntil(iso: string): number {
   return Math.floor((new Date(iso).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 }
 
+/**
+ * ultimaVisita/visitas en BarberClient solo se pisan a mano en un par de
+ * lugares y nunca se actualizan cuando una cita se marca "listo" — se
+ * quedan en null/0 para siempre. En vez de perseguir cada sitio que crea o
+ * cierra una cita para mantenerlos sincronizados, se calculan aquí al vuelo
+ * a partir de las citas reales (fuente de verdad única).
+ */
+export function statsVisitasCliente(citas: { clienteId: string; fecha: string; estado: string }[], clienteId: string) {
+  const atendidas = citas.filter((c) => c.clienteId === clienteId && c.estado === "listo");
+  if (atendidas.length === 0) return { ultimaVisita: null as string | null, visitas: 0 };
+  const ultimaVisita = atendidas.reduce((max, c) => (c.fecha > max ? c.fecha : max), atendidas[0].fecha);
+  return { ultimaVisita, visitas: atendidas.length };
+}
+
 export function onlyDigits(s: string): string {
   return s.replace(/\D/g, "");
 }
@@ -127,11 +141,12 @@ const PRODUCTOS_ABARROTES_DEFAULT: {
   precio: number;
   stock: number;
   controlCaducidad: boolean;
+  unidad: "pieza" | "kg" | "granel";
 }[] = [
-  { nombre: "Coca-Cola 600ml", categoria: "Bebidas", costo: 13, precio: 20, stock: 24, controlCaducidad: false },
-  { nombre: "Leche Lala 1L", categoria: "Lácteos", costo: 22, precio: 28, stock: 10, controlCaducidad: true },
-  { nombre: "Bimbo Blanco", categoria: "Panadería", costo: 34, precio: 42, stock: 6, controlCaducidad: true },
-  { nombre: "Arroz 1kg", categoria: "Abarrotes", costo: 18, precio: 25, stock: 15, controlCaducidad: false },
+  { nombre: "Coca-Cola 600ml", categoria: "Bebidas", costo: 13, precio: 20, stock: 24, controlCaducidad: false, unidad: "pieza" },
+  { nombre: "Leche Lala 1L", categoria: "Lácteos", costo: 22, precio: 28, stock: 10, controlCaducidad: true, unidad: "pieza" },
+  { nombre: "Bimbo Blanco", categoria: "Panadería", costo: 34, precio: 42, stock: 6, controlCaducidad: true, unidad: "pieza" },
+  { nombre: "Arroz 1kg", categoria: "Abarrotes", costo: 18, precio: 25, stock: 15, controlCaducidad: false, unidad: "pieza" },
 ];
 
 // ---------- Constructor de negocio ----------
@@ -358,6 +373,7 @@ export function generateDemoAbarrotes(form: DemoFormAbarrotes): TenantData {
     stock: 12,
     minimo: 5,
     controlCaducidad: false,
+    unidad: "pieza" as const,
     lotes: [],
   };
   const p2 = {
@@ -370,6 +386,7 @@ export function generateDemoAbarrotes(form: DemoFormAbarrotes): TenantData {
     stock: 8,
     minimo: 5,
     controlCaducidad: false,
+    unidad: "pieza" as const,
     lotes: [],
   };
   data.productos = [p1, p2];

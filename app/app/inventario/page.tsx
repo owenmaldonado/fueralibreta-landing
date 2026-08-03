@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Stepper } from "@/components/ui/stepper";
+import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Button } from "@/components/ui/button";
 import { Tabs } from "@/components/ui/tabs";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
@@ -16,6 +17,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { BarcodeScanner } from "@/components/barcode-scanner";
+import { VentaCart } from "@/components/abarrotes/venta-cart";
 import { useSession } from "@/lib/session";
 import { formatMoney, todayISO, uid } from "@/lib/mock";
 import { cn } from "@/lib/utils";
@@ -26,6 +28,7 @@ export default function InventarioPage() {
   const [tab, setTab] = React.useState("productos");
   const [q, setQ] = React.useState("");
   const [scanning, setScanning] = React.useState(false);
+  const [ventaOpen, setVentaOpen] = React.useState(false);
   const [ajustar, setAjustar] = React.useState<GroceryProduct | null>(null);
   const [nuevoCodigo, setNuevoCodigo] = React.useState<string | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
@@ -72,6 +75,17 @@ export default function InventarioPage() {
 
   return (
     <>
+      <div className="sticky top-14 z-10 bg-background px-4 pt-3">
+        <button
+          type="button"
+          onClick={() => setVentaOpen(true)}
+          className="flex h-[60px] w-full items-center justify-center gap-2 rounded-2xl text-lg font-bold text-white shadow-lg transition-transform active:scale-[0.98]"
+          style={{ backgroundColor: "#22c55e" }}
+        >
+          <Plus className="h-6 w-6" /> NUEVA VENTA
+        </button>
+      </div>
+
       <PageHeader
         title="Inventario"
         subtitle={`${data.productos.length} productos`}
@@ -190,6 +204,10 @@ export default function InventarioPage() {
 
       {scanning && <BarcodeScanner onScan={handleScan} onClose={() => setScanning(false)} />}
 
+      <Sheet open={ventaOpen} onOpenChange={setVentaOpen}>
+        <VentaCart data={data} onClose={() => setVentaOpen(false)} update={update} />
+      </Sheet>
+
       <Sheet open={!!ajustar} onOpenChange={(o) => !o && setAjustar(null)}>
         {ajustar && <AjustarStockForm producto={ajustar} onClose={() => setAjustar(null)} update={update} />}
       </Sheet>
@@ -279,6 +297,7 @@ function ProductoForm({
   const [categoria, setCategoria] = React.useState(producto?.categoria ?? "");
   const [costo, setCosto] = React.useState(String(producto?.costo ?? ""));
   const [precio, setPrecio] = React.useState(String(producto?.precio ?? ""));
+  const [unidad, setUnidad] = React.useState<GroceryProduct["unidad"]>(producto?.unidad ?? "pieza");
   const [stock, setStock] = React.useState(String(producto?.stock ?? 1));
   const [controlCaducidad, setControlCaducidad] = React.useState(producto?.controlCaducidad ?? false);
   const [fechaCaducidad, setFechaCaducidad] = React.useState(producto?.lotes?.[0]?.fecha ?? todayISO(30));
@@ -295,6 +314,7 @@ function ProductoForm({
         categoria: categoria.trim() || "General",
         costo: Number(costo) || 0,
         precio: Number(precio),
+        unidad,
         stock: Number(stock) || 0,
         controlCaducidad,
         lotes: controlCaducidad ? [{ cantidad: Number(stock) || 0, fecha: fechaCaducidad }] : [],
@@ -329,24 +349,44 @@ function ProductoForm({
           <Label>Categoría</Label>
           <Input value={categoria} onChange={(e) => setCategoria(e.target.value)} placeholder="Ej. Botanas" />
         </div>
+        <div className="space-y-1.5">
+          <Label>Se vende por</Label>
+          <ChipGroup>
+            <Chip selected={unidad === "pieza"} onClick={() => setUnidad("pieza")}>
+              Pieza
+            </Chip>
+            <Chip selected={unidad === "kg"} onClick={() => setUnidad("kg")}>
+              Kg (peso)
+            </Chip>
+            <Chip selected={unidad === "granel"} onClick={() => setUnidad("granel")}>
+              Granel
+            </Chip>
+          </ChipGroup>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label>Costo</Label>
             <Input type="number" inputMode="decimal" value={costo} onChange={(e) => setCosto(e.target.value)} placeholder="$0" />
           </div>
           <div className="space-y-1.5">
-            <Label>Precio venta</Label>
+            <Label>Precio venta {unidad !== "pieza" && `(por ${unidad})`}</Label>
             <Input type="number" inputMode="decimal" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="$0" />
           </div>
         </div>
         {(costo || precio) && (
           <p className="text-xs text-muted-foreground">
-            Utilidad por pieza: <span className="font-medium text-ledger">{formatMoney(utilidad)}</span>
+            Utilidad por {unidad === "pieza" ? "pieza" : unidad}: <span className="font-medium text-ledger">{formatMoney(utilidad)}</span>
           </p>
         )}
         <div className="space-y-1.5">
-          <Label>Stock</Label>
-          <Input type="number" inputMode="numeric" value={stock} onChange={(e) => setStock(e.target.value)} />
+          <Label>Stock {unidad !== "pieza" && `(${unidad})`}</Label>
+          <Input
+            type="number"
+            inputMode="decimal"
+            step={unidad === "pieza" ? "1" : "0.001"}
+            value={stock}
+            onChange={(e) => setStock(e.target.value)}
+          />
         </div>
         <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
           <div>

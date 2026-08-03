@@ -293,12 +293,18 @@ create table if not exists abarrotes_productos (
   categoria text not null default 'General',
   costo numeric(10, 2) not null default 0,
   precio numeric(10, 2) not null,
-  stock integer not null default 0,
+  stock numeric(10, 3) not null default 0,
   minimo integer not null default 5,
-  control_caducidad boolean not null default false
+  control_caducidad boolean not null default false,
+  unidad text not null default 'pieza'
 );
 
 create index if not exists abarrotes_productos_negocio_codigo_idx on abarrotes_productos(negocio_id, codigo);
+
+-- Migración: unidad para venta por peso (kg/granel, admite decimales) y
+-- stock pasa de integer a numeric para poder guardar 0.250 kg, etc.
+alter table abarrotes_productos add column if not exists unidad text not null default 'pieza';
+alter table abarrotes_productos alter column stock type numeric(10, 3);
 
 create table if not exists abarrotes_lotes (
   id uuid primary key default gen_random_uuid(),
@@ -319,10 +325,13 @@ create table if not exists abarrotes_sale_items (
   venta_id uuid not null references abarrotes_ventas(id) on delete cascade,
   producto_id uuid references abarrotes_productos(id) on delete set null,
   producto_nombre text not null,
-  cantidad integer not null default 1,
+  cantidad numeric(10, 3) not null default 1,
   precio_unitario numeric(10, 2) not null default 0,
   subtotal numeric(10, 2) not null default 0
 );
+
+-- Cantidad admite decimales para ventas por peso (kg/granel).
+alter table abarrotes_sale_items alter column cantidad type numeric(10, 3);
 
 -- Migración: abarrotes_ventas pasó de "1 fila = 1 producto" a un ticket con
 -- varios renglones en abarrotes_sale_items. Si la tabla ya existía con las
@@ -593,6 +602,42 @@ create policy "abarrotes_gastos_admin_all" on abarrotes_gastos for all using (is
 
 drop policy if exists "contactos_admin_all" on contactos;
 create policy "contactos_admin_all" on contactos for all using (is_admin()) with check (is_admin());
+
+-- Seed: negocio de demostración fijo para hacer demos en vivo con clientes
+-- por /b/demo-barber, sin depender de haber iniciado sesión ni de la demo
+-- local (que solo vive en localStorage hasta activarse desde /onboarding).
+-- is_active=true + owner_id null: las policies públicas ya lo dejan ver sin
+-- login. Seguro de volver a correr (on conflict / not exists en cada insert).
+insert into negocios (slug, nombre, tipo, dueno, telefono, is_active, demo)
+values ('demo-barber', 'Barbería Demo', 'barberia', 'Fuera Libreta', '3312345678', true, true)
+on conflict (slug) do nothing;
+
+insert into barberia_servicios (negocio_id, nombre, precio, duracion_min)
+select n.id, s.nombre, s.precio, s.duracion_min
+from negocios n,
+  (values
+    ('Corte clásico', 120, 30),
+    ('Corte + barba', 180, 45),
+    ('Solo barba', 90, 20),
+    ('Corte niño', 100, 25)
+  ) as s(nombre, precio, duracion_min)
+where n.slug = 'demo-barber'
+  and not exists (select 1 from barberia_servicios bs where bs.negocio_id = n.id);
+
+insert into barberia_horario (negocio_id, dia, abierto, inicio, fin)
+select n.id, h.dia, h.abierto, h.inicio, h.fin
+from negocios n,
+  (values
+    ('Lun', true, '09:00'::time, '19:00'::time),
+    ('Mar', true, '10:00'::time, '18:00'::time),
+    ('Mié', true, '09:00'::time, '19:00'::time),
+    ('Jue', true, '09:00'::time, '19:00'::time),
+    ('Vie', true, '09:00'::time, '20:00'::time),
+    ('Sáb', true, '09:00'::time, '17:00'::time),
+    ('Dom', false, '10:00'::time, '14:00'::time)
+  ) as h(dia, abierto, inicio, fin)
+where n.slug = 'demo-barber'
+  and not exists (select 1 from barberia_horario bh where bh.negocio_id = n.id);
 
 -- Seed: te hace admin a ti. Seguro de volver a correr; si todavía no te has
 -- registrado con Google, no hace nada (corre este UPDATE de nuevo después

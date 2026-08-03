@@ -41,6 +41,9 @@ export default function CajaPage() {
   const data = session.barberia!;
   const ventas = data.caja.filter((e) => e.tipo === "venta").reduce((acc, e) => acc + e.monto, 0);
   const propinas = data.caja.filter((e) => e.tipo === "propina").reduce((acc, e) => acc + e.monto, 0);
+  const ingresos = ventas + propinas;
+  const gastos = data.caja.filter((e) => e.tipo === "gasto").reduce((acc, e) => acc + e.monto, 0);
+  const gananciaNeta = ingresos - gastos;
   const efectivo = data.caja.filter((e) => e.tipo !== "gasto" && e.metodo === "efectivo").reduce((acc, e) => acc + e.monto, 0);
   const transferencia = data.caja.filter((e) => e.tipo !== "gasto" && e.metodo === "transferencia").reduce((acc, e) => acc + e.monto, 0);
 
@@ -72,9 +75,12 @@ export default function CajaPage() {
           </Button>
         }
       />
-      <div className="grid grid-cols-2 gap-3 px-4">
-        <StatTile label="Ventas" value={formatMoney(ventas)} />
-        <StatTile label="Propinas" value={formatMoney(propinas)} />
+      <div className="grid grid-cols-3 gap-2 px-4">
+        <StatTile label="Ingresos" value={formatMoney(ingresos)} />
+        <StatTile label="Gastos" value={formatMoney(gastos)} />
+        <StatTile label="Ganancia neta" value={formatMoney(gananciaNeta)} />
+      </div>
+      <div className="grid grid-cols-2 gap-3 px-4 pt-3">
         <StatTile label="Efectivo" value={formatMoney(efectivo)} />
         <StatTile label="Transferencia" value={formatMoney(transferencia)} />
       </div>

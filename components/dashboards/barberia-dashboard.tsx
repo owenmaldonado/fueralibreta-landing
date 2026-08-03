@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { Button } from "@/components/ui/button";
 import { ActionCard } from "./action-card";
 import { EmptyState } from "./empty-state";
-import { daysSince, formatMoney, todayISO, waLink } from "@/lib/mock";
+import { daysSince, formatMoney, statsVisitasCliente, todayISO, waLink } from "@/lib/mock";
 import type { TenantData, SessionUpdater } from "@/lib/types";
 
 export function BarberiaDashboard({ session, update }: { session: TenantData; update: SessionUpdater }) {
@@ -16,10 +16,12 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
     .filter((c) => c.fecha === hoy && c.estado === "pendiente")
     .sort((a, b) => a.hora.localeCompare(b.hora));
 
-  const clientesAlerta = data.clientes.filter((c) => {
-    const d = daysSince(c.ultimaVisita);
-    return d !== null && d >= 30;
-  });
+  const clientesAlerta = data.clientes
+    .map((c) => ({ ...c, ...statsVisitasCliente(data.citas, c.id) }))
+    .filter((c) => {
+      const d = daysSince(c.ultimaVisita);
+      return d !== null && d >= 30;
+    });
 
   const hoyMMDD = new Date().toISOString().slice(5, 10);
   const cumples = data.clientes.filter((c) => c.cumpleanos === hoyMMDD);

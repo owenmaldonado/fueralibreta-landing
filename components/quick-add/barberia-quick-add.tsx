@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CalendarPlus, UserPlus, Wallet, Receipt } from "lucide-react";
+import { CalendarPlus, UserPlus, UserCheck, Wallet, Receipt } from "lucide-react";
 
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { Select } from "@/components/ui/select";
@@ -58,44 +58,49 @@ function NuevaCitaForm({
   onClose: () => void;
   update: Props["update"];
 }) {
-  const [clienteId, setClienteId] = React.useState(data.clientes[0]?.id ?? "__nuevo__");
+  const [telefono, setTelefono] = React.useState("");
   const [nuevoNombre, setNuevoNombre] = React.useState("");
   const [servicioId, setServicioId] = React.useState(data.servicios[0]?.id ?? "");
   const [fecha, setFecha] = React.useState(todayISO(0));
   const [hora, setHora] = React.useState("12:00");
 
+  const telefonoLimpio = telefono.trim();
+  const clienteExistente = telefonoLimpio.length >= 6 ? data.clientes.find((c) => c.telefono.trim() === telefonoLimpio) : undefined;
+  const esClienteNuevo = telefonoLimpio.length >= 6 && !clienteExistente;
+
   const servicio = data.servicios.find((s) => s.id === servicioId);
-  const esNuevo = clienteId === "__nuevo__";
-  const puedeGuardar = servicio && fecha && hora && (esNuevo ? nuevoNombre.trim().length > 1 : true);
+  const puedeGuardar =
+    !!servicio && !!fecha && !!hora && telefonoLimpio.length >= 6 && (clienteExistente || nuevoNombre.trim().length > 1);
 
   function guardar() {
     if (!puedeGuardar || !servicio) return;
     update((prev) => {
       const b = prev.barberia!;
       let clientes = b.clientes;
-      let clienteFinalId = clienteId;
-      let clienteNombre = data.clientes.find((c) => c.id === clienteId)?.nombre ?? "";
-      let clienteTelefono = data.clientes.find((c) => c.id === clienteId)?.telefono ?? "";
+      let clienteFinalId: string;
+      let clienteNombre: string;
 
-      if (esNuevo) {
+      if (clienteExistente) {
+        clienteFinalId = clienteExistente.id;
+        clienteNombre = clienteExistente.nombre;
+      } else {
         const nuevo = {
           id: uid("cli"),
           nombre: nuevoNombre.trim(),
-          telefono: "",
+          telefono: telefonoLimpio,
           ultimaVisita: null,
           visitas: 0,
         };
         clientes = [nuevo, ...clientes];
         clienteFinalId = nuevo.id;
         clienteNombre = nuevo.nombre;
-        clienteTelefono = "";
       }
 
       const cita = {
         id: uid("cita"),
         clienteId: clienteFinalId,
         clienteNombre,
-        clienteTelefono,
+        clienteTelefono: telefonoLimpio,
         servicioId: servicio.id,
         servicioNombre: servicio.nombre,
         precio: servicio.precio,
@@ -114,20 +119,20 @@ function NuevaCitaForm({
       <SheetHeader title="Nueva cita" onClose={onClose} />
       <div className="flex flex-col gap-4">
         <div className="space-y-1.5">
-          <Label>Cliente</Label>
-          <Select value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-            <option value="__nuevo__">+ Cliente nuevo</option>
-            {data.clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-              </option>
-            ))}
-          </Select>
+          <Label>Teléfono</Label>
+          <Input autoFocus type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="331 000 0000" />
+          {clienteExistente ? (
+            <p className="flex items-center gap-1.5 text-xs text-ledger">
+              <UserCheck className="h-3.5 w-3.5" /> {clienteExistente.nombre}
+            </p>
+          ) : esClienteNuevo ? (
+            <p className="text-xs text-muted-foreground">Cliente nuevo, escribe su nombre abajo</p>
+          ) : null}
         </div>
-        {esNuevo && (
+        {esClienteNuevo && (
           <div className="space-y-1.5">
             <Label>Nombre del cliente</Label>
-            <Input value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} placeholder="Nombre" autoFocus />
+            <Input value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} placeholder="Nombre" />
           </div>
         )}
         <div className="space-y-1.5">
