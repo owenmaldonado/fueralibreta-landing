@@ -130,7 +130,7 @@ export default function DemoIntakePage() {
             ? generateDemoFonda({ ...base, platillo1: form.extra1, platillo2: form.extra2 })
             : generateDemoAbarrotes({ ...base, producto1: form.extra1, producto2: form.extra2 });
       writeDemoPreview(tenant);
-      router.push("/app");
+      router.push("/app/inicio");
     }, 900);
   }
 

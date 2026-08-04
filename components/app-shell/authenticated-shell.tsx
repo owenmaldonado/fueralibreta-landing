@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Loader2, Lock } from "lucide-react";
 
 import { useSession } from "@/lib/session";
@@ -26,11 +26,18 @@ import { AbarrotesQuickAdd, ABARROTES_ACTIONS } from "@/components/quick-add/aba
 export function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   const { session, ready, update } = useSession();
   const router = useRouter();
+  const pathname = usePathname();
   const [quickAdd, setQuickAdd] = React.useState<string | null>(null);
   const [banned, setBanned] = React.useState(false);
   const [isAdmin, setIsAdmin] = React.useState(false);
 
+  // /app/admin-dashboard es del dueño del SaaS, no de un negocio: hace su
+  // propio chequeo de admin server-side y no necesita (ni debe exigir) que
+  // quien entra sea dueño de una barbería/fonda/abarrotes.
+  const esAdminDashboard = pathname === "/app/admin-dashboard";
+
   React.useEffect(() => {
+    if (esAdminDashboard) return;
     if (!ready || session) return;
     if (!isSupabaseConfigured) {
       router.replace("/login");
@@ -41,7 +48,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
     supabase.auth.getSession().then(({ data }) => {
       router.replace(data.session ? "/onboarding" : "/login");
     });
-  }, [ready, session, router]);
+  }, [ready, session, router, esAdminDashboard]);
 
   React.useEffect(() => {
     if (!isSupabaseConfigured || !session) return;
@@ -58,6 +65,10 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
         .then(({ data: profile }) => setBanned(Boolean(profile?.is_banned)));
     });
   }, [session]);
+
+  if (esAdminDashboard) {
+    return <>{children}</>;
+  }
 
   if (!ready || !session) {
     return (

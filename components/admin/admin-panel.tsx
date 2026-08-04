@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import { Search, ShieldAlert, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 
@@ -37,6 +38,7 @@ type PlanFilter = "todos" | "free" | "pro";
 type SortOrder = "recientes" | "antiguos";
 
 export function AdminPanel({ currentUserId }: { currentUserId: string }) {
+  const searchParams = useSearchParams();
   const [overview, setOverview] = React.useState<AdminOverview | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [tab, setTab] = React.useState("usuarios");
@@ -67,6 +69,19 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   React.useEffect(() => {
     load();
   }, [load]);
+
+  // Deep-link desde /app/admin-dashboard (?negocio=<id>): abre directo el
+  // detalle de ese negocio en vez de dejar al admin buscarlo a mano.
+  React.useEffect(() => {
+    if (!overview) return;
+    const negocioId = searchParams.get("negocio");
+    if (!negocioId) return;
+    const negocio = overview.negocios.find((n) => n.id === negocioId);
+    if (negocio) {
+      setTab("negocios");
+      setDetailNegocio(negocio);
+    }
+  }, [overview, searchParams]);
 
   const filteredProfiles = React.useMemo(() => {
     if (!overview) return [];

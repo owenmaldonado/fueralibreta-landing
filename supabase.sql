@@ -472,6 +472,7 @@ create policy "contactos_public_insert" on contactos for insert
 create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text,
+  phone text,
   avatar_url text,
   role text not null default 'user' check (role in ('admin', 'user')),
   plan text not null default 'free' check (plan in ('free', 'pro')),
@@ -484,31 +485,42 @@ alter table profiles add column if not exists role text not null default 'user';
 alter table profiles add column if not exists plan text not null default 'free';
 alter table profiles add column if not exists is_banned boolean not null default false;
 alter table profiles add column if not exists email text;
+alter table profiles add column if not exists phone text;
 alter table profiles add column if not exists avatar_url text;
 alter table profiles add column if not exists created_at timestamptz not null default now();
 
 create index if not exists profiles_email_idx on profiles(email);
 
--- Crea (o actualiza el email/avatar de) el profile cada vez que alguien se
--- registra o cambia sus datos. raw_user_meta_data trae avatar_url (o
--- picture, según el proveedor) del login con Google. Si es tu correo, te
--- deja como admin desde el insert (no toca el role en updates, para no
--- pisar un rol que hayas cambiado a mano desde /admin).
+-- "1 teléfono = 1 cuenta": único a nivel de nuestra tabla (además de que
+-- Supabase Auth ya exige que auth.users.phone sea único cuando el provider
+-- de Phone está prendido — ver notas de integración al final del archivo).
+-- Partial index en vez de constraint UNIQUE simple para no chocar con las
+-- muchas filas que todavía no tienen teléfono verificado (null).
+drop index if exists profiles_phone_unique_idx;
+create unique index profiles_phone_unique_idx on profiles(phone) where phone is not null;
+
+-- Crea (o actualiza el email/teléfono/avatar de) el profile cada vez que
+-- alguien se registra o cambia sus datos. raw_user_meta_data trae
+-- avatar_url (o picture, según el proveedor) del login con Google/Apple.
+-- Si es tu correo, te deja como admin desde el insert (no toca el role en
+-- updates, para no pisar un rol que hayas cambiado a mano desde /admin).
 create or replace function handle_new_or_updated_user()
 returns trigger
 language plpgsql
 security definer
 as $$
 begin
-  insert into public.profiles (id, email, avatar_url, role)
+  insert into public.profiles (id, email, phone, avatar_url, role)
   values (
     new.id,
     new.email,
+    new.phone,
     coalesce(new.raw_user_meta_data->>'avatar_url', new.raw_user_meta_data->>'picture'),
     case when new.email = 'owenxmaldonado100@gmail.com' then 'admin' else 'user' end
   )
   on conflict (id) do update
     set email = excluded.email,
+        phone = excluded.phone,
         avatar_url = excluded.avatar_url;
   return new;
 end;
@@ -522,6 +534,11 @@ create trigger on_auth_user_created
 drop trigger if exists on_auth_user_updated on auth.users;
 create trigger on_auth_user_updated
   after update of email on auth.users
+  for each row execute function handle_new_or_updated_user();
+
+drop trigger if exists on_auth_user_phone_updated on auth.users;
+create trigger on_auth_user_phone_updated
+  after update of phone on auth.users
   for each row execute function handle_new_or_updated_user();
 
 -- Backfill: crea el profile de quien ya se había registrado antes de correr esto.
@@ -669,3 +686,25 @@ update profiles set role = 'admin' where email = 'owenxmaldonado100@gmail.com';
 -- 5. Después de tu primer login con Google, vuelve a correr el UPDATE de
 --    arriba (o cualquiera con permisos de Supabase puede correrlo por ti)
 --    para confirmar que quedaste como admin.
+-- 6. LOGIN POR TELÉFONO (OTP) Y APPLE — esto NO se activa con SQL, tienes
+--    que hacerlo tú en el dashboard de Supabase antes de que /login funcione
+--    con esos dos botones:
+--    a) Authentication → Providers → Phone: actívalo y conecta un proveedor
+--       de SMS (Twilio, MessageBird, Vonage o Textlocal). Eso requiere tu
+--       propia cuenta de pago con ese proveedor — Supabase no manda el SMS
+--       por su cuenta, solo hace de puente. Sin esto configurado, el botón
+--       "Entrar con Teléfono" nunca podrá enviar el código real.
+--    b) Authentication → Providers → Apple: actívalo con tus credenciales de
+--       Apple Developer (Services ID, Team ID, Key ID, private key .p8).
+--       Requiere cuenta de Apple Developer Program (de paga).
+--    c) Una vez prendido el provider de Phone, Supabase Auth ya exige que
+--       auth.users.phone sea único por su cuenta — el índice único de
+--       profiles.phone de arriba es una segunda capa (para que la UI de
+--       /admin y el resto de la app puedan confiar en profiles sin tener
+--       que pegarle a auth.users con la service_role key en cada consulta).
+--    d) Nada de esto se pudo probar de punta a punta en este entorno: no hay
+--       proyecto de Supabase real conectado aquí, así que no hay forma de
+--       mandar ni recibir un SMS real. El código en /login, /onboarding y
+--       components/auth/phone-otp-flow.tsx asume que a) y b) ya están
+--       hechos — pruébalo tú con un número real una vez que actives ambos
+--       providers.

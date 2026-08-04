@@ -70,7 +70,7 @@ export async function middleware(req: NextRequest) {
   // el MVP actual resuelve la sesión activa en el cliente vía Supabase.
   if (url.pathname === "/") {
     const appUrl = url.clone();
-    appUrl.pathname = "/app";
+    appUrl.pathname = "/app/inicio";
     const rewritten = NextResponse.rewrite(appUrl, { request: req });
     rewritten.headers.set("x-fl-subdomain", subdomain);
     // Conserva las cookies de sesión refrescadas arriba en la respuesta final.

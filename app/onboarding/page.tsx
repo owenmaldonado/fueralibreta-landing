@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
+import { PhoneOtpFlow } from "@/components/auth/phone-otp-flow";
 import { useSession } from "@/lib/session";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { fetchNegocioByOwner } from "@/lib/data";
@@ -27,6 +28,7 @@ export default function OnboardingPage() {
 
   const [checking, setChecking] = React.useState(true);
   const [userId, setUserId] = React.useState<string | null>(null);
+  const [needsPhone, setNeedsPhone] = React.useState(false);
   const [demoTenant, setDemoTenant] = React.useState<TenantData | null>(null);
   const [activating, setActivating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -55,13 +57,24 @@ export default function OnboardingPage() {
       try {
         const business = await fetchNegocioByOwner(user.id);
         if (business) {
-          router.replace("/app");
+          router.replace("/app/inicio");
           return;
         }
       } catch (err) {
         console.error("No se pudo verificar si ya tienes un negocio:", err);
       }
 
+      // Quien entró por Teléfono ya trae user.phone verificado. Quien entró
+      // por Google/Apple todavía no — hay que verificarlo antes de dejarlo
+      // crear un negocio, para que "1 teléfono = 1 cuenta" también aplique
+      // a las cuentas que empiezan por redes sociales.
+      if (!user.phone) {
+        setNeedsPhone(true);
+        setChecking(false);
+        return;
+      }
+
+      setTelefono(user.phone);
       const demo = readDemoPreview();
       if (demo) setDemoTenant(demo);
       setChecking(false);
@@ -69,13 +82,20 @@ export default function OnboardingPage() {
     check();
   }, [router]);
 
+  function onPhoneVerified(phone: string) {
+    setTelefono(phone.replace(/^\+52/, ""));
+    setNeedsPhone(false);
+    const demo = readDemoPreview();
+    if (demo) setDemoTenant(demo);
+  }
+
   async function activateDemo() {
     if (!demoTenant || !userId) return;
     setActivating(true);
     setError(null);
     try {
       await claim(demoTenant, userId);
-      router.push("/app");
+      router.push("/app/inicio");
     } catch (err) {
       console.error("No se pudo activar la demo:", err);
       setError("No se pudo activar tu demo. Intenta de nuevo.");
@@ -90,7 +110,7 @@ export default function OnboardingPage() {
     try {
       const tenant = createEmptyTenant({ dueno, nombre: negocio, telefono, tipo });
       await claim(tenant, userId);
-      router.push("/app");
+      router.push("/app/inicio");
     } catch (err) {
       console.error("No se pudo crear el negocio:", err);
       setError("No se pudo crear tu sistema. Intenta de nuevo.");
@@ -102,6 +122,30 @@ export default function OnboardingPage() {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </main>
+    );
+  }
+
+  if (needsPhone) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background px-6 text-center">
+        <div>
+          <h1 className="font-display text-2xl font-bold tracking-tight">Verifica tu teléfono</h1>
+          <p className="mt-2 max-w-xs text-sm text-muted-foreground">
+            Antes de crear tu negocio necesitamos confirmar tu número por SMS. Así cada teléfono es una sola cuenta.
+          </p>
+        </div>
+        <PhoneOtpFlow mode="link" onVerified={onPhoneVerified} />
+        <button
+          type="button"
+          onClick={async () => {
+            await supabase.auth.signOut();
+            router.replace("/login");
+          }}
+          className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+        >
+          ¿Ese teléfono ya es tuyo? Cierra sesión y entra con Teléfono
+        </button>
       </main>
     );
   }

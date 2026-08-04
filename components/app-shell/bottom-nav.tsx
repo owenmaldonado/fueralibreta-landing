@@ -26,7 +26,7 @@ interface NavItem {
 }
 
 const NAV_BARBERIA: NavItem[] = [
-  { href: "/app", label: "Hoy", icon: Home },
+  { href: "/app/inicio", label: "Hoy", icon: Home },
   { href: "/app/agenda", label: "Agenda", icon: CalendarDays },
   { href: "/app/clientes", label: "Clientes", icon: Users },
   { href: "/app/caja", label: "Caja", icon: Wallet },
@@ -34,14 +34,14 @@ const NAV_BARBERIA: NavItem[] = [
 ];
 
 const NAV_FONDA: NavItem[] = [
-  { href: "/app", label: "Hoy", icon: Home },
+  { href: "/app/inicio", label: "Hoy", icon: Home },
   { href: "/app/pedidos", label: "Pedidos", icon: ClipboardList },
   { href: "/app/menu", label: "Menú", icon: UtensilsCrossed },
   { href: "/app/gastos", label: "Gastos", icon: Receipt },
 ];
 
 const NAV_ABARROTES: NavItem[] = [
-  { href: "/app", label: "Hoy", icon: Home },
+  { href: "/app/inicio", label: "Hoy", icon: Home },
   { href: "/app/inventario", label: "Inventario", icon: Boxes },
   { href: "/app/fiados", label: "Fiados", icon: HandCoins },
   { href: "/app/apartados", label: "Apartados", icon: CalendarClock },

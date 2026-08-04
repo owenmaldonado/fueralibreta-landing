@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 
-import { App } from "@/components/app/app";
 import { Landing } from "@/components/landing";
 import { isSupabaseConfigured, createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -9,11 +8,11 @@ import { isSupabaseConfigured, createSupabaseServerClient } from "@/lib/supabase
 // primera respuesta generada (landing o dashboard) sin importar su sesión.
 export const dynamic = "force-dynamic";
 
-// Decide en el servidor qué mostrar en fueralibreta.com: si hay sesión ya
-// ve directo su sistema (<App />, filtrado por su user_id vía RLS), si no
-// ve la landing pública (<Landing />) con el botón de "Inicia sesión". Si
-// además es admin (profiles.role, el mismo chequeo real que usa /admin), lo
-// mandamos directo a /admin en vez de al dashboard de un negocio.
+// Decide en el servidor qué mostrar en fueralibreta.com: si no hay sesión,
+// la landing pública (<Landing />) con los botones de login. Si hay sesión,
+// manda al destino correcto según profiles.role (el mismo chequeo real que
+// usa /admin): admin -> /app/admin-dashboard, cliente normal -> /app/inicio
+// (o /onboarding si todavía no tiene negocio, eso lo resuelve esa misma ruta).
 export default async function HomePage() {
   if (!isSupabaseConfigured) {
     return <Landing />;
@@ -27,7 +26,5 @@ export default async function HomePage() {
   if (!user) return <Landing />;
 
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (profile?.role === "admin") redirect("/admin");
-
-  return <App />;
+  redirect(profile?.role === "admin" ? "/app/admin-dashboard" : "/app/inicio");
 }
