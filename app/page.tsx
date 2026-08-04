@@ -11,8 +11,9 @@ export const dynamic = "force-dynamic";
 // Decide en el servidor qué mostrar en fueralibreta.com: si no hay sesión,
 // la landing pública (<Landing />) con los botones de login. Si hay sesión,
 // manda al destino correcto según profiles.role (el mismo chequeo real que
-// usa /admin): admin -> /app/admin-dashboard, cliente normal -> /app/inicio
-// (o /onboarding si todavía no tiene negocio, eso lo resuelve esa misma ruta).
+// usa /admin): admin -> /app/admin-hub (hub de todas las apps del super
+// admin), cliente normal -> /app/inicio (o /onboarding si todavía no tiene
+// negocio, eso lo resuelve esa misma ruta).
 export default async function HomePage() {
   if (!isSupabaseConfigured) {
     return <Landing />;
@@ -26,5 +27,5 @@ export default async function HomePage() {
   if (!user) return <Landing />;
 
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  redirect(profile?.role === "admin" ? "/app/admin-dashboard" : "/app/inicio");
+  redirect(profile?.role === "admin" ? "/app/admin-hub" : "/app/inicio");
 }

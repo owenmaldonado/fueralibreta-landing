@@ -17,6 +17,8 @@ export interface Business {
   trial_fin: string; // ISO date
   created_at: string; // ISO date
   demo?: boolean;
+  /** A qué app del hub de super admin pertenece (ver mis_apps). Este repo solo genera 'fuera-libreta'. */
+  appSlug: string;
 }
 
 // ---------- Barbería ----------

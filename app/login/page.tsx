@@ -21,7 +21,7 @@ export default function LoginPage() {
       try {
         const { data: profile } = await supabase.from("profiles").select("role").eq("id", userId).single();
         if (profile?.role === "admin") {
-          router.push("/app/admin-dashboard");
+          router.push("/app/admin-hub");
           return;
         }
         const business = await fetchNegocioByOwner(userId);

@@ -171,6 +171,7 @@ export function createBusiness(input: NuevoNegocioInput): Business {
     trial_fin: todayISO(7),
     created_at: todayISO(0),
     demo: input.demo ?? false,
+    appSlug: "fuera-libreta",
   };
 }
 

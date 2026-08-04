@@ -31,10 +31,11 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   const [banned, setBanned] = React.useState(false);
   const [isAdmin, setIsAdmin] = React.useState(false);
 
-  // /app/admin-dashboard es del dueño del SaaS, no de un negocio: hace su
-  // propio chequeo de admin server-side y no necesita (ni debe exigir) que
-  // quien entra sea dueño de una barbería/fonda/abarrotes.
-  const esAdminDashboard = pathname === "/app/admin-dashboard";
+  // /app/admin-dashboard y /app/admin-hub son del dueño del SaaS, no de un
+  // negocio: cada una hace su propio chequeo de admin server-side y no
+  // necesita (ni debe exigir) que quien entra sea dueño de una barbería/
+  // fonda/abarrotes.
+  const esAdminDashboard = pathname === "/app/admin-dashboard" || pathname === "/app/admin-hub";
 
   React.useEffect(() => {
     if (esAdminDashboard) return;

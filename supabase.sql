@@ -32,11 +32,18 @@ create table if not exists negocios (
   is_active boolean not null default true,
   trial_fin date not null default (current_date + interval '7 days'),
   demo boolean not null default false,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  app_slug text not null default 'fuera-libreta'
 );
+
+-- A qué app (de mis_apps, ver más abajo) pertenece este negocio. Por defecto
+-- 'fuera-libreta' porque hoy es la única app real de este proyecto — todo
+-- negocio ya existente antes de esta columna también es de esa app.
+alter table negocios add column if not exists app_slug text not null default 'fuera-libreta';
 
 create index if not exists negocios_owner_id_idx on negocios(owner_id);
 create index if not exists negocios_slug_idx on negocios(slug);
+create index if not exists negocios_app_slug_idx on negocios(app_slug);
 
 -- Función helper: ¿el usuario autenticado es dueño de este negocio?
 create or replace function is_negocio_owner(p_negocio_id uuid)
@@ -491,6 +498,23 @@ alter table profiles add column if not exists created_at timestamptz not null de
 
 create index if not exists profiles_email_idx on profiles(email);
 
+-- Hub de super admin (/app/admin-hub): registro de cada app/SaaS que vive
+-- en este mismo proyecto bajo fueralibreta.com, todas compartiendo esta
+-- misma auth de Supabase. negocios.app_slug (ver arriba) amarra cada
+-- negocio a una de estas apps. Crear una fila aquí NO genera código — solo
+-- la registra para que aparezca en el hub; el módulo real (rutas, tablas
+-- propias si las necesita) se construye aparte.
+create table if not exists mis_apps (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null,
+  slug text unique not null,
+  descripcion text,
+  icono text,
+  color text,
+  activo boolean not null default true,
+  creado_en timestamptz not null default now()
+);
+
 -- "1 teléfono = 1 cuenta": único a nivel de nuestra tabla (además de que
 -- Supabase Auth ya exige que auth.users.phone sea único cuando el provider
 -- de Phone está prendido — ver notas de integración al final del archivo).
@@ -576,6 +600,16 @@ create policy "profiles_admin_all" on profiles for all
 drop policy if exists "negocios_admin_all" on negocios;
 create policy "negocios_admin_all" on negocios for all using (is_admin()) with check (is_admin());
 
+-- mis_apps es exclusivamente del super admin: nadie más puede ni leerla.
+alter table mis_apps enable row level security;
+drop policy if exists "mis_apps_admin_all" on mis_apps;
+create policy "mis_apps_admin_all" on mis_apps for all using (is_admin()) with check (is_admin());
+
+-- Seed: la app que ya existe (esta misma). Segura de volver a correr.
+insert into mis_apps (nombre, slug, descripcion, activo)
+values ('Fuera Libreta', 'fuera-libreta', 'Punto de venta para negocios locales', true)
+on conflict (slug) do nothing;
+
 drop policy if exists "barberia_servicios_admin_all" on barberia_servicios;
 create policy "barberia_servicios_admin_all" on barberia_servicios for all using (is_admin()) with check (is_admin());
 drop policy if exists "barberia_horario_admin_all" on barberia_horario;
@@ -660,6 +694,11 @@ where n.slug = 'demo-barber'
 -- registrado con Google, no hace nada (corre este UPDATE de nuevo después
 -- de tu primer login).
 update profiles set role = 'admin' where email = 'owenxmaldonado100@gmail.com';
+
+-- Si owen.top@gmail.com es una cuenta REAL distinta que también debe ser
+-- super admin (y no un typo de la de arriba), corre esto también después de
+-- que esa cuenta inicie sesión al menos una vez:
+-- update profiles set role = 'admin' where email = 'owen.top@gmail.com';
 
 -- ============================================================================
 -- Notas de integración

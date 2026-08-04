@@ -52,6 +52,7 @@ function businessFromRow(row: Row): Business {
     trial_fin: row.trial_fin as string,
     created_at: row.created_at as string,
     demo: (row.demo as boolean) ?? false,
+    appSlug: (row.app_slug as string) ?? "fuera-libreta",
   };
 }
 
@@ -68,11 +69,22 @@ function businessToRow(b: Business): Row {
     is_active: b.is_active,
     trial_fin: b.trial_fin,
     demo: b.demo ?? false,
+    app_slug: b.appSlug,
   };
 }
 
+/**
+ * El negocio del dueño logueado, DENTRO de esta app (fuera-libreta). Un
+ * mismo owner_id podría algún día tener negocios en otras apps del hub de
+ * super admin (mis_apps) — este repo genera y solo debe ver los suyos.
+ */
 export async function fetchNegocioByOwner(ownerId: string): Promise<Business | null> {
-  const { data, error } = await supabase.from("negocios").select("*").eq("owner_id", ownerId).maybeSingle();
+  const { data, error } = await supabase
+    .from("negocios")
+    .select("*")
+    .eq("owner_id", ownerId)
+    .eq("app_slug", "fuera-libreta")
+    .maybeSingle();
   if (error) throw error;
   return data ? businessFromRow(data) : null;
 }

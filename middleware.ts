@@ -27,6 +27,17 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(target);
   }
 
+  // /app/fuera-libreta es el destino de "Entrar" para la tarjeta de Fuera
+  // Libreta en /app/admin-hub. Se resuelve aquí (edge, siempre 307 real) en
+  // vez de con redirect() dentro de un Server Component anidado bajo
+  // app/app/layout.tsx: ahí Next.js a veces manda el redirect codificado
+  // dentro del payload RSC (200 OK + digest NEXT_REDIRECT) en lugar de un
+  // 3xx real por HTTP, porque el layout padre (AuthenticatedShell) es un
+  // Client Component y ya se había empezado a mandar la respuesta.
+  if (url.pathname === "/app/fuera-libreta") {
+    return NextResponse.redirect(new URL("/app/admin-dashboard", url.origin));
+  }
+
   // Refresca la sesión de Supabase (guardada en cookies) en cada request.
   // Sin esto, los Server Components verían tokens vencidos con getUser().
   let response = NextResponse.next({ request: req });
