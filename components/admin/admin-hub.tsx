@@ -16,6 +16,19 @@ import { fetchAppsConStats, createMisApp, type AppConStats } from "@/lib/admin-a
 /** Únicas apps con un destino real construido hoy — el resto muestra "Próximamente" en vez de un link muerto. */
 const APPS_CONSTRUIDAS = new Set(["fuera-libreta"]);
 
+// Los errores de Supabase (PostgrestError) son objetos planos, no instancias
+// de Error — "err instanceof Error" siempre es false para ellos y se perdía
+// el mensaje real (tabla/columna faltante, policy de RLS, etc.) detrás de un
+// genérico "No se pudieron cargar tus apps".
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object" && "message" in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === "string" && message) return message;
+  }
+  return fallback;
+}
+
 function slugifyAppName(nombre: string): string {
   return nombre
     .normalize("NFD")
@@ -36,7 +49,8 @@ export function AdminHub() {
     try {
       setApps(await fetchAppsConStats());
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudieron cargar tus apps.");
+      console.error("No se pudieron cargar mis_apps/negocios:", err);
+      toast.error(getErrorMessage(err, "No se pudieron cargar tus apps."));
     } finally {
       setLoading(false);
     }
@@ -156,7 +170,8 @@ function NuevaAppDialog({ open, onClose, onCreated }: { open: boolean; onClose: 
       onClose();
       onCreated();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo crear la app.");
+      console.error("No se pudo crear la app en mis_apps:", err);
+      toast.error(getErrorMessage(err, "No se pudo crear la app."));
     } finally {
       setSaving(false);
     }
