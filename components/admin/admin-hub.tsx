@@ -16,6 +16,28 @@ import { fetchAppsConStats, createMisApp, type AppConStats } from "@/lib/admin-a
 /** Únicas apps con un destino real construido hoy — el resto muestra "Próximamente" en vez de un link muerto. */
 const APPS_CONSTRUIDAS = new Set(["fuera-libreta"]);
 
+// icono/color son puramente cosméticos y viven aquí, no en mis_apps (esa
+// tabla en producción no tiene esas columnas — ver supabase.sql). Slugs sin
+// entrada usan DEFAULT_LOOK, elegido de forma estable por hash del slug para
+// no repetir siempre el mismo color en apps nuevas.
+const APP_LOOK: Record<string, { icono: string; color: string }> = {
+  "fuera-libreta": { icono: "📒", color: "#f97316" },
+};
+const PALETA_DEFAULT = [
+  { icono: "📦", color: "#6366f1" },
+  { icono: "🏠", color: "#0ea5e9" },
+  { icono: "🛠️", color: "#22c55e" },
+  { icono: "📅", color: "#a855f7" },
+  { icono: "💼", color: "#ec4899" },
+];
+
+function lookFor(slug: string): { icono: string; color: string } {
+  if (APP_LOOK[slug]) return APP_LOOK[slug];
+  let hash = 0;
+  for (let i = 0; i < slug.length; i++) hash = (hash * 31 + slug.charCodeAt(i)) >>> 0;
+  return PALETA_DEFAULT[hash % PALETA_DEFAULT.length];
+}
+
 // Los errores de Supabase (PostgrestError) son objetos planos, no instancias
 // de Error — "err instanceof Error" siempre es false para ellos y se perdía
 // el mensaje real (tabla/columna faltante, policy de RLS, etc.) detrás de un
@@ -98,14 +120,15 @@ export function AdminHub() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {apps.map((app) => {
           const construida = APPS_CONSTRUIDAS.has(app.slug);
+          const look = lookFor(app.slug);
           return (
             <div key={app.id} className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5">
               <div className="flex items-center gap-3">
                 <div
                   className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-2xl"
-                  style={{ backgroundColor: app.color ? `${app.color}22` : "hsl(var(--primary) / 0.1)" }}
+                  style={{ backgroundColor: `${look.color}22` }}
                 >
-                  {app.icono || "📦"}
+                  {look.icono}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-display text-base font-bold">{app.nombre}</p>
@@ -157,7 +180,6 @@ function NuevaAppDialog({ open, onClose, onCreated }: { open: boolean; onClose: 
   const [slug, setSlug] = React.useState("");
   const [slugEditado, setSlugEditado] = React.useState(false);
   const [descripcion, setDescripcion] = React.useState("");
-  const [icono, setIcono] = React.useState("");
   const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
@@ -166,7 +188,6 @@ function NuevaAppDialog({ open, onClose, onCreated }: { open: boolean; onClose: 
       setSlug("");
       setSlugEditado(false);
       setDescripcion("");
-      setIcono("");
     }
   }, [open]);
 
@@ -181,7 +202,7 @@ function NuevaAppDialog({ open, onClose, onCreated }: { open: boolean; onClose: 
     if (!puedeGuardar) return;
     setSaving(true);
     try {
-      await createMisApp({ nombre: nombre.trim(), slug: slug.trim(), descripcion, icono });
+      await createMisApp({ nombre: nombre.trim(), slug: slug.trim(), descripcion });
       toast.success(`${nombre.trim()} registrada`);
       onClose();
       onCreated();
@@ -215,10 +236,6 @@ function NuevaAppDialog({ open, onClose, onCreated }: { open: boolean; onClose: 
         <div className="space-y-1.5">
           <Label>Descripción</Label>
           <Input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Ej. Renta de departamentos" />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Ícono (emoji)</Label>
-          <Input value={icono} onChange={(e) => setIcono(e.target.value)} placeholder="🏠" maxLength={4} />
         </div>
       </div>
       <DialogFooter>

@@ -7,13 +7,15 @@ import { supabase } from "./supabase";
 // policy "mis_apps_admin_all" — no necesita la service_role key.
 // ============================================================================
 
+// icono/color NO viven aquí: son solo cosméticos y mis_apps en producción no
+// tiene esas columnas. Se resuelven en el frontend por slug (ver
+// APP_LOOK en components/admin/admin-hub.tsx) para no volver a depender de
+// una columna que la tabla real no tiene.
 export interface MisApp {
   id: string;
   nombre: string;
   slug: string;
   descripcion: string | null;
-  icono: string | null;
-  color: string | null;
   activo: boolean;
   creadoEn: string;
 }
@@ -44,8 +46,6 @@ function misAppFromRow(row: Record<string, unknown>): MisApp {
     nombre: row.nombre as string,
     slug: row.slug as string,
     descripcion: (row.descripcion as string) ?? null,
-    icono: (row.icono as string) ?? null,
-    color: (row.color as string) ?? null,
     activo: row.activo as boolean,
     creadoEn: row.creado_en as string,
   };
@@ -92,8 +92,6 @@ export async function fetchAppsConStats(): Promise<AppsConStatsResult> {
     nombre: slug === "fuera-libreta" ? "Fuera Libreta" : slug,
     slug,
     descripcion: null,
-    icono: null,
-    color: null,
     activo: true,
     creadoEn: "",
     ...statsFor(slug),
@@ -105,8 +103,6 @@ export interface NuevaAppInput {
   nombre: string;
   slug: string;
   descripcion?: string;
-  icono?: string;
-  color?: string;
 }
 
 /** Solo registra la app en mis_apps — no genera ningún código ni ruta. */
@@ -115,8 +111,6 @@ export async function createMisApp(input: NuevaAppInput): Promise<void> {
     nombre: input.nombre.trim(),
     slug: input.slug.trim(),
     descripcion: input.descripcion?.trim() || null,
-    icono: input.icono?.trim() || null,
-    color: input.color?.trim() || null,
     activo: true,
   });
   if (error) throw error;

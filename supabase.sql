@@ -504,13 +504,16 @@ create index if not exists profiles_email_idx on profiles(email);
 -- negocio a una de estas apps. Crear una fila aquí NO genera código — solo
 -- la registra para que aparezca en el hub; el módulo real (rutas, tablas
 -- propias si las necesita) se construye aparte.
+--
+-- Sin icono/color: esas dos son puramente cosméticas y viven hardcodeadas
+-- en el frontend (ver APP_LOOK en components/admin/admin-hub.tsx), no en la
+-- base de datos — una columna de más que el código espera pero la tabla no
+-- tiene es exactamente el tipo de bug que ya rompió este hub una vez.
 create table if not exists mis_apps (
   id uuid primary key default gen_random_uuid(),
   nombre text not null,
   slug text unique not null,
   descripcion text,
-  icono text,
-  color text,
   activo boolean not null default true,
   creado_en timestamptz not null default now()
 );
