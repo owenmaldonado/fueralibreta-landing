@@ -80,6 +80,10 @@ export function AdminHub() {
     } catch (err) {
       console.error("No se pudieron cargar tus negocios:", err);
       toast.error(getErrorMessage(err, "No se pudieron cargar tus apps."));
+      // Sin esto, si nunca hubo un apps[] previo, el guard "loading || !apps"
+      // de abajo se queda mostrando el spinner para siempre — el toast ya
+      // desapareció pero la pantalla parece congelada.
+      setApps((prev) => prev ?? []);
     } finally {
       setLoading(false);
     }

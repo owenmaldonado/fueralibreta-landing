@@ -524,6 +524,29 @@ create table if not exists mis_apps (
 -- creada. Esto fuerza el reload inmediato de su cache de esquema.
 notify pgrst, 'reload schema';
 
+-- Módulo Rentas (/app/rentas, mis_apps.slug = 'rentas'): propiedades de
+-- quien las registra. owner_id existe por si algún día alguien más además
+-- del admin usa este módulo; hoy en la práctica solo el admin llega aquí
+-- (ver RUTAS_SUPER_ADMIN en components/app-shell/authenticated-shell.tsx).
+create table if not exists rentas_propiedades (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null,
+  direccion text,
+  precio numeric not null default 0,
+  estado text not null default 'disponible',
+  owner_id uuid references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+alter table rentas_propiedades enable row level security;
+
+drop policy if exists "rentas_propiedades_owner" on rentas_propiedades;
+create policy "rentas_propiedades_owner" on rentas_propiedades for all
+  using (owner_id = auth.uid())
+  with check (owner_id = auth.uid());
+
+notify pgrst, 'reload schema';
+
 -- "1 teléfono = 1 cuenta": único a nivel de nuestra tabla (además de que
 -- Supabase Auth ya exige que auth.users.phone sea único cuando el provider
 -- de Phone está prendido — ver notas de integración al final del archivo).
@@ -618,6 +641,9 @@ create policy "mis_apps_admin_all" on mis_apps for all using (is_admin()) with c
 insert into mis_apps (nombre, slug, descripcion, activo)
 values ('Fuera Libreta', 'fuera-libreta', 'Punto de venta para negocios locales', true)
 on conflict (slug) do nothing;
+
+drop policy if exists "rentas_propiedades_admin_all" on rentas_propiedades;
+create policy "rentas_propiedades_admin_all" on rentas_propiedades for all using (is_admin()) with check (is_admin());
 
 drop policy if exists "barberia_servicios_admin_all" on barberia_servicios;
 create policy "barberia_servicios_admin_all" on barberia_servicios for all using (is_admin()) with check (is_admin());
