@@ -17,6 +17,13 @@ import { BarberiaQuickAdd, BARBERIA_ACTIONS } from "@/components/quick-add/barbe
 import { FondaQuickAdd, FONDA_ACTIONS } from "@/components/quick-add/fonda-quick-add";
 import { AbarrotesQuickAdd, ABARROTES_ACTIONS } from "@/components/quick-add/abarrotes-quick-add";
 
+// Rutas del dueño del SaaS (hub de super admin y cada módulo /app/{slug} que
+// cuelga de él), no de un negocio: no deben exigir que quien entra sea dueño
+// de una barbería/fonda/abarrotes. Cada módulo nuevo que se agregue al hub
+// (ver components/admin/admin-hub.tsx) tiene que sumar su ruta aquí también,
+// o el admin rebota a /onboarding en vez de ver la página.
+const RUTAS_SUPER_ADMIN = new Set(["/app/admin-dashboard", "/app/admin-hub", "/app/rentas"]);
+
 /**
  * Shell del negocio logueado: TopBar + banner de demo + FAB + BottomNav,
  * envolviendo el contenido de cada pantalla (children). Se usa tanto en
@@ -31,14 +38,10 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   const [banned, setBanned] = React.useState(false);
   const [isAdmin, setIsAdmin] = React.useState(false);
 
-  // /app/admin-dashboard y /app/admin-hub son del dueño del SaaS, no de un
-  // negocio: cada una hace su propio chequeo de admin server-side y no
-  // necesita (ni debe exigir) que quien entra sea dueño de una barbería/
-  // fonda/abarrotes.
-  const esAdminDashboard = pathname === "/app/admin-dashboard" || pathname === "/app/admin-hub";
+  const esRutaSuperAdmin = RUTAS_SUPER_ADMIN.has(pathname ?? "");
 
   React.useEffect(() => {
-    if (esAdminDashboard) return;
+    if (esRutaSuperAdmin) return;
     if (!ready || session) return;
     if (!isSupabaseConfigured) {
       router.replace("/login");
@@ -49,7 +52,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
     supabase.auth.getSession().then(({ data }) => {
       router.replace(data.session ? "/onboarding" : "/login");
     });
-  }, [ready, session, router, esAdminDashboard]);
+  }, [ready, session, router, esRutaSuperAdmin]);
 
   React.useEffect(() => {
     if (!isSupabaseConfigured || !session) return;
@@ -67,7 +70,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
     });
   }, [session]);
 
-  if (esAdminDashboard) {
+  if (esRutaSuperAdmin) {
     return <>{children}</>;
   }
 

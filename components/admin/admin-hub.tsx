@@ -14,7 +14,7 @@ import { formatMoney } from "@/lib/mock";
 import { fetchAppsConStats, createMisApp, type AppConStats } from "@/lib/admin-apps";
 
 /** Únicas apps con un destino real construido hoy — el resto muestra "Próximamente" en vez de un link muerto. */
-const APPS_CONSTRUIDAS = new Set(["fuera-libreta"]);
+const APPS_CONSTRUIDAS = new Set(["fuera-libreta", "rentas"]);
 
 // icono/color son puramente cosméticos y viven aquí, no en mis_apps (esa
 // tabla en producción no tiene esas columnas — ver supabase.sql). Slugs sin
@@ -22,6 +22,7 @@ const APPS_CONSTRUIDAS = new Set(["fuera-libreta"]);
 // no repetir siempre el mismo color en apps nuevas.
 const APP_LOOK: Record<string, { icono: string; color: string }> = {
   "fuera-libreta": { icono: "📒", color: "#f97316" },
+  rentas: { icono: "🏠", color: "#0ea5e9" },
 };
 const PALETA_DEFAULT = [
   { icono: "📦", color: "#6366f1" },
