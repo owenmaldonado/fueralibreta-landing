@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Plus, Users, TrendingUp, Loader2, LayoutGrid } from "lucide-react";
+import { Plus, Users, TrendingUp, Loader2, LayoutGrid, AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,15 +41,21 @@ function slugifyAppName(nombre: string): string {
 
 export function AdminHub() {
   const [apps, setApps] = React.useState<AppConStats[] | null>(null);
+  const [misAppsError, setMisAppsError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [nuevaAppOpen, setNuevaAppOpen] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      setApps(await fetchAppsConStats());
+      const result = await fetchAppsConStats();
+      setApps(result.apps);
+      setMisAppsError(result.misAppsError);
+      if (result.misAppsError) {
+        console.error("mis_apps no se pudo leer, mostrando negocios directo:", result.misAppsError);
+      }
     } catch (err) {
-      console.error("No se pudieron cargar mis_apps/negocios:", err);
+      console.error("No se pudieron cargar tus negocios:", err);
       toast.error(getErrorMessage(err, "No se pudieron cargar tus apps."));
     } finally {
       setLoading(false);
@@ -78,6 +84,16 @@ export function AdminHub() {
           <Plus className="h-4 w-4" /> Nueva App
         </Button>
       </div>
+
+      {misAppsError && (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            No se pudo leer el registro de apps (mis_apps): {misAppsError}. Mostrando tus negocios directo desde la
+            tabla negocios mientras lo arreglas.
+          </span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {apps.map((app) => {

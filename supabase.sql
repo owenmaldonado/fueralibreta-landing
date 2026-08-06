@@ -515,6 +515,12 @@ create table if not exists mis_apps (
   creado_en timestamptz not null default now()
 );
 
+-- Si esta tabla se creó a mano en el SQL Editor (fuera de este script),
+-- PostgREST (la capa que expone la API que usa supabase-js) puede tardar en
+-- notar que existe y devolver "relation mis_apps does not exist" incluso ya
+-- creada. Esto fuerza el reload inmediato de su cache de esquema.
+notify pgrst, 'reload schema';
+
 -- "1 teléfono = 1 cuenta": único a nivel de nuestra tabla (además de que
 -- Supabase Auth ya exige que auth.users.phone sea único cuando el provider
 -- de Phone está prendido — ver notas de integración al final del archivo).
@@ -747,3 +753,12 @@ update profiles set role = 'admin' where email = 'owenxmaldonado100@gmail.com';
 --       components/auth/phone-otp-flow.tsx asume que a) y b) ya están
 --       hechos — pruébalo tú con un número real una vez que actives ambos
 --       providers.
+
+-- ============================================================================
+-- Red de seguridad final: si corriste este script completo (tablas nuevas,
+-- columnas nuevas, policies nuevas), fuerza a PostgREST a recargar su cache
+-- de esquema ya. Sin esto, a veces sigue devolviendo "does not exist" para
+-- algo que ya existe hasta que su cache se refresca solo (normalmente
+-- segundos, pero no vale la pena esperar).
+-- ============================================================================
+notify pgrst, 'reload schema';
