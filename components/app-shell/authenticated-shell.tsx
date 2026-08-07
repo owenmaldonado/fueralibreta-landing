@@ -17,12 +17,35 @@ import { BarberiaQuickAdd, BARBERIA_ACTIONS } from "@/components/quick-add/barbe
 import { FondaQuickAdd, FONDA_ACTIONS } from "@/components/quick-add/fonda-quick-add";
 import { AbarrotesQuickAdd, ABARROTES_ACTIONS } from "@/components/quick-add/abarrotes-quick-add";
 
-// Rutas del dueño del SaaS (hub de super admin y cada módulo /app/{slug} que
-// cuelga de él), no de un negocio: no deben exigir que quien entra sea dueño
-// de una barbería/fonda/abarrotes. Cada módulo nuevo que se agregue al hub
-// (ver components/admin/admin-hub.tsx) tiene que sumar su ruta aquí también,
-// o el admin rebota a /onboarding en vez de ver la página.
-const RUTAS_SUPER_ADMIN = new Set(["/app/admin-dashboard", "/app/admin-hub", "/app/rentas"]);
+// Segmentos de /app/{segmento} que SÍ son del dueño de un negocio (barbería/
+// fonda/abarrotes) y por lo tanto sí deben exigir sesión + negocio. Todo lo
+// demás bajo /app/* es del dueño del SaaS: el hub (admin-hub, admin-dashboard)
+// y cada módulo que cuelga de él (rentas, o el "lienzo en blanco" genérico de
+// app/app/[slug]/page.tsx para cualquier app nueva). Se invierte la lista
+// aquí — en vez de sumar cada módulo nuevo del hub a mano — porque esta sí es
+// estable: solo cambia si se agrega una pantalla real de negocio.
+const SEGMENTOS_DE_NEGOCIO = new Set([
+  "agenda",
+  "apartados",
+  "caja",
+  "clientes",
+  "configuracion",
+  "fiados",
+  "gastos",
+  "historial",
+  "inicio",
+  "inventario",
+  "mas",
+  "menu",
+  "pedidos",
+  "productos",
+]);
+
+function esRutaDeNegocio(pathname: string): boolean {
+  if (pathname === "/app") return true;
+  const segmento = pathname.split("/")[2];
+  return SEGMENTOS_DE_NEGOCIO.has(segmento ?? "");
+}
 
 /**
  * Shell del negocio logueado: TopBar + banner de demo + FAB + BottomNav,
@@ -38,7 +61,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   const [banned, setBanned] = React.useState(false);
   const [isAdmin, setIsAdmin] = React.useState(false);
 
-  const esRutaSuperAdmin = RUTAS_SUPER_ADMIN.has(pathname ?? "");
+  const esRutaSuperAdmin = !esRutaDeNegocio(pathname ?? "");
 
   React.useEffect(() => {
     if (esRutaSuperAdmin) return;

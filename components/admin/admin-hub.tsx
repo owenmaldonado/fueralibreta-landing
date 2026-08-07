@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Plus, Users, TrendingUp, Loader2, LayoutGrid, AlertTriangle } from "lucide-react";
+import { Plus, Users, TrendingUp, Loader2, LayoutGrid, AlertTriangle, Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,8 +13,10 @@ import { LoadingBlock } from "@/components/app-shell/loading";
 import { formatMoney } from "@/lib/mock";
 import { fetchAppsConStats, createMisApp, type AppConStats } from "@/lib/admin-apps";
 
-/** Únicas apps con un destino real construido hoy — el resto muestra "Próximamente" en vez de un link muerto. */
-const APPS_CONSTRUIDAS = new Set(["fuera-libreta", "rentas"]);
+// Ya no hay "Próximamente": cualquier slug registrado tiene un destino real
+// en /app/{slug} — o su módulo construido (rentas, fuera-libreta), o el
+// "lienzo en blanco" genérico de app/app/[slug]/page.tsx si todavía no se
+// construyó nada ahí. "Entrar" siempre lleva a algo, nunca a un link muerto.
 
 // icono/color son puramente cosméticos y viven aquí, no en mis_apps (esa
 // tabla en producción no tiene esas columnas — ver supabase.sql). Slugs sin
@@ -93,6 +95,16 @@ export function AdminHub() {
     load();
   }, [load]);
 
+  async function copiarLink(slug: string) {
+    const url = `${window.location.origin}/app/${slug}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copiado");
+    } catch {
+      toast.error(`No se pudo copiar. Link: ${url}`);
+    }
+  }
+
   if (loading || !apps) return <LoadingBlock />;
 
   return (
@@ -124,7 +136,6 @@ export function AdminHub() {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {apps.map((app) => {
-          const construida = APPS_CONSTRUIDAS.has(app.slug);
           const look = lookFor(app.slug);
           return (
             <div key={app.id} className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5">
@@ -161,15 +172,20 @@ export function AdminHub() {
                 </div>
               </div>
 
-              {construida ? (
-                <Button asChild size="lg" className="w-full">
+              <div className="flex gap-2">
+                <Button asChild size="lg" className="flex-1">
                   <Link href={`/app/${app.slug}`}>Entrar</Link>
                 </Button>
-              ) : (
-                <Button size="lg" className="w-full" variant="outline" disabled>
-                  Próximamente
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() => copiarLink(app.slug)}
+                  title="Copiar link"
+                  aria-label="Copiar link"
+                >
+                  <Copy className="h-4 w-4" />
                 </Button>
-              )}
+              </div>
             </div>
           );
         })}
