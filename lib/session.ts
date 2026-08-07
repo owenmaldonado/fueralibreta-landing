@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { supabase, isSupabaseConfigured } from "./supabase";
-import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff } from "./data";
+import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow } from "./data";
 import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
 import { todayISO } from "./mock";
 import type { TenantData } from "./types";
@@ -24,6 +25,7 @@ export function useSession() {
   const [ready, setReady] = useState(false);
   const sourceRef = useRef<Source>(null);
   const sessionRef = useRef<TenantData | null>(null);
+  const citasChannelRef = useRef<RealtimeChannel | null>(null);
   sessionRef.current = session;
 
   const loadFromDemoPreview = useCallback(() => {
@@ -34,6 +36,38 @@ export function useSession() {
 
   useEffect(() => {
     let cancelled = false;
+
+    function detenerCitasEnVivo() {
+      if (citasChannelRef.current) {
+        supabase.removeChannel(citasChannelRef.current);
+        citasChannelRef.current = null;
+      }
+    }
+
+    /**
+     * Nuevas citas agendadas desde /b/[slug] (un visitante sin sesión, en otra
+     * pestaña/dispositivo) deben aparecer en el panel del barbero (Agenda, el
+     * "Hoy" del dashboard) sin que tenga que recargar — de ahí esta
+     * suscripción en tiempo real, en vez de solo el fetch inicial de arriba.
+     */
+    function escucharCitasEnVivo(negocioId: string) {
+      detenerCitasEnVivo();
+      citasChannelRef.current = supabase
+        .channel(`citas-${negocioId}`)
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
+          (payload) => {
+            const nueva = citaFromRow(payload.new as Record<string, unknown>);
+            setSessionState((prev) => {
+              if (!prev?.barberia) return prev;
+              if (prev.barberia.citas.some((c) => c.id === nueva.id)) return prev;
+              return { ...prev, barberia: { ...prev.barberia, citas: [nueva, ...prev.barberia.citas] } };
+            });
+          }
+        )
+        .subscribe();
+    }
 
     async function resolveForUser(userId: string | null) {
       if (!userId) {
@@ -49,6 +83,7 @@ export function useSession() {
           if (cancelled) return;
           sourceRef.current = "supabase";
           setSessionState(tenant);
+          if (tenant.business.tipo === "barberia") escucharCitasEnVivo(business.id);
         } else {
           // Logueado pero sin negocio todavía: puede tener una demo local por activar.
           loadFromDemoPreview();
@@ -98,6 +133,7 @@ export function useSession() {
         sourceRef.current = null;
         setSessionState(null);
         setReady(true);
+        detenerCitasEnVivo();
         return;
       }
       if (event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
@@ -119,6 +155,7 @@ export function useSession() {
       window.removeEventListener(DEMO_PREVIEW_EVENT, onDemoChange);
       window.removeEventListener("storage", onDemoChange);
       authSub.unsubscribe();
+      detenerCitasEnVivo();
     };
   }, [loadFromDemoPreview]);
 

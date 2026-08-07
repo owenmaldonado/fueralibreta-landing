@@ -168,7 +168,7 @@ const clienteToRow = (c: BarberClient, negocioId: string): Row => ({
   cumpleanos: c.cumpleanos ?? null,
 });
 
-const citaFromRow = (r: Row): Appointment => ({
+export const citaFromRow = (r: Row): Appointment => ({
   id: r.id as string,
   clienteId: (r.cliente_id as string) ?? "",
   clienteNombre: r.cliente_nombre as string,
@@ -712,6 +712,23 @@ export async function fetchPublicBookingData(negocioId: string): Promise<PublicB
       estado: r.estado as Appointment["estado"],
     })),
   };
+}
+
+/**
+ * Busca (o crea) el cliente de una reserva pública por teléfono, vía la
+ * función find_or_create_barberia_cliente (security definer) — así el
+ * cliente sin login nunca necesita permiso de lectura sobre
+ * barberia_clientes completa, solo puede resolver SU propio registro.
+ * Si el teléfono ya existía con otro nombre, la función lo actualiza.
+ */
+export async function findOrCreateBarberiaCliente(negocioId: string, nombre: string, telefono: string): Promise<string> {
+  const { data, error } = await supabase.rpc("find_or_create_barberia_cliente", {
+    p_negocio_id: negocioId,
+    p_nombre: nombre,
+    p_telefono: telefono,
+  });
+  if (error) throw error;
+  return data as string;
 }
 
 /** Cliente público reservando desde /b/[slug]. RLS solo permite estado='pendiente'. */

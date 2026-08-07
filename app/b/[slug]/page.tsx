@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { getAvailableSlots } from "@/lib/agenda";
-import { fetchNegocioBySlug, fetchPublicBookingData, insertPublicCita, type PublicBookingData } from "@/lib/data";
+import { fetchNegocioBySlug, fetchPublicBookingData, insertPublicCita, findOrCreateBarberiaCliente, type PublicBookingData } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { readDemoPreview, writeDemoPreview } from "@/lib/demoPreview";
 import { formatMoney, todayISO, waLink } from "@/lib/mock";
@@ -113,26 +113,55 @@ export default function ReservaPublicaPage() {
     if (!servicio || !hora || nombre.trim().length < 2 || telefono.trim().length < 6) return;
     setEnviando(true);
     setReservaError(false);
+    const nombreFinal = nombre.trim();
+    const telefonoFinal = telefono.trim();
     try {
-      const nuevaCita: Appointment = {
-        id: crypto.randomUUID(),
-        clienteId: "",
-        clienteNombre: nombre.trim(),
-        clienteTelefono: telefono.trim(),
-        servicioId: servicio.id,
-        servicioNombre: servicio.nombre,
-        precio: servicio.precio,
-        fecha,
-        hora,
-        estado: "pendiente",
-      };
       if (modoDemo) {
+        // Mismo flujo que en Supabase (buscar por teléfono, crear o
+        // actualizar nombre) pero contra el demoPreview local, ya que un
+        // negocio de demo no tiene fila real en Supabase para el RPC.
         const demo = readDemoPreview();
         if (demo?.barberia) {
-          writeDemoPreview({ ...demo, barberia: { ...demo.barberia, citas: [nuevaCita, ...demo.barberia.citas] } });
+          const existente = demo.barberia.clientes.find((c) => c.telefono.trim() === telefonoFinal);
+          let clientes = demo.barberia.clientes;
+          let clienteId: string;
+          if (existente) {
+            clienteId = existente.id;
+            if (existente.nombre !== nombreFinal) {
+              clientes = clientes.map((c) => (c.id === existente.id ? { ...c, nombre: nombreFinal } : c));
+            }
+          } else {
+            const nuevo = { id: crypto.randomUUID(), nombre: nombreFinal, telefono: telefonoFinal, ultimaVisita: null, visitas: 0 };
+            clientes = [nuevo, ...clientes];
+            clienteId = nuevo.id;
+          }
+          const nuevaCita: Appointment = {
+            id: crypto.randomUUID(),
+            clienteId,
+            clienteNombre: nombreFinal,
+            clienteTelefono: telefonoFinal,
+            servicioId: servicio.id,
+            servicioNombre: servicio.nombre,
+            precio: servicio.precio,
+            fecha,
+            hora,
+            estado: "pendiente",
+          };
+          writeDemoPreview({ ...demo, barberia: { ...demo.barberia, clientes, citas: [nuevaCita, ...demo.barberia.citas] } });
         }
       } else {
-        await insertPublicCita(business!.id, nuevaCita);
+        const clienteId = await findOrCreateBarberiaCliente(business!.id, nombreFinal, telefonoFinal);
+        await insertPublicCita(business!.id, {
+          clienteId,
+          clienteNombre: nombreFinal,
+          clienteTelefono: telefonoFinal,
+          servicioId: servicio.id,
+          servicioNombre: servicio.nombre,
+          precio: servicio.precio,
+          fecha,
+          hora,
+          estado: "pendiente",
+        });
       }
       setConfirmada({ servicio: servicio.nombre, fecha, hora });
     } catch (err) {

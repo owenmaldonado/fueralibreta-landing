@@ -224,6 +224,56 @@ create or replace view barberia_citas_publicas as
 
 grant select on barberia_citas_publicas to anon, authenticated;
 
+-- Resuelve (o crea) el cliente de una reserva pública por teléfono, sin dar a
+-- anon acceso de lectura directo a barberia_clientes (ahí sí viven nombre y
+-- teléfono de TODOS los clientes del negocio — una policy de select amplia
+-- para poder buscar "¿existe este teléfono?" filtraría ese directorio
+-- completo a cualquier visitante de /b/[slug]). security definer: corre con
+-- privilegios elevados, pero solo devuelve un uuid, nunca datos de clientes.
+create or replace function find_or_create_barberia_cliente(p_negocio_id uuid, p_nombre text, p_telefono text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+begin
+  if not exists (select 1 from negocios n where n.id = p_negocio_id and n.is_active) then
+    raise exception 'Negocio no encontrado o inactivo';
+  end if;
+
+  select id into v_id from barberia_clientes where negocio_id = p_negocio_id and telefono = p_telefono limit 1;
+
+  if v_id is null then
+    insert into barberia_clientes (negocio_id, nombre, telefono, visitas)
+    values (p_negocio_id, p_nombre, p_telefono, 0)
+    returning id into v_id;
+  else
+    -- Mismo teléfono, nombre distinto al guardado (p. ej. se lo cambió): se actualiza.
+    update barberia_clientes set nombre = p_nombre where id = v_id and nombre is distinct from p_nombre;
+  end if;
+
+  return v_id;
+end;
+$$;
+
+grant execute on function find_or_create_barberia_cliente(uuid, text, text) to anon, authenticated;
+
+-- Para que el panel del barbero (Agenda) vea una cita nueva de /b/[slug] al
+-- instante sin recargar la página: Supabase Realtime necesita que la tabla
+-- esté en la publicación supabase_realtime. "add table" sin guarda truena si
+-- ya estaba agregada, así que se checa primero.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'barberia_citas'
+  ) then
+    alter publication supabase_realtime add table barberia_citas;
+  end if;
+end $$;
+
 -- ============================================================================
 -- FONDA
 -- ============================================================================
