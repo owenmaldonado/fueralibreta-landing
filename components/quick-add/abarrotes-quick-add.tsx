@@ -37,9 +37,7 @@ export function AbarrotesQuickAdd({ active, onClose, session, update }: Props) {
 
   return (
     <>
-      <Sheet open={active === "venta"} onOpenChange={(o) => !o && onClose()}>
-        <VentaCart data={data} onClose={onClose} update={update} />
-      </Sheet>
+      <VentaCart open={active === "venta"} data={data} onClose={onClose} update={update} />
       <Sheet open={active === "producto"} onOpenChange={(o) => !o && onClose()}>
         <NuevoProductoForm onClose={onClose} update={update} />
       </Sheet>

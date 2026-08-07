@@ -5,6 +5,8 @@ import { Search, ScanLine, Plus, Minus, Pencil, Trash2 } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
+import { StatTile } from "@/components/dashboards/stat-tile";
+import { TrendBarChart } from "@/components/dashboards/trend-bar-chart";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -20,8 +22,35 @@ import { BarcodeScanner } from "@/components/barcode-scanner";
 import { VentaCart } from "@/components/abarrotes/venta-cart";
 import { useSession } from "@/lib/session";
 import { formatMoney, todayISO, uid } from "@/lib/mock";
+import { aggregateByRange, type RangoTiempo } from "@/lib/chart-buckets";
 import { cn } from "@/lib/utils";
 import type { GroceryProduct, GrocerySale, GrocerySaleItem } from "@/lib/types";
+
+const RANGO_TABS = [
+  { value: "semanal", label: "Semanal" },
+  { value: "mensual", label: "Mensual" },
+  { value: "anual", label: "Anual" },
+];
+
+/**
+ * Ganancia = (precio_venta - precio_compra) * cantidad por línea vendida.
+ * precio_compra se busca por el costo ACTUAL del producto (GrocerySaleItem
+ * no guarda una foto del costo al momento de la venta) — si el costo de un
+ * producto cambió desde entonces, la ganancia histórica de esa venta se
+ * recalcula con el costo de hoy, no el de ese día. Para artículos de "venta
+ * rápida" (sin productoId, no están en el inventario) no hay costo
+ * conocido, así que se cuenta el precio completo como ganancia.
+ */
+function calcularGanancia(ventas: GrocerySale[], productos: GroceryProduct[]): { fecha: string; monto: number }[] {
+  const costoPorProducto = new Map(productos.map((p) => [p.id, p.costo]));
+  return ventas.map((v) => ({
+    fecha: v.fecha,
+    monto: v.items.reduce((acc, it) => {
+      const costo = it.productoId ? costoPorProducto.get(it.productoId) ?? 0 : 0;
+      return acc + (it.precioUnitario - costo) * it.cantidad;
+    }, 0),
+  }));
+}
 
 export default function InventarioPage() {
   const { session, ready, update } = useSession();
@@ -36,6 +65,7 @@ export default function InventarioPage() {
   const [borrando, setBorrando] = React.useState<GroceryProduct | null>(null);
   const [editandoVenta, setEditandoVenta] = React.useState<GrocerySale | null>(null);
   const [borrandoVenta, setBorrandoVenta] = React.useState<GrocerySale | null>(null);
+  const [rangoGanancia, setRangoGanancia] = React.useState<RangoTiempo>("semanal");
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -44,6 +74,9 @@ export default function InventarioPage() {
     (p) => p.nombre.toLowerCase().includes(q.toLowerCase()) || p.codigo.includes(q)
   );
   const ventas = [...data.ventas].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const gananciaPorVenta = calcularGanancia(data.ventas, data.productos);
+  const gananciaTotal = gananciaPorVenta.reduce((acc, g) => acc + g.monto, 0);
+  const serieGanancia = aggregateByRange(gananciaPorVenta, rangoGanancia, (g) => g.fecha, (g) => g.monto);
 
   function handleScan(codigo: string) {
     setScanning(false);
@@ -162,6 +195,17 @@ export default function InventarioPage() {
         </>
       ) : (
         <div className="flex flex-col gap-2 px-4 pb-6">
+          <div className="mb-1">
+            <StatTile label="Ganancia total" value={formatMoney(gananciaTotal)} />
+          </div>
+          <div className="mb-3 flex flex-col gap-3">
+            <Tabs value={rangoGanancia} onValueChange={(v) => setRangoGanancia(v as RangoTiempo)} tabs={RANGO_TABS} />
+            <TrendBarChart
+              data={serieGanancia}
+              bars={[{ key: "value", name: "Ganancia", color: "hsl(168 55% 45%)" }]}
+              emptyText="Sin ventas en este periodo"
+            />
+          </div>
           {ventas.length === 0 ? (
             <EmptyState texto="Sin ventas registradas" />
           ) : (
@@ -204,9 +248,7 @@ export default function InventarioPage() {
 
       {scanning && <BarcodeScanner onScan={handleScan} onClose={() => setScanning(false)} />}
 
-      <Sheet open={ventaOpen} onOpenChange={setVentaOpen}>
-        <VentaCart data={data} onClose={() => setVentaOpen(false)} update={update} />
-      </Sheet>
+      <VentaCart open={ventaOpen} data={data} onClose={() => setVentaOpen(false)} update={update} />
 
       <Sheet open={!!ajustar} onOpenChange={(o) => !o && setAjustar(null)}>
         {ajustar && <AjustarStockForm producto={ajustar} onClose={() => setAjustar(null)} update={update} />}

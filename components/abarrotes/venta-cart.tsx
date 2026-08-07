@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import { Search, ScanLine, Plus, Minus, Trash2, Zap } from "lucide-react";
+import { ArrowLeft, X, ScanLine, Plus, Minus, Trash2, Zap, ShoppingCart } from "lucide-react";
 
-import { SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { ChipGroup, Chip } from "@/components/ui/chip";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Dialog, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { BarcodeScanner } from "@/components/barcode-scanner";
@@ -32,6 +33,18 @@ function emojiProducto(p: GroceryProduct): string {
   return EMOJI_POR_CATEGORIA[p.categoria] ?? "📦";
 }
 
+/** Todos los productos, ordenados por más vendidos (cantidad histórica) DESC. Sin ventas registradas caen al final, en su orden original. */
+function ordenarPorMasVendidos(data: NonNullable<TenantData["abarrotes"]>): GroceryProduct[] {
+  const cantidadPorProducto = new Map<string, number>();
+  for (const venta of data.ventas) {
+    for (const item of venta.items) {
+      if (!item.productoId) continue;
+      cantidadPorProducto.set(item.productoId, (cantidadPorProducto.get(item.productoId) ?? 0) + item.cantidad);
+    }
+  }
+  return [...data.productos].sort((a, b) => (cantidadPorProducto.get(b.id) ?? 0) - (cantidadPorProducto.get(a.id) ?? 0));
+}
+
 interface CartLine {
   productoId: string | null;
   productoNombre: string;
@@ -41,28 +54,53 @@ interface CartLine {
 }
 
 interface VentaCartProps {
+  open: boolean;
   data: NonNullable<TenantData["abarrotes"]>;
   onClose: () => void;
   update: (fn: (prev: TenantData) => TenantData) => void;
 }
 
 /**
- * Carrito de venta compartido entre el FAB (Nueva Venta) y el botón sticky
- * de /app/inventario. Soporta productos del catálogo (con o sin peso),
- * artículos sueltos que no están en inventario ("venta rápida"), y un grid
- * de los más vendidos para no tener que escribir nada.
+ * Pantalla completa de "Nueva Venta" (no un Sheet parcial): grid de todo el
+ * inventario ordenado por más vendidos, con filtro por categoría — sin
+ * buscador al inicio, tocar un producto lo agrega al carrito de inmediato.
+ * Un segundo paso ("carrito") muestra el ticket para ajustar cantidades y
+ * cobrar. Comparte esta pantalla el FAB (Nueva Venta) y el botón sticky de
+ * /app/inventario.
  */
-export function VentaCart({ data, onClose, update }: VentaCartProps) {
-  const [query, setQuery] = React.useState("");
+export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
+  const [mounted, setMounted] = React.useState(false);
+  const [paso, setPaso] = React.useState<"grid" | "carrito">("grid");
+  const [categoria, setCategoria] = React.useState<string>("Todas");
   const [cart, setCart] = React.useState<CartLine[]>([]);
   const [scanning, setScanning] = React.useState(false);
   const [rapidaOpen, setRapidaOpen] = React.useState(false);
 
-  const resultados = query.trim()
-    ? data.productos.filter((p) => p.nombre.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 6)
-    : [];
+  React.useEffect(() => setMounted(true), []);
 
-  const masVendidos = React.useMemo(() => topDoceProductos(data), [data]);
+  React.useEffect(() => {
+    if (open) {
+      setPaso("grid");
+      setCategoria("Todas");
+      setCart([]);
+    }
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open, onClose]);
+
+  const productosOrdenados = React.useMemo(() => ordenarPorMasVendidos(data), [data]);
+  const categorias = React.useMemo(() => ["Todas", ...Array.from(new Set(data.productos.map((p) => p.categoria))).sort()], [data]);
+  const productosVisibles = categoria === "Todas" ? productosOrdenados : productosOrdenados.filter((p) => p.categoria === categoria);
 
   function stockDisponible(productoId: string | null): number {
     if (!productoId) return Infinity;
@@ -94,7 +132,6 @@ export function VentaCart({ data, onClose, update }: VentaCartProps) {
         },
       ];
     });
-    setQuery("");
   }
 
   function agregarRapido(nombre: string, precio: number) {
@@ -130,6 +167,7 @@ export function VentaCart({ data, onClose, update }: VentaCartProps) {
   }
 
   const total = cart.reduce((acc, l) => acc + l.cantidad * l.precioUnitario, 0);
+  const cantidadTotal = cart.reduce((acc, l) => acc + l.cantidad, 0);
   const puedeCobrar = cart.length > 0 && cart.every((l) => l.cantidad > 0);
 
   function cobrar() {
@@ -158,185 +196,203 @@ export function VentaCart({ data, onClose, update }: VentaCartProps) {
     onClose();
   }
 
-  return (
-    <>
-      <SheetHeader title="Nueva venta" onClose={onClose} />
-      <div className="flex flex-col gap-3">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              autoFocus
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar producto..."
-              className="pl-9"
-            />
-          </div>
-          <Button type="button" size="icon" variant="outline" onClick={() => setScanning(true)} aria-label="Escanear">
-            <ScanLine className="h-4 w-4" />
-          </Button>
-          <Button type="button" size="icon" variant="outline" onClick={() => setRapidaOpen(true)} aria-label="Venta rápida">
-            <Zap className="h-4 w-4" />
-          </Button>
-        </div>
+  if (!mounted || !open) return null;
 
-        {query.trim() ? (
-          resultados.length > 0 && (
-            <div className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-lg border border-border">
-              {resultados.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => agregarProducto(p)}
-                  disabled={p.stock <= 0}
-                  className="flex items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-secondary disabled:opacity-40"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{p.nombre}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Stock {p.stock} · {formatMoney(p.precio)}
-                      {p.unidad !== "pieza" && `/${p.unidad}`}
-                    </p>
-                  </div>
-                  <Plus className="h-4 w-4 shrink-0 text-primary" />
-                </button>
-              ))}
-            </div>
-          )
-        ) : masVendidos.length > 0 ? (
-          <div className="grid grid-cols-3 gap-2">
-            {masVendidos.map((p) => (
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex flex-col bg-background">
+      {paso === "grid" ? (
+        <>
+          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <h1 className="font-display text-lg font-bold">Nueva venta</h1>
+            <div className="flex items-center gap-1">
               <button
-                key={p.id}
                 type="button"
-                onClick={() => agregarProducto(p)}
-                disabled={p.stock <= 0}
-                className="flex flex-col items-center gap-1 rounded-xl border border-border bg-card p-2.5 text-center transition-colors hover:bg-secondary disabled:opacity-40"
+                onClick={() => setScanning(true)}
+                aria-label="Escanear"
+                className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
               >
-                <span className="text-2xl">{emojiProducto(p)}</span>
-                <span className="w-full truncate text-[11px] font-medium">{p.nombre}</span>
-                <span className="font-mono text-[11px] text-primary">
-                  {formatMoney(p.precio)}
-                  {p.unidad !== "pieza" && `/${p.unidad}`}
-                </span>
+                <ScanLine className="h-5 w-5" />
               </button>
-            ))}
+              <button
+                type="button"
+                onClick={() => setRapidaOpen(true)}
+                aria-label="Venta rápida"
+                className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <Zap className="h-5 w-5" />
+              </button>
+            </div>
           </div>
-        ) : null}
 
-        {cart.length === 0 ? (
-          <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-border">
-            <p className="px-4 text-center text-sm text-muted-foreground">Busca, escanea o toca un producto para agregarlo</p>
+          <div className="overflow-x-auto border-b border-border px-4 py-3">
+            <ChipGroup className="flex-nowrap">
+              {categorias.map((c) => (
+                <Chip key={c} selected={categoria === c} onClick={() => setCategoria(c)}>
+                  {c}
+                </Chip>
+              ))}
+            </ChipGroup>
           </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Producto</TableHead>
-                <TableHead className="text-center">Cant</TableHead>
-                <TableHead className="text-right">Subtotal</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {cart.map((l, i) => {
-                const esPeso = l.unidad !== "pieza";
-                return (
-                  <TableRow key={i}>
-                    <TableCell className="max-w-[120px] whitespace-normal text-sm font-medium">
-                      {l.productoNombre}
-                      {esPeso && (
-                        <p className="text-[10px] font-normal text-muted-foreground">
-                          {formatMoney(l.precioUnitario)}/{l.unidad} x {l.cantidad.toFixed(3)}
-                        </p>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {esPeso ? (
-                        <Input
-                          type="number"
-                          inputMode="decimal"
-                          step="0.001"
-                          min="0"
-                          value={l.cantidad}
-                          onChange={(e) => cambiarCantidad(i, Number(e.target.value) || 0)}
-                          className="h-8 w-20 px-2 text-center text-xs"
-                        />
-                      ) : (
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => cambiarCantidad(i, l.cantidad - 1)}
-                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border hover:bg-secondary"
-                            aria-label="Restar"
-                          >
-                            <Minus className="h-3 w-3" />
-                          </button>
-                          <span className="w-4 text-center font-mono text-xs tabular-nums">{l.cantidad}</span>
-                          <button
-                            type="button"
-                            onClick={() => cambiarCantidad(i, l.cantidad + 1)}
-                            disabled={l.cantidad >= stockDisponible(l.productoId)}
-                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border hover:bg-secondary disabled:opacity-30"
-                            aria-label="Sumar"
-                          >
-                            <Plus className="h-3 w-3" />
-                          </button>
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm font-semibold">
-                      {formatMoney(l.cantidad * l.precioUnitario)}
-                    </TableCell>
-                    <TableCell>
-                      <button
-                        type="button"
-                        onClick={() => quitar(i)}
-                        className="rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                        aria-label="Quitar del carrito"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </TableCell>
+
+          <div className="flex-1 overflow-y-auto px-4 py-4">
+            {productosVisibles.length === 0 ? (
+              <p className="pt-10 text-center text-sm text-muted-foreground">Sin productos en esta categoría</p>
+            ) : (
+              <div className="grid grid-cols-3 gap-3 pb-24">
+                {productosVisibles.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => agregarProducto(p)}
+                    disabled={p.stock <= 0}
+                    className="flex flex-col items-center gap-1.5 rounded-2xl border border-border bg-card p-3 text-center transition-transform active:scale-95 disabled:opacity-40"
+                  >
+                    <span className="text-3xl">{emojiProducto(p)}</span>
+                    <span className="line-clamp-2 w-full text-sm font-medium leading-tight">{p.nombre}</span>
+                    <span className="font-mono text-sm font-semibold text-primary">
+                      {formatMoney(p.precio)}
+                      {p.unidad !== "pieza" && `/${p.unidad}`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {cart.length > 0 && (
+            <div className="border-t border-border bg-background p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+              <Button size="lg" className="w-full justify-between" onClick={() => setPaso("carrito")}>
+                <span className="flex items-center gap-2">
+                  <ShoppingCart className="h-4 w-4" /> Ver carrito · {cantidadTotal}
+                </span>
+                <span>{formatMoney(total)}</span>
+              </Button>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+            <button
+              type="button"
+              onClick={() => setPaso("grid")}
+              aria-label="Regresar"
+              className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <h1 className="font-display text-lg font-bold">Carrito</h1>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4">
+            {cart.length === 0 ? (
+              <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-border">
+                <p className="px-4 text-center text-sm text-muted-foreground">Tu carrito está vacío</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Producto</TableHead>
+                    <TableHead className="text-center">Cant</TableHead>
+                    <TableHead className="text-right">Subtotal</TableHead>
+                    <TableHead />
                   </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
+                </TableHeader>
+                <TableBody>
+                  {cart.map((l, i) => {
+                    const esPeso = l.unidad !== "pieza";
+                    return (
+                      <TableRow key={i}>
+                        <TableCell className="max-w-[120px] whitespace-normal text-sm font-medium">
+                          {l.productoNombre}
+                          {esPeso && (
+                            <p className="text-[10px] font-normal text-muted-foreground">
+                              {formatMoney(l.precioUnitario)}/{l.unidad} x {l.cantidad.toFixed(3)}
+                            </p>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {esPeso ? (
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              step="0.001"
+                              min="0"
+                              value={l.cantidad}
+                              onChange={(e) => cambiarCantidad(i, Number(e.target.value) || 0)}
+                              className="h-8 w-20 px-2 text-center text-xs"
+                            />
+                          ) : (
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => cambiarCantidad(i, l.cantidad - 1)}
+                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border hover:bg-secondary"
+                                aria-label="Restar"
+                              >
+                                <Minus className="h-3 w-3" />
+                              </button>
+                              <span className="w-4 text-center font-mono text-xs tabular-nums">{l.cantidad}</span>
+                              <button
+                                type="button"
+                                onClick={() => cambiarCantidad(i, l.cantidad + 1)}
+                                disabled={l.cantidad >= stockDisponible(l.productoId)}
+                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border hover:bg-secondary disabled:opacity-30"
+                                aria-label="Sumar"
+                              >
+                                <Plus className="h-3 w-3" />
+                              </button>
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm font-semibold">
+                          {formatMoney(l.cantidad * l.precioUnitario)}
+                        </TableCell>
+                        <TableCell>
+                          <button
+                            type="button"
+                            onClick={() => quitar(i)}
+                            className="rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            aria-label="Quitar del carrito"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </div>
 
-        <div className="flex items-center justify-between rounded-lg bg-secondary px-4 py-3">
-          <span className="text-sm font-medium text-muted-foreground">Total</span>
-          <span className="font-display text-xl font-bold">{formatMoney(total)}</span>
-        </div>
-      </div>
-      <SheetFooter>
-        <Button size="lg" disabled={!puedeCobrar} onClick={cobrar}>
-          Cobrar
-        </Button>
-      </SheetFooter>
+          <div className="border-t border-border p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+            <div className="mb-3 flex items-center justify-between rounded-lg bg-secondary px-4 py-3">
+              <span className="text-sm font-medium text-muted-foreground">Total</span>
+              <span className="font-display text-xl font-bold">{formatMoney(total)}</span>
+            </div>
+            <Button size="lg" className="w-full" disabled={!puedeCobrar} onClick={cobrar}>
+              Cobrar
+            </Button>
+          </div>
+        </>
+      )}
 
       {scanning && <BarcodeScanner onScan={handleScan} onClose={() => setScanning(false)} />}
 
       <VentaRapidaDialog open={rapidaOpen} onClose={() => setRapidaOpen(false)} onAgregar={agregarRapido} />
-    </>
+    </div>,
+    document.body
   );
-}
-
-function topDoceProductos(data: NonNullable<TenantData["abarrotes"]>): GroceryProduct[] {
-  const cantidadPorProducto = new Map<string, number>();
-  for (const venta of data.ventas) {
-    for (const item of venta.items) {
-      if (!item.productoId) continue;
-      cantidadPorProducto.set(item.productoId, (cantidadPorProducto.get(item.productoId) ?? 0) + item.cantidad);
-    }
-  }
-  const conVentas = data.productos
-    .filter((p) => cantidadPorProducto.has(p.id))
-    .sort((a, b) => (cantidadPorProducto.get(b.id) ?? 0) - (cantidadPorProducto.get(a.id) ?? 0));
-  if (conVentas.length > 0) return conVentas.slice(0, 12);
-  return data.productos.slice(0, 12);
 }
 
 function VentaRapidaDialog({
