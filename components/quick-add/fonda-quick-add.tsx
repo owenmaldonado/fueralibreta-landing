@@ -6,7 +6,7 @@ import { ClipboardList, UtensilsCrossed, Receipt, X } from "lucide-react";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Stepper } from "@/components/ui/stepper";
 import { Button } from "@/components/ui/button";
@@ -14,20 +14,27 @@ import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatMoney, todayISO } from "@/lib/mock";
 import type { TenantData, OrderItem, Expense } from "@/lib/types";
 
-/** Slots de 12:00pm a 10:00pm cada 30 min, para "Hora de entrega" (opcional) del pedido. */
-function generarHorasEntrega(): { value: string; label: string }[] {
-  const slots: { value: string; label: string }[] = [];
-  for (let totalMin = 12 * 60; totalMin <= 22 * 60; totalMin += 30) {
-    const h24 = Math.floor(totalMin / 60);
-    const m = totalMin % 60;
-    const value = `${String(h24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-    const h12 = h24 > 12 ? h24 - 12 : h24;
-    const label = `${h12}:${String(m).padStart(2, "0")} PM`;
-    slots.push({ value, label });
-  }
-  return slots;
+/**
+ * Formatea dígitos sueltos a "HH:MM" mientras se escriben, insertando ":"
+ * solo/a cuando ya se sabe si la hora es de 1 o 2 dígitos (12<=12 => 2
+ * dígitos de hora; si no, 1): "1"->"1", "12"->"12:", "123"->"12:3",
+ * "1235"->"12:35", "930"->"9:30".
+ */
+function formatHoraRapida(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (digits.length <= 1) return digits;
+  const horaLen = parseInt(digits.slice(0, 2), 10) <= 12 ? 2 : 1;
+  return `${digits.slice(0, horaLen)}:${digits.slice(horaLen, horaLen + 2)}`;
 }
-const HORAS_ENTREGA = generarHorasEntrega();
+
+/** Igual que formatHoraRapida, pero solo devuelve algo (con hora en 2 dígitos) hasta que los minutos ya tienen sus 2 dígitos completos; mientras se sigue escribiendo, undefined. */
+function horaRapidaCompleta(raw: string): string | undefined {
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (digits.length < 2) return undefined;
+  const horaLen = parseInt(digits.slice(0, 2), 10) <= 12 ? 2 : 1;
+  if (digits.length !== horaLen + 2) return undefined;
+  return `${digits.slice(0, horaLen).padStart(2, "0")}:${digits.slice(horaLen, horaLen + 2)}`;
+}
 
 export const FONDA_ACTIONS: FabAction[] = [
   { key: "pedido", label: "Nuevo Pedido", icon: <ClipboardList className="h-4 w-4" /> },
@@ -81,7 +88,8 @@ function NuevoPedidoForm({
 }) {
   const [clienteNombre, setClienteNombre] = React.useState("");
   const [hora] = React.useState(nowHHMM());
-  const [horaEntrega, setHoraEntrega] = React.useState("");
+  const [ponerHora, setPonerHora] = React.useState(false);
+  const [horaEntregaDigits, setHoraEntregaDigits] = React.useState("");
   const [items, setItems] = React.useState<OrderItem[]>([]);
   const [configurando, setConfigurando] = React.useState<string | null>(null);
   const [qty, setQty] = React.useState(1);
@@ -125,6 +133,8 @@ function NuevoPedidoForm({
     setItems((prev) => prev.filter((it) => it.id !== id));
   }
 
+  const horaEntrega = ponerHora ? horaRapidaCompleta(horaEntregaDigits) : undefined;
+
   function guardar() {
     if (!clienteNombre.trim() || items.length === 0) return;
     update((prev) => {
@@ -134,7 +144,7 @@ function NuevoPedidoForm({
         clienteNombre: clienteNombre.trim(),
         fecha: todayISO(0),
         hora,
-        horaEntrega: horaEntrega || undefined,
+        horaEntrega,
         items,
         estado: "pendiente" as const,
         total,
@@ -154,15 +164,26 @@ function NuevoPedidoForm({
         </div>
 
         <div className="space-y-1.5">
-          <Label>Hora de entrega (opcional)</Label>
-          <Select value={horaEntrega} onChange={(e) => setHoraEntrega(e.target.value)}>
-            <option value="">Sin hora específica</option>
-            {HORAS_ENTREGA.map((h) => (
-              <option key={h.value} value={h.value}>
-                {h.label}
-              </option>
-            ))}
-          </Select>
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Checkbox
+              checked={ponerHora}
+              onCheckedChange={(v) => {
+                setPonerHora(v);
+                if (!v) setHoraEntregaDigits("");
+              }}
+            />
+            ¿Poner hora?
+          </label>
+          {ponerHora && (
+            <Input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={formatHoraRapida(horaEntregaDigits)}
+              onChange={(e) => setHoraEntregaDigits(e.target.value)}
+              placeholder="Ej: 1235 = 12:35"
+            />
+          )}
         </div>
 
         <div className="space-y-1.5">
