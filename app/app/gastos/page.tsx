@@ -17,7 +17,7 @@ import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useSession } from "@/lib/session";
 import { formatMoney, todayISO, uid } from "@/lib/mock";
-import { aggregateByRange, type RangoTiempo } from "@/lib/chart-buckets";
+import { aggregateByRange, aggregateTwoByRange, type RangoTiempo } from "@/lib/chart-buckets";
 import type { Expense, TenantData } from "@/lib/types";
 
 const RANGO_TABS = [
@@ -40,7 +40,20 @@ export default function GastosPage() {
   const gastos: Expense[] = session.fonda?.gastos ?? session.abarrotes?.gastos ?? [];
   const total = gastos.reduce((acc, g) => acc + g.monto, 0);
   const ordenados = [...gastos].sort((a, b) => b.fecha.localeCompare(a.fecha));
-  const serie = aggregateByRange(gastos, rango, (g) => g.fecha, (g) => g.monto);
+
+  // Fonda: la gráfica ya no es solo gastos — se unifica con ventas (pedidos)
+  // para comparar las dos series en el mismo periodo. Abarrotes ya tiene su
+  // propia pantalla de ventas (Inventario > Ventas), así que aquí se queda
+  // igual que antes: solo gastos.
+  const pedidos = session.fonda?.pedidos ?? [];
+  const ventasTotal = pedidos.reduce((acc, p) => acc + p.total, 0);
+  const serieUnica = aggregateByRange(gastos, rango, (g) => g.fecha, (g) => g.monto);
+  const serieDoble = aggregateTwoByRange(
+    [...pedidos.map((p) => ({ fecha: p.fecha, a: p.total, b: 0 })), ...gastos.map((g) => ({ fecha: g.fecha, a: 0, b: g.monto }))],
+    rango,
+    (x) => x.fecha,
+    (x) => ({ a: x.a, b: x.b })
+  );
 
   function withGastos(prev: TenantData, next: (gastos: Expense[]) => Expense[]): TenantData {
     if (prev.fonda) return { ...prev, fonda: { ...prev.fonda, gastos: next(prev.fonda.gastos) } };
@@ -57,21 +70,43 @@ export default function GastosPage() {
   return (
     <>
       <PageHeader
-        title="Gastos"
-        subtitle="Lo que sale del negocio"
+        title={modulo === "fonda" ? "Ventas y Gastos" : "Gastos"}
+        subtitle={modulo === "fonda" ? "Lo que entra y lo que sale" : "Lo que sale del negocio"}
         action={
           <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" /> Nuevo
           </Button>
         }
       />
-      <div className="px-4">
-        <StatTile label="Total registrado" value={formatMoney(total)} />
-      </div>
+      {modulo === "fonda" ? (
+        <div className="grid grid-cols-2 gap-3 px-4">
+          <StatTile label="Ventas" value={formatMoney(ventasTotal)} />
+          <StatTile label="Gastos" value={formatMoney(total)} />
+        </div>
+      ) : (
+        <div className="px-4">
+          <StatTile label="Total registrado" value={formatMoney(total)} />
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 px-4 pt-4">
         <Tabs value={rango} onValueChange={(v) => setRango(v as RangoTiempo)} tabs={RANGO_TABS} />
-        <TrendBarChart data={serie} bars={[{ key: "value", name: "Gastado", color: "hsl(4 78% 58%)" }]} emptyText="Sin gastos en este periodo" />
+        {modulo === "fonda" ? (
+          <TrendBarChart
+            data={serieDoble.map((s) => ({ label: s.label, ventas: s.a, gastos: s.b }))}
+            bars={[
+              { key: "ventas", name: "Ventas", color: "hsl(168 55% 45%)" },
+              { key: "gastos", name: "Gastos", color: "hsl(4 78% 58%)" },
+            ]}
+            emptyText="Sin ventas ni gastos en este periodo"
+          />
+        ) : (
+          <TrendBarChart
+            data={serieUnica}
+            bars={[{ key: "value", name: "Gastado", color: "hsl(4 78% 58%)" }]}
+            emptyText="Sin gastos en este periodo"
+          />
+        )}
       </div>
 
       <div className="flex flex-col gap-2 px-4 py-6">

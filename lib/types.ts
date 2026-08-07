@@ -110,7 +110,10 @@ export interface FondaOrder {
   id: string;
   clienteNombre: string;
   clienteTelefono?: string;
+  fecha: string; // ISO date (day) — para filtrar Hoy/Ayer/Semana
   hora: string;
+  /** Hora en que el cliente pidió que estuviera listo, opcional (12:00pm–10:00pm cada 30 min). */
+  horaEntrega?: string;
   items: OrderItem[];
   estado: OrderStatus;
   total: number;

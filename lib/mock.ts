@@ -37,6 +37,14 @@ export function formatMoney(n: number): string {
   });
 }
 
+/** "14:00" -> "2:00 PM". Para mostrar horas de 24h guardadas en la base como 12h. */
+export function formatHora12(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const h12 = h % 12 || 12;
+  const ampm = h >= 12 ? "PM" : "AM";
+  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+
 /**
  * Fecha LOCAL en formato YYYY-MM-DD. Ojo: NO usar d.toISOString() aquí —
  * eso da la fecha en UTC, que se adelanta o atrasa hasta varias horas
@@ -336,7 +344,9 @@ export function generateDemoFonda(form: DemoFormFonda): TenantData {
       id: uid("ped"),
       clienteNombre: "Doña Rosa",
       clienteTelefono: "3312345678",
+      fecha: todayISO(0),
       hora: "13:30",
+      horaEntrega: "14:00",
       items: [
         { id: uid("it"), platilloId: d1.id, platilloNombre: d1.nombre, cantidad: 2, nota: "Sin cebolla" },
         { id: uid("it"), platilloId: d2.id, platilloNombre: d2.nombre, cantidad: 1 },
@@ -344,11 +354,42 @@ export function generateDemoFonda(form: DemoFormFonda): TenantData {
       estado: "pendiente",
       total: d1.precio * 2 + d2.precio,
     },
+    {
+      id: uid("ped"),
+      clienteNombre: "Don Beto",
+      fecha: todayISO(0),
+      hora: "09:15",
+      items: [{ id: uid("it"), platilloId: d1.id, platilloNombre: d1.nombre, cantidad: 1 }],
+      estado: "entregado",
+      total: d1.precio,
+    },
+    {
+      id: uid("ped"),
+      clienteNombre: "Familia Torres",
+      fecha: todayISO(-1),
+      hora: "13:00",
+      items: [
+        { id: uid("it"), platilloId: d1.id, platilloNombre: d1.nombre, cantidad: 3 },
+        { id: uid("it"), platilloId: d2.id, platilloNombre: d2.nombre, cantidad: 2 },
+      ],
+      estado: "entregado",
+      total: d1.precio * 3 + d2.precio * 2,
+    },
+    {
+      id: uid("ped"),
+      clienteNombre: "Cliente de paso",
+      fecha: todayISO(-3),
+      hora: "14:20",
+      items: [{ id: uid("it"), platilloId: d2.id, platilloNombre: d2.nombre, cantidad: 2 }],
+      estado: "entregado",
+      total: d2.precio * 2,
+    },
   ];
 
   data.gastos = [
     { id: uid("exp"), categoria: "Gas", monto: 450, fecha: todayISO(-2) },
     { id: uid("exp"), categoria: "Verdura", monto: 320, fecha: todayISO(-1) },
+    { id: uid("exp"), categoria: "Carne", monto: 280, fecha: todayISO(0) },
   ];
 
   return { business, fonda: data };

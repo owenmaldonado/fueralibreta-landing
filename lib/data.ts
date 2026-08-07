@@ -273,7 +273,9 @@ const pedidoToRow = (p: FondaOrder, negocioId: string): Row => ({
   negocio_id: negocioId,
   cliente_nombre: p.clienteNombre,
   cliente_telefono: p.clienteTelefono ?? null,
+  fecha: p.fecha,
   hora: p.hora,
+  hora_entrega: p.horaEntrega ?? null,
   estado: p.estado,
   total: p.total,
 });
@@ -323,7 +325,9 @@ async function fetchFondaData(negocioId: string): Promise<FondaData> {
     id: row.id as string,
     clienteNombre: row.cliente_nombre as string,
     clienteTelefono: (row.cliente_telefono as string) ?? undefined,
+    fecha: row.fecha as string,
     hora: (row.hora as string).slice(0, 5),
+    horaEntrega: (row.hora_entrega as string | null)?.slice(0, 5) ?? undefined,
     estado: row.estado as FondaOrder["estado"],
     total: Number(row.total),
     items: itemsData

@@ -31,38 +31,47 @@ function parseFecha(fecha: string): Date {
 }
 
 /**
- * Genera los buckets de tiempo relativos a "ahora": el rango siempre termina en
- * hoy, así que al pasar la medianoche "Hoy"/"Ayer" y el mes actual se recalculan solos.
+ * Genera los buckets de tiempo relativos a "ahora": el mes/año actual se
+ * recalculan solos al pasar la medianoche. "Semanal" es la semana de
+ * calendario Lun-Dom en curso (no un rolling de 7 días), y "mensual" son
+ * siempre 4 semanas reales del mes (1-7, 8-14, 15-21, 22-fin), nunca 5 —
+ * los días 29+ de un mes largo se suman a la semana 4.
  */
 function getBuckets(rango: RangoTiempo, now: Date): Bucket[] {
   if (rango === "semanal") {
     const hoy = startOfDay(now);
+    // getDay(): 0=Dom..6=Sáb. Días desde el lunes de esta semana.
+    const diasDesdeLunes = (hoy.getDay() + 6) % 7;
+    const lunes = new Date(hoy);
+    lunes.setDate(lunes.getDate() - diasDesdeLunes);
     const dias: Date[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(hoy);
-      d.setDate(d.getDate() - i);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(lunes);
+      d.setDate(d.getDate() + i);
       dias.push(d);
-    }
-    return dias.map((d, idx) => {
-      const end = new Date(d);
-      end.setDate(end.getDate() + 1);
-      const label = idx === dias.length - 1 ? "Hoy" : idx === dias.length - 2 ? "Ayer" : DIAS[d.getDay()];
-      return { label, start: d, end };
-    });
-  }
-
-  if (rango === "mensual") {
-    const hoy = startOfDay(now);
-    const primero = new Date(now.getFullYear(), now.getMonth(), 1);
-    const dias: Date[] = [];
-    for (let d = new Date(primero); d <= hoy; d.setDate(d.getDate() + 1)) {
-      dias.push(new Date(d));
     }
     return dias.map((d) => {
       const end = new Date(d);
       end.setDate(end.getDate() + 1);
-      return { label: String(d.getDate()), start: d, end };
+      return { label: DIAS[d.getDay()], start: d, end };
     });
+  }
+
+  if (rango === "mensual") {
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const ultimoDiaMes = new Date(year, month + 1, 0).getDate();
+    const rangosDias: [number, number][] = [
+      [1, 7],
+      [8, 14],
+      [15, 21],
+      [22, ultimoDiaMes],
+    ];
+    return rangosDias.map(([dIni, dFin], idx) => ({
+      label: `Sem ${idx + 1}`,
+      start: new Date(year, month, dIni),
+      end: new Date(year, month, dFin + 1),
+    }));
   }
 
   // anual: últimos 12 meses terminando en el mes actual

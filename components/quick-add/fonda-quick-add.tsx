@@ -6,12 +6,28 @@ import { ClipboardList, UtensilsCrossed, Receipt, X } from "lucide-react";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Stepper } from "@/components/ui/stepper";
 import { Button } from "@/components/ui/button";
 import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatMoney, todayISO } from "@/lib/mock";
 import type { TenantData, OrderItem, Expense } from "@/lib/types";
+
+/** Slots de 12:00pm a 10:00pm cada 30 min, para "Hora de entrega" (opcional) del pedido. */
+function generarHorasEntrega(): { value: string; label: string }[] {
+  const slots: { value: string; label: string }[] = [];
+  for (let totalMin = 12 * 60; totalMin <= 22 * 60; totalMin += 30) {
+    const h24 = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    const value = `${String(h24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    const h12 = h24 > 12 ? h24 - 12 : h24;
+    const label = `${h12}:${String(m).padStart(2, "0")} PM`;
+    slots.push({ value, label });
+  }
+  return slots;
+}
+const HORAS_ENTREGA = generarHorasEntrega();
 
 export const FONDA_ACTIONS: FabAction[] = [
   { key: "pedido", label: "Nuevo Pedido", icon: <ClipboardList className="h-4 w-4" /> },
@@ -65,6 +81,7 @@ function NuevoPedidoForm({
 }) {
   const [clienteNombre, setClienteNombre] = React.useState("");
   const [hora] = React.useState(nowHHMM());
+  const [horaEntrega, setHoraEntrega] = React.useState("");
   const [items, setItems] = React.useState<OrderItem[]>([]);
   const [configurando, setConfigurando] = React.useState<string | null>(null);
   const [qty, setQty] = React.useState(1);
@@ -115,7 +132,9 @@ function NuevoPedidoForm({
       const pedido = {
         id: uid("ped"),
         clienteNombre: clienteNombre.trim(),
+        fecha: todayISO(0),
         hora,
+        horaEntrega: horaEntrega || undefined,
         items,
         estado: "pendiente" as const,
         total,
@@ -132,6 +151,18 @@ function NuevoPedidoForm({
         <div className="space-y-1.5">
           <Label>Cliente</Label>
           <Input autoFocus value={clienteNombre} onChange={(e) => setClienteNombre(e.target.value)} placeholder="Nombre del cliente" />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Hora de entrega (opcional)</Label>
+          <Select value={horaEntrega} onChange={(e) => setHoraEntrega(e.target.value)}>
+            <option value="">Sin hora específica</option>
+            {HORAS_ENTREGA.map((h) => (
+              <option key={h.value} value={h.value}>
+                {h.label}
+              </option>
+            ))}
+          </Select>
         </div>
 
         <div className="space-y-1.5">

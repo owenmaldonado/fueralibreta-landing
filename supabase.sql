@@ -242,11 +242,20 @@ create table if not exists fonda_pedidos (
   negocio_id uuid not null references negocios(id) on delete cascade,
   cliente_nombre text not null,
   cliente_telefono text,
+  fecha date not null default current_date,
   hora time not null default current_time,
+  hora_entrega time,
   estado text not null default 'pendiente' check (estado in ('pendiente', 'entregado')),
   total numeric(10, 2) not null default 0,
   created_at timestamptz not null default now()
 );
+
+-- Para pedidos creados antes de que existieran estas columnas: filtrar por
+-- Hoy/Ayer/Semana (ver /app/inicio, FondaDashboard) no tiene sentido sin
+-- fecha, así que a los pedidos viejos se les asume la fecha de su created_at.
+alter table fonda_pedidos add column if not exists fecha date not null default current_date;
+alter table fonda_pedidos add column if not exists hora_entrega time;
+update fonda_pedidos set fecha = created_at::date where fecha = current_date and created_at::date <> current_date;
 
 create table if not exists fonda_pedido_items (
   id uuid primary key default gen_random_uuid(),

@@ -9,7 +9,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
-import { formatMoney } from "@/lib/mock";
+import { formatMoney, formatHora12 } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 
 const FILTROS = [
@@ -60,6 +60,9 @@ export default function PedidosPage() {
                   <p className="text-sm font-semibold">
                     {p.hora} · {p.clienteNombre}
                   </p>
+                  {p.horaEntrega && (
+                    <p className="mt-0.5 text-xs font-medium text-primary">Entrega: {formatHora12(p.horaEntrega)}</p>
+                  )}
                   <ul className="mt-1.5 space-y-1 text-xs text-muted-foreground">
                     {p.items.map((it) => (
                       <li key={it.id}>
