@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2, Phone } from "lucide-react";
 
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
-import { AppleSignInButton } from "@/components/auth/apple-sign-in-button";
 import { PhoneOtpFlow } from "@/components/auth/phone-otp-flow";
 import { Button } from "@/components/ui/button";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
@@ -78,7 +77,6 @@ export default function LoginPage() {
             Entrar con Teléfono
           </Button>
           <GoogleSignInButton size="lg" variant="outline" className="w-full gap-3 bg-card" />
-          <AppleSignInButton size="lg" variant="outline" className="w-full gap-3 bg-card" />
 
           {!isSupabaseConfigured && (
             <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-xs text-destructive">

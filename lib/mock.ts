@@ -315,6 +315,18 @@ export function generateDemoBarberia(form: DemoFormBarberia): TenantData {
       hora: "11:00",
       estado: "pendiente",
     },
+    {
+      id: uid("cita"),
+      clienteId: cliente2Id,
+      clienteNombre: data.clientes[1].nombre,
+      clienteTelefono: data.clientes[1].telefono,
+      servicioId: data.servicios[0].id,
+      servicioNombre: data.servicios[0].nombre,
+      precio: data.servicios[0].precio,
+      fecha: todayISO(-1),
+      hora: "16:00",
+      estado: "listo",
+    },
   ];
 
   data.caja = [

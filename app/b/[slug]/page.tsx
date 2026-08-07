@@ -12,8 +12,10 @@ import { Chip, ChipGroup } from "@/components/ui/chip";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { getAvailableSlots } from "@/lib/agenda";
 import { fetchNegocioBySlug, fetchPublicBookingData, insertPublicCita, type PublicBookingData } from "@/lib/data";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import { readDemoPreview, writeDemoPreview } from "@/lib/demoPreview";
 import { formatMoney, todayISO, waLink } from "@/lib/mock";
-import type { Business } from "@/lib/types";
+import type { Business, Appointment } from "@/lib/types";
 
 export default function ReservaPublicaPage() {
   const params = useParams<{ slug: string }>();
@@ -31,16 +33,40 @@ export default function ReservaPublicaPage() {
   const [enviando, setEnviando] = React.useState(false);
   const [reservaError, setReservaError] = React.useState(false);
   const [confirmada, setConfirmada] = React.useState<{ servicio: string; fecha: string; hora: string } | null>(null);
+  // Negocio armado con generateDemoBarberia (/demo/barberia) vive solo en
+  // localStorage (demoPreview) hasta que alguien inicia sesión y lo activa —
+  // nunca hay una fila real en `negocios` que fetchNegocioBySlug pueda
+  // encontrar. Sin este fallback, /b/{slug} de una demo siempre mostraba
+  // "Negocio no encontrado".
+  const [modoDemo, setModoDemo] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
 
+    function cargarDesdeDemo(): boolean {
+      const demo = readDemoPreview();
+      if (demo?.business.slug !== params.slug || demo.business.tipo !== "barberia" || !demo.barberia) return false;
+      setBusiness(demo.business);
+      setBooking({
+        servicios: demo.barberia.servicios,
+        horario: demo.barberia.horario,
+        excepciones: demo.barberia.excepciones,
+        citas: demo.barberia.citas.map((c) => ({ fecha: c.fecha, hora: c.hora, estado: c.estado })),
+      });
+      setModoDemo(true);
+      return true;
+    }
+
     async function load() {
       try {
+        if (!isSupabaseConfigured) {
+          cargarDesdeDemo();
+          return;
+        }
         const biz = await fetchNegocioBySlug(params.slug);
         if (cancelled) return;
         if (!biz || biz.tipo !== "barberia") {
-          setLoading(false);
+          cargarDesdeDemo();
           return;
         }
         const data = await fetchPublicBookingData(biz.id);
@@ -49,7 +75,7 @@ export default function ReservaPublicaPage() {
         setBooking(data);
       } catch (err) {
         console.error("No se pudo cargar el negocio:", err);
-        if (!cancelled) setLoadError(true);
+        if (!cancelled && !cargarDesdeDemo()) setLoadError(true);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -88,7 +114,8 @@ export default function ReservaPublicaPage() {
     setEnviando(true);
     setReservaError(false);
     try {
-      await insertPublicCita(business!.id, {
+      const nuevaCita: Appointment = {
+        id: crypto.randomUUID(),
         clienteId: "",
         clienteNombre: nombre.trim(),
         clienteTelefono: telefono.trim(),
@@ -98,7 +125,15 @@ export default function ReservaPublicaPage() {
         fecha,
         hora,
         estado: "pendiente",
-      });
+      };
+      if (modoDemo) {
+        const demo = readDemoPreview();
+        if (demo?.barberia) {
+          writeDemoPreview({ ...demo, barberia: { ...demo.barberia, citas: [nuevaCita, ...demo.barberia.citas] } });
+        }
+      } else {
+        await insertPublicCita(business!.id, nuevaCita);
+      }
       setConfirmada({ servicio: servicio.nombre, fecha, hora });
     } catch (err) {
       console.error("No se pudo agendar la cita:", err);

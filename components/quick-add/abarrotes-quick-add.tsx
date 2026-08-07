@@ -14,11 +14,12 @@ import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatMoney, todayISO } from "@/lib/mock";
 import type { TenantData, Expense, GroceryProduct, Apartado } from "@/lib/types";
 
+// Mismo orden que NAV_ABARROTES en components/app-shell/bottom-nav.tsx: Fiados antes de Apartados.
 export const ABARROTES_ACTIONS: FabAction[] = [
   { key: "venta", label: "Nueva Venta", icon: <ShoppingCart className="h-4 w-4" /> },
   { key: "producto", label: "Producto", icon: <PackagePlus className="h-4 w-4" /> },
-  { key: "apartado", label: "Nuevo apartado", icon: <CalendarClock className="h-4 w-4" /> },
   { key: "fiado", label: "Fiado", icon: <HandCoins className="h-4 w-4" /> },
+  { key: "apartado", label: "Nuevo apartado", icon: <CalendarClock className="h-4 w-4" /> },
   { key: "gasto", label: "Gasto", icon: <Receipt className="h-4 w-4" /> },
 ];
 
