@@ -212,6 +212,12 @@ export default function ReservaPublicaPage() {
             <MessageCircle className="h-4 w-4" /> WhatsApp
           </Link>
         </Button>
+        <p className="mt-3 text-xs text-muted-foreground">
+          ¿Ya tienes cita?{" "}
+          <Link href={`/b/${params.slug}/cliente`} className="font-medium text-primary underline-offset-2 hover:underline">
+            Ver mi cita
+          </Link>
+        </p>
       </div>
 
       <div className="mx-auto flex max-w-sm flex-col gap-6 px-6 py-6">

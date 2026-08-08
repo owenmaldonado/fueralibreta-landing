@@ -44,12 +44,13 @@ export default function GastosPage() {
   // Fonda: la gráfica ya no es solo gastos — se unifica con ventas (pedidos)
   // para comparar las dos series en el mismo periodo. Abarrotes ya tiene su
   // propia pantalla de ventas (Inventario > Ventas), así que aquí se queda
-  // igual que antes: solo gastos.
-  const pedidos = session.fonda?.pedidos ?? [];
-  const ventasTotal = pedidos.reduce((acc, p) => acc + p.total, 0);
+  // igual que antes: solo gastos. Un pedido solo cuenta como venta una vez
+  // "entregado" — mientras está pendiente todavía no es dinero cobrado.
+  const pedidosEntregados = (session.fonda?.pedidos ?? []).filter((p) => p.estado === "entregado");
+  const ventasTotal = pedidosEntregados.reduce((acc, p) => acc + p.total, 0);
   const serieUnica = aggregateByRange(gastos, rango, (g) => g.fecha, (g) => g.monto);
   const serieDoble = aggregateTwoByRange(
-    [...pedidos.map((p) => ({ fecha: p.fecha, a: p.total, b: 0 })), ...gastos.map((g) => ({ fecha: g.fecha, a: 0, b: g.monto }))],
+    [...pedidosEntregados.map((p) => ({ fecha: p.fecha, a: p.total, b: 0 })), ...gastos.map((g) => ({ fecha: g.fecha, a: 0, b: g.monto }))],
     rango,
     (x) => x.fecha,
     (x) => ({ a: x.a, b: x.b })

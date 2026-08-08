@@ -54,7 +54,8 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
     .sort((a, b) => a.hora.localeCompare(b.hora));
   const gastosPeriodo = data.gastos.filter((g) => g.fecha >= desde && g.fecha <= hasta);
 
-  const ventas = pedidosPeriodo.reduce((acc, p) => acc + p.total, 0);
+  // Solo cuenta como venta un pedido ya entregado, no uno pendiente.
+  const ventas = pedidosPeriodo.filter((p) => p.estado === "entregado").reduce((acc, p) => acc + p.total, 0);
   const gastos = gastosPeriodo.reduce((acc, g) => acc + g.monto, 0);
   const pendientesPeriodo = pedidosPeriodo.filter((p) => p.estado === "pendiente");
 

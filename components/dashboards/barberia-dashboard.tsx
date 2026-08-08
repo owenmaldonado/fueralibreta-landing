@@ -20,7 +20,7 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
     .map((c) => ({ ...c, ...statsVisitasCliente(data.citas, c.id) }))
     .filter((c) => {
       const d = daysSince(c.ultimaVisita);
-      return d !== null && d >= 30;
+      return d !== null && d >= 28;
     });
 
   const hoyMMDD = new Date().toISOString().slice(5, 10);

@@ -12,22 +12,8 @@ import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
-import { formatMoney, todayISO, waLink } from "@/lib/mock";
+import { formatMoney, mensajeRecordatorioCita, todayISO, waLink } from "@/lib/mock";
 import type { Appointment, AppointmentStatus, BarberiaData } from "@/lib/types";
-
-/**
- * "Hola {nombre}! Te esperamos en tu cita de {servicio} hoy a las {hora} en
- * {nombre_barberia}. ¡Nos vemos pronto! ✨" — con una diferencia: si la cita
- * NO es hoy, dice la fecha en vez de "hoy" (un recordatorio real puede
- * mandarse un día antes, y decir "hoy" para una cita de mañana confundiría).
- */
-function mensajeRecordatorio(c: Appointment, negocioNombre: string): string {
-  const cuando =
-    c.fecha === todayISO(0)
-      ? "hoy"
-      : `el ${new Date(`${c.fecha}T00:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}`;
-  return `Hola ${c.clienteNombre}! Te esperamos en tu cita de ${c.servicioNombre} ${cuando} a las ${c.hora} en ${negocioNombre}. ¡Nos vemos pronto! ✨`;
-}
 
 type Modo = "hoy" | "manana" | "semanal" | "fecha";
 
@@ -73,7 +59,7 @@ export default function AgendaPage() {
       : modo === "manana"
         ? "Mañana"
         : modo === "semanal"
-          ? "Próximos 7 días"
+          ? "Esta semana (lun-dom)"
           : new Date(`${fecha}T00:00:00`).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "short" });
 
   return (
@@ -148,7 +134,12 @@ function SemanaView({
   onMover: (c: Appointment) => void;
   negocioNombre: string;
 }) {
-  const dias = Array.from({ length: 7 }, (_, i) => todayISO(i));
+  // Lunes a domingo de la semana de calendario en curso (misma definición
+  // que "Semanal" en la gráfica de Gastos/Caja), no un rolling de 7 días
+  // desde hoy — así el lunes-miércoles ya pasados de esta semana no
+  // desaparecen solo porque "hoy" cae a mitad de semana.
+  const diasDesdeLunes = (new Date().getDay() + 6) % 7;
+  const dias = Array.from({ length: 7 }, (_, i) => todayISO(i - diasDesdeLunes));
   const porDia = dias.map((fecha) => ({
     fecha,
     citas: data.citas.filter((c) => c.fecha === fecha && c.estado !== "cancelada").sort((a, b) => a.hora.localeCompare(b.hora)),
@@ -158,7 +149,7 @@ function SemanaView({
   return (
     <div className="flex flex-col gap-5 px-4 pb-6">
       {!hayCitas ? (
-        <EmptyState texto="Sin citas en los próximos 7 días" />
+        <EmptyState texto="Sin citas esta semana" />
       ) : (
         porDia
           .filter((d) => d.citas.length > 0)
@@ -221,7 +212,7 @@ function CitaRow({
                 },
                 {
                   label: "Enviar recordatorio",
-                  onClick: () => window.open(waLink(c.clienteTelefono, mensajeRecordatorio(c, negocioNombre)), "_blank"),
+                  onClick: () => window.open(waLink(c.clienteTelefono, mensajeRecordatorioCita(c, negocioNombre)), "_blank"),
                 },
               ]
             : []),

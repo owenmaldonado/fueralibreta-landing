@@ -739,6 +739,35 @@ export async function insertPublicCita(negocioId: string, cita: Omit<Appointment
   if (error) throw error;
 }
 
+export interface CitaCliente {
+  clienteNombre: string;
+  servicioNombre: string;
+  precio: number;
+  fecha: string;
+  hora: string;
+}
+
+/**
+ * Citas pendientes de un cliente en /b/[slug]/cliente, buscadas por su
+ * propio teléfono vía get_citas_por_telefono (security definer) — mismo
+ * modelo que findOrCreateBarberiaCliente: sin login, el teléfono exacto es
+ * la prueba de que son sus propias citas.
+ */
+export async function fetchCitasByTelefono(negocioId: string, telefono: string): Promise<CitaCliente[]> {
+  const { data, error } = await supabase.rpc("get_citas_por_telefono", {
+    p_negocio_id: negocioId,
+    p_telefono: telefono,
+  });
+  if (error) throw error;
+  return (data ?? []).map((r: Record<string, unknown>) => ({
+    clienteNombre: r.cliente_nombre as string,
+    servicioNombre: r.servicio_nombre as string,
+    precio: Number(r.precio),
+    fecha: r.fecha as string,
+    hora: (r.hora as string).slice(0, 5),
+  }));
+}
+
 /** Compara el estado anterior y el nuevo de la sesión y aplica los cambios en Supabase. */
 export async function syncTenantDiff(prev: TenantData, next: TenantData): Promise<void> {
   const negocioId = next.business.id;

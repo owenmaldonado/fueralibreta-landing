@@ -260,6 +260,28 @@ $$;
 
 grant execute on function find_or_create_barberia_cliente(uuid, text, text) to anon, authenticated;
 
+-- Deja que un cliente sin login vea sus propias citas pendientes en
+-- /b/[slug]/cliente, buscando solo por su teléfono (mismo modelo de
+-- "seguridad" que find_or_create_barberia_cliente: no hay login, el
+-- teléfono exacto es la prueba de que es su propio registro). security
+-- definer: corre con privilegios elevados pero solo devuelve las citas de
+-- ESE teléfono en ESE negocio, nunca el directorio completo de clientes.
+create or replace function get_citas_por_telefono(p_negocio_id uuid, p_telefono text)
+returns table (cliente_nombre text, servicio_nombre text, precio numeric, fecha date, hora time)
+language sql
+security definer
+set search_path = public
+as $$
+  select cliente_nombre, servicio_nombre, precio, fecha, hora
+  from barberia_citas
+  where negocio_id = p_negocio_id
+    and cliente_telefono = p_telefono
+    and estado = 'pendiente'
+  order by fecha asc, hora asc;
+$$;
+
+grant execute on function get_citas_por_telefono(uuid, text) to anon, authenticated;
+
 -- Para que el panel del barbero (Agenda) vea una cita nueva de /b/[slug] al
 -- instante sin recargar la página: Supabase Realtime necesita que la tabla
 -- esté en la publicación supabase_realtime. "add table" sin guarda truena si

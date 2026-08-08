@@ -106,6 +106,26 @@ export function waLink(telefono: string, mensaje: string): string {
   return `https://wa.me/${digits}?text=${encodeURIComponent(mensaje)}`;
 }
 
+/**
+ * "Hola {nombre}! Te esperamos en tu cita de {servicio} hoy a las {hora} en
+ * {nombre_barberia}. ¡Nos vemos pronto! ✨" — con una diferencia: si la cita
+ * NO es hoy, dice la fecha en vez de "hoy" (un recordatorio real puede
+ * mandarse un día antes, y decir "hoy" para una cita de mañana confundiría).
+ * Comparte esta misma redacción la Agenda del dueño (para mandarlo por
+ * WhatsApp) y la vista pública /b/[slug]/cliente (para que el cliente la
+ * vea sin que el dueño tenga que enviarla).
+ */
+export function mensajeRecordatorioCita(
+  c: { clienteNombre: string; servicioNombre: string; fecha: string; hora: string },
+  negocioNombre: string
+): string {
+  const cuando =
+    c.fecha === todayISO(0)
+      ? "hoy"
+      : `el ${new Date(`${c.fecha}T00:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}`;
+  return `Hola ${c.clienteNombre}! Te esperamos en tu cita de ${c.servicioNombre} ${cuando} a las ${c.hora} en ${negocioNombre}. ¡Nos vemos pronto! ✨`;
+}
+
 export const NUMERO_CONTACTO = "3329098631";
 export const WA_CONTACTO = waLink(NUMERO_CONTACTO, "Hola, quiero información de Fuera Libreta");
 
@@ -316,6 +336,11 @@ export function generateDemoBarberia(form: DemoFormBarberia): TenantData {
       estado: "pendiente",
     },
     {
+      // statsVisitasCliente() calcula "última visita" a partir de las citas
+      // "listo" reales, no del campo BarberClient.ultimaVisita seed de
+      // arriba (que solo se usa como valor inicial) — así que para que la
+      // alerta de "28 días sin venir" funcione, esta cita "listo" tiene que
+      // caer exactamente 28 días atrás, no un día cualquiera.
       id: uid("cita"),
       clienteId: cliente2Id,
       clienteNombre: data.clientes[1].nombre,
@@ -323,7 +348,7 @@ export function generateDemoBarberia(form: DemoFormBarberia): TenantData {
       servicioId: data.servicios[0].id,
       servicioNombre: data.servicios[0].nombre,
       precio: data.servicios[0].precio,
-      fecha: todayISO(-1),
+      fecha: todayISO(-28),
       hora: "16:00",
       estado: "listo",
     },
