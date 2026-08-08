@@ -140,6 +140,8 @@ export interface GroceryProduct {
   minimo: number;
   controlCaducidad: boolean;
   unidad: "pieza" | "kg" | "granel";
+  /** Emoji/ícono elegido a mano para este producto (se ve en el grid de Nueva Venta). Si no hay, se usa un default por categoría. */
+  emoji?: string;
   lotes?: { cantidad: number; fecha: string }[];
 }
 

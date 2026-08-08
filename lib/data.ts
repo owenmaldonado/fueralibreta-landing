@@ -362,6 +362,7 @@ const productoAbarrotesToRow = (p: GroceryProduct, negocioId: string): Row => ({
   minimo: p.minimo,
   control_caducidad: p.controlCaducidad,
   unidad: p.unidad,
+  emoji: p.emoji || null,
 });
 const loteToRow = (l: { cantidad: number; fecha: string }, productoId: string): Row => ({
   producto_id: productoId,
@@ -467,6 +468,7 @@ async function fetchAbarrotesData(negocioId: string): Promise<AbarrotesData> {
     minimo: row.minimo as number,
     controlCaducidad: row.control_caducidad as boolean,
     unidad: ((row.unidad as string) ?? "pieza") as GroceryProduct["unidad"],
+    emoji: (row.emoji as string) || undefined,
     lotes: lotesData
       .filter((l) => l.producto_id === row.id)
       .map((l) => ({ cantidad: l.cantidad as number, fecha: l.fecha_caducidad as string })),

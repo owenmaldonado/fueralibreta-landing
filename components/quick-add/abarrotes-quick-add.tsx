@@ -58,6 +58,7 @@ export function AbarrotesQuickAdd({ active, onClose, session, update }: Props) {
 function NuevoProductoForm({ onClose, update }: { onClose: () => void; update: Props["update"] }) {
   const [nombre, setNombre] = React.useState("");
   const [categoria, setCategoria] = React.useState("");
+  const [emoji, setEmoji] = React.useState("");
   const [costo, setCosto] = React.useState("");
   const [precio, setPrecio] = React.useState("");
   const [unidad, setUnidad] = React.useState<GroceryProduct["unidad"]>("pieza");
@@ -77,6 +78,7 @@ function NuevoProductoForm({ onClose, update }: { onClose: () => void; update: P
         nombre: nombre.trim(),
         codigo: Math.floor(1000000000 + Math.random() * 8999999999).toString(),
         categoria: categoria.trim() || "General",
+        emoji: emoji.trim() || undefined,
         costo: Number(costo),
         precio: Number(precio),
         unidad,
@@ -101,6 +103,10 @@ function NuevoProductoForm({ onClose, update }: { onClose: () => void; update: P
         <div className="space-y-1.5">
           <Label>Categoría</Label>
           <Input value={categoria} onChange={(e) => setCategoria(e.target.value)} placeholder="Ej. Botanas" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Emoji / Icono</Label>
+          <Input value={emoji} onChange={(e) => setEmoji(e.target.value)} placeholder="Ej. 🥤 (opcional, si no hay se usa uno por categoría)" maxLength={4} />
         </div>
         <div className="space-y-1.5">
           <Label>Se vende por</Label>

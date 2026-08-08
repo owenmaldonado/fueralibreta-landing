@@ -337,6 +337,7 @@ function ProductoForm({
 }) {
   const [nombre, setNombre] = React.useState(producto?.nombre ?? "");
   const [categoria, setCategoria] = React.useState(producto?.categoria ?? "");
+  const [emoji, setEmoji] = React.useState(producto?.emoji ?? "");
   const [costo, setCosto] = React.useState(String(producto?.costo ?? ""));
   const [precio, setPrecio] = React.useState(String(producto?.precio ?? ""));
   const [unidad, setUnidad] = React.useState<GroceryProduct["unidad"]>(producto?.unidad ?? "pieza");
@@ -354,6 +355,7 @@ function ProductoForm({
       const datos = {
         nombre: nombre.trim(),
         categoria: categoria.trim() || "General",
+        emoji: emoji.trim() || undefined,
         costo: Number(costo) || 0,
         precio: Number(precio),
         unidad,
@@ -390,6 +392,10 @@ function ProductoForm({
         <div className="space-y-1.5">
           <Label>Categoría</Label>
           <Input value={categoria} onChange={(e) => setCategoria(e.target.value)} placeholder="Ej. Botanas" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Emoji / Icono</Label>
+          <Input value={emoji} onChange={(e) => setEmoji(e.target.value)} placeholder="Ej. 🥤 (opcional, si no hay se usa uno por categoría)" maxLength={4} />
         </div>
         <div className="space-y-1.5">
           <Label>Se vende por</Label>

@@ -29,6 +29,7 @@ const EMOJI_POR_CATEGORIA: Record<string, string> = {
 };
 
 function emojiProducto(p: GroceryProduct): string {
+  if (p.emoji) return p.emoji;
   if (p.unidad !== "pieza") return "⚖️";
   return EMOJI_POR_CATEGORIA[p.categoria] ?? "📦";
 }
@@ -145,6 +146,14 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
   function cambiarCantidad(index: number, cantidad: number) {
     setCart((prev) => {
       if (cantidad <= 0) return prev.filter((_, i) => i !== index);
+      const linea = prev[index];
+      const max = stockDisponible(linea.productoId);
+      return prev.map((l, i) => (i === index ? { ...l, cantidad: Math.min(cantidad, max) } : l));
+    });
+  }
+
+  function cambiarCantidadDirecta(index: number, cantidad: number) {
+    setCart((prev) => {
       const linea = prev[index];
       const max = stockDisponible(linea.productoId);
       return prev.map((l, i) => (i === index ? { ...l, cantidad: Math.min(cantidad, max) } : l));
@@ -322,15 +331,7 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
                         </TableCell>
                         <TableCell>
                           {esPeso ? (
-                            <Input
-                              type="number"
-                              inputMode="decimal"
-                              step="0.001"
-                              min="0"
-                              value={l.cantidad}
-                              onChange={(e) => cambiarCantidad(i, Number(e.target.value) || 0)}
-                              className="h-8 w-20 px-2 text-center text-xs"
-                            />
+                            <CantidadPesoInput cantidad={l.cantidad} onChange={(n) => cambiarCantidadDirecta(i, n)} />
                           ) : (
                             <div className="flex items-center justify-center gap-1">
                               <button
@@ -392,6 +393,45 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
       <VentaRapidaDialog open={rapidaOpen} onClose={() => setRapidaOpen(false)} onAgregar={agregarRapido} />
     </div>,
     document.body
+  );
+}
+
+/** Input de cantidad para productos por peso (kg/granel): permite borrar todo
+ * y quedar en blanco mientras el cliente escribe, sin quitar la línea del
+ * carrito ni forzarlo con flechitas de type="number". Solo propaga hacia
+ * arriba números válidos (>0); al perder el foco, si quedó vacío o inválido,
+ * regresa al último valor válido. */
+function CantidadPesoInput({ cantidad, onChange }: { cantidad: number; onChange: (n: number) => void }) {
+  const [texto, setTexto] = React.useState(String(cantidad));
+  const [enfocado, setEnfocado] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!enfocado) setTexto(String(cantidad));
+  }, [cantidad, enfocado]);
+
+  function handleChange(v: string) {
+    setTexto(v);
+    const n = Number(v);
+    if (v.trim() !== "" && !Number.isNaN(n) && n > 0) onChange(n);
+  }
+
+  function handleBlur() {
+    setEnfocado(false);
+    const n = Number(texto);
+    if (texto.trim() === "" || Number.isNaN(n) || n <= 0) setTexto(String(cantidad));
+  }
+
+  return (
+    <Input
+      type="text"
+      inputMode="numeric"
+      placeholder=""
+      value={texto}
+      onFocus={() => setEnfocado(true)}
+      onChange={(e) => handleChange(e.target.value)}
+      onBlur={handleBlur}
+      className="h-8 w-20 px-2 text-center text-xs"
+    />
   );
 }
 

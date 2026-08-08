@@ -372,6 +372,10 @@ create index if not exists abarrotes_productos_negocio_codigo_idx on abarrotes_p
 alter table abarrotes_productos add column if not exists unidad text not null default 'pieza';
 alter table abarrotes_productos alter column stock type numeric(10, 3);
 
+-- Emoji/ícono elegido a mano por producto (se ve en el grid de Nueva Venta);
+-- sin valor, el frontend usa un default por categoría.
+alter table abarrotes_productos add column if not exists emoji text;
+
 create table if not exists abarrotes_lotes (
   id uuid primary key default gen_random_uuid(),
   producto_id uuid not null references abarrotes_productos(id) on delete cascade,
