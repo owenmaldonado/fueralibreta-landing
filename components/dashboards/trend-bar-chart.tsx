@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 
+import { useConsent } from "@/lib/consent";
 import { formatMoney } from "@/lib/mock";
 
 const GRID = "hsl(220 10% 22%)";
@@ -23,7 +24,17 @@ interface TrendBarChartProps {
 
 /** Gráfica de barras compacta, tema oscuro, para tendencias semanal/mensual/anual. */
 export function TrendBarChart({ data, bars, emptyText = "Sin datos en este periodo" }: TrendBarChartProps) {
+  const consent = useConsent();
   const total = data.reduce((acc, row) => acc + bars.reduce((a, b) => a + Number(row[b.key] ?? 0), 0), 0);
+
+  if (consent === "rejected") {
+    return (
+      <div className="flex h-48 flex-col items-center justify-center gap-1 rounded-xl border border-border bg-card px-6 text-center">
+        <p className="text-sm text-muted-foreground">Gráficas deshabilitadas</p>
+        <p className="text-xs text-muted-foreground">Acepta el aviso de cookies para verlas.</p>
+      </div>
+    );
+  }
 
   if (total === 0) {
     return (
