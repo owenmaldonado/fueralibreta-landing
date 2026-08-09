@@ -49,6 +49,19 @@ export const citaLookupSchema = z.object({
   telefono: telefonoSchema,
 });
 
+/** Valores válidos de `leads.tipo_negocio` (ver supabase.sql). */
+export const LEAD_TIPOS = ["fonda", "abarrotes", "barberia", "otro"] as const;
+export type LeadTipoNegocio = (typeof LEAD_TIPOS)[number];
+
+/** El selector del formulario manda una etiqueta en español ("Barbería"...); esto la normaliza al enum de `leads`. */
+export function normalizeTipoNegocio(negocio: string): LeadTipoNegocio {
+  const needle = negocio.trim().toLowerCase();
+  if (needle.startsWith("barber")) return "barberia";
+  if (needle.startsWith("fond")) return "fonda";
+  if (needle.startsWith("abarrote")) return "abarrotes";
+  return "otro";
+}
+
 /** Body de POST /api/public/contacto (formulario de la landing). */
 export const contactoSchema = z.object({
   nombre: nombreSchema,

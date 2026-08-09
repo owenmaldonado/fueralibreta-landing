@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { BusinessType } from "./types";
+import type { LeadTipoNegocio } from "./validation";
 
 // ============================================================================
 // Datos del panel /admin. Todo esto corre con la sesión normal del admin
@@ -39,6 +40,7 @@ export interface AdminNegocio {
   tipo: BusinessType;
   ownerId: string | null;
   ownerEmail: string | null;
+  ownerPhone: string;
   isActive: boolean;
   createdAt: string;
 }
@@ -53,6 +55,7 @@ export interface AdminMetrics {
 export interface AdminOverview {
   profiles: AdminProfile[];
   negocios: AdminNegocio[];
+  leads: AdminLead[];
   metrics: AdminMetrics;
 }
 
@@ -67,6 +70,9 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
   for (const r of [profilesRes, negociosRes, citasRes, pedidosRes, ventasRes]) {
     if (r.error) throw r.error;
   }
+  // No tumba el panel completo si la migración de `leads` (PR #3) todavía no
+  // corrió en este proyecto de Supabase: el tab de Leads simplemente queda en 0.
+  const leads = await fetchLeads().catch(() => []);
 
   const profilesById = new Map((profilesRes.data ?? []).map((p) => [p.id as string, p]));
   const negociosByOwner = new Map<string, number>();
@@ -93,6 +99,7 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
     tipo: n.tipo,
     ownerId: n.owner_id,
     ownerEmail: n.owner_id ? (profilesById.get(n.owner_id)?.email ?? null) : null,
+    ownerPhone: n.telefono ?? "",
     isActive: n.is_active,
     createdAt: n.created_at,
   }));
@@ -104,6 +111,7 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
   return {
     profiles,
     negocios,
+    leads,
     metrics: {
       totalUsuarios: profiles.length,
       totalNegocios: negocios.length,
@@ -137,29 +145,83 @@ export interface UserDetailNegocio {
   stats: { label: string; value: number }[];
 }
 
-async function computeNegocioStats(negocioId: string, tipo: BusinessType): Promise<{ label: string; value: number }[]> {
+interface NegocioExtra {
+  stats: { label: string; value: number }[];
+  ingresosTotales: number;
+  ultimaActividad: string | null;
+}
+
+function maxFecha(...fechas: (string | null | undefined)[]): string | null {
+  let max: string | null = null;
+  for (const f of fechas) {
+    if (f && (!max || f > max)) max = f;
+  }
+  return max;
+}
+
+/** No hay columna `updated_at` en el esquema: "última actividad" se aproxima con el created_at/fecha más reciente entre las tablas del negocio. */
+async function computeNegocioExtra(negocioId: string, tipo: BusinessType): Promise<NegocioExtra> {
   if (tipo === "barberia") {
-    const [clientes, citas] = await Promise.all([
+    const [clientes, citas, ultimaCita, caja] = await Promise.all([
       supabase.from("barberia_clientes").select("*", { count: "exact", head: true }).eq("negocio_id", negocioId),
       supabase.from("barberia_citas").select("*", { count: "exact", head: true }).eq("negocio_id", negocioId),
+      supabase
+        .from("barberia_citas")
+        .select("created_at")
+        .eq("negocio_id", negocioId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase.from("barberia_caja").select("monto,tipo,fecha").eq("negocio_id", negocioId),
     ]);
-    return [
-      { label: "Clientes", value: clientes.count ?? 0 },
-      { label: "Citas", value: citas.count ?? 0 },
-    ];
+    const ventasCaja = (caja.data ?? []).filter((c) => c.tipo === "venta");
+    return {
+      stats: [
+        { label: "Clientes", value: clientes.count ?? 0 },
+        { label: "Citas", value: citas.count ?? 0 },
+      ],
+      ingresosTotales: ventasCaja.reduce((sum, c) => sum + Number(c.monto), 0),
+      ultimaActividad: maxFecha(ultimaCita.data?.created_at, ...(caja.data ?? []).map((c) => c.fecha)),
+    };
   }
   if (tipo === "fonda") {
-    const pedidos = await supabase.from("fonda_pedidos").select("*", { count: "exact", head: true }).eq("negocio_id", negocioId);
-    return [{ label: "Pedidos", value: pedidos.count ?? 0 }];
+    const [pedidos, entregados, ultimoPedido] = await Promise.all([
+      supabase.from("fonda_pedidos").select("*", { count: "exact", head: true }).eq("negocio_id", negocioId),
+      supabase.from("fonda_pedidos").select("total").eq("negocio_id", negocioId).eq("estado", "entregado"),
+      supabase
+        .from("fonda_pedidos")
+        .select("created_at")
+        .eq("negocio_id", negocioId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    return {
+      stats: [{ label: "Pedidos", value: pedidos.count ?? 0 }],
+      ingresosTotales: (entregados.data ?? []).reduce((sum, p) => sum + Number(p.total), 0),
+      ultimaActividad: ultimoPedido.data?.created_at ?? null,
+    };
   }
-  const [productos, ventas] = await Promise.all([
+  const [productos, ventasCount, ventas, ultimaVenta] = await Promise.all([
     supabase.from("abarrotes_productos").select("*", { count: "exact", head: true }).eq("negocio_id", negocioId),
     supabase.from("abarrotes_ventas").select("*", { count: "exact", head: true }).eq("negocio_id", negocioId),
+    supabase.from("abarrotes_ventas").select("total").eq("negocio_id", negocioId),
+    supabase
+      .from("abarrotes_ventas")
+      .select("fecha")
+      .eq("negocio_id", negocioId)
+      .order("fecha", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
-  return [
-    { label: "Productos", value: productos.count ?? 0 },
-    { label: "Ventas", value: ventas.count ?? 0 },
-  ];
+  return {
+    stats: [
+      { label: "Productos", value: productos.count ?? 0 },
+      { label: "Ventas", value: ventasCount.count ?? 0 },
+    ],
+    ingresosTotales: (ventas.data ?? []).reduce((sum, v) => sum + Number(v.total), 0),
+    ultimaActividad: ultimaVenta.data?.fecha ?? null,
+  };
 }
 
 export async function fetchUserDetail(
@@ -174,13 +236,14 @@ export async function fetchUserDetail(
 
   const negocios: UserDetailNegocio[] = [];
   for (const n of negociosRows ?? []) {
+    const extra = await computeNegocioExtra(n.id, n.tipo);
     negocios.push({
       id: n.id,
       nombre: n.nombre,
       tipo: n.tipo,
       isActive: n.is_active,
       createdAt: n.created_at,
-      stats: await computeNegocioStats(n.id, n.tipo),
+      stats: extra.stats,
     });
   }
 
@@ -202,10 +265,13 @@ export async function fetchUserDetail(
 
 export interface NegocioDetail extends AdminNegocio {
   stats: { label: string; value: number }[];
+  ingresosTotales: number;
+  ultimaActividad: string | null;
 }
 
 export async function fetchNegocioDetail(negocio: AdminNegocio): Promise<NegocioDetail> {
-  return { ...negocio, stats: await computeNegocioStats(negocio.id, negocio.tipo) };
+  const extra = await computeNegocioExtra(negocio.id, negocio.tipo);
+  return { ...negocio, ...extra };
 }
 
 export async function deleteNegocio(negocioId: string): Promise<void> {
@@ -252,4 +318,56 @@ export async function impersonateUser(userId: string): Promise<string> {
   const body = await parseJsonResponse(res);
   if (!res.ok || !body.url) throw new Error(body.error ?? "No se pudo generar el acceso.");
   return body.url;
+}
+
+// ============================================================================
+// Leads (cajita de contacto de la landing) — tab "Leads" de /admin.
+// ============================================================================
+
+export type LeadEstado = "nuevo" | "contactado" | "convertido";
+
+export interface AdminLead {
+  id: string;
+  nombre: string;
+  whatsapp: string;
+  tipoNegocio: LeadTipoNegocio;
+  mensaje: string | null;
+  origen: string;
+  estado: LeadEstado;
+  createdAt: string;
+}
+
+export async function fetchLeads(): Promise<AdminLead[]> {
+  const { data, error } = await supabase.from("leads").select("*").order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((l) => ({
+    id: l.id,
+    nombre: l.nombre,
+    whatsapp: l.whatsapp,
+    tipoNegocio: l.tipo_negocio,
+    mensaje: l.mensaje,
+    origen: l.origen,
+    estado: l.estado,
+    createdAt: l.created_at,
+  }));
+}
+
+export async function updateLeadEstado(leadId: string, estado: LeadEstado): Promise<void> {
+  const { error } = await supabase.from("leads").update({ estado }).eq("id", leadId);
+  if (error) throw error;
+}
+
+// ============================================================================
+// Cumplimiento LFPDPPP (aviso de privacidad / derechos ARCO) — placeholder.
+// El negocio de demo/piloto todavía no tiene un registro de consentimientos
+// por cliente ni un flujo de solicitud ARCO; esto documenta el contrato que
+// va a necesitar ese endpoint real (Ver consentimientos / Borrar datos ARCO
+// en el modal de negocio) sin fingir que ya existe.
+// ============================================================================
+
+export async function prepareArcoRequest(_negocioId: string): Promise<{ ready: false; message: string }> {
+  return {
+    ready: false,
+    message: "Consentimientos y solicitudes ARCO: función en preparación, todavía no hay endpoint real.",
+  };
 }

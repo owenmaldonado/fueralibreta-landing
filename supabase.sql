@@ -928,6 +928,44 @@ begin
 end $$;
 
 -- ============================================================================
+-- LEADS (PR #3) — captura de la cajita de contacto de la landing, gestionada
+-- desde el panel super-admin (tab "Leads"). Reemplaza el destino de escritura
+-- de /api/public/contacto (antes insertaba en `contactos`); esa tabla se deja
+-- intacta para no perder el historial ya capturado.
+-- ============================================================================
+
+create table if not exists leads (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null check (char_length(nombre) <= 50 and nombre !~ '[<>]'),
+  whatsapp text not null check (whatsapp ~ '^[0-9]{7,15}$'),
+  tipo_negocio text not null check (tipo_negocio in ('fonda', 'abarrotes', 'barberia', 'otro')),
+  mensaje text check (mensaje is null or (char_length(mensaje) <= 1000 and mensaje !~ '[<>]')),
+  origen text not null default 'landing',
+  estado text not null default 'nuevo' check (estado in ('nuevo', 'contactado', 'convertido')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists leads_created_at_idx on leads(created_at desc);
+create index if not exists leads_tipo_negocio_idx on leads(tipo_negocio);
+
+alter table leads enable row level security;
+
+-- Público (landing sin login): solo puede insertar su propio lead. El rate
+-- limit real vive en la app (checkRateLimit en /api/public/contacto), no en
+-- Postgres — esta policy únicamente evita que anon pueda leer, editar o
+-- borrar leads ajenos.
+drop policy if exists "leads_public_insert" on leads;
+create policy "leads_public_insert" on leads for insert
+  to anon
+  with check (estado = 'nuevo' and origen = 'landing');
+
+-- Solo el super-admin (is_admin(), que hoy es exclusivamente
+-- owenxmaldonado100@gmail.com vía profiles.role='admin') puede ver, crear,
+-- editar o borrar leads. Mismo patrón que el resto de las tablas *_admin_all.
+drop policy if exists "leads_admin_all" on leads;
+create policy "leads_admin_all" on leads for all using (is_admin()) with check (is_admin());
+
+-- ============================================================================
 -- Red de seguridad final: si corriste este script completo (tablas nuevas,
 -- columnas nuevas, policies nuevas), fuerza a PostgREST a recargar su cache
 -- de esquema ya. Sin esto, a veces sigue devolviendo "does not exist" para
