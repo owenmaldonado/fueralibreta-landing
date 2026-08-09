@@ -3,50 +3,76 @@
 import * as React from "react";
 import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
-
-const CONSENT_KEY = "consent";
+import { readConsent, writeConsent } from "@/lib/consent";
 
 /**
- * Aviso de cookies tipo toast que aparece la primera vez que alguien visita
- * el sitio. Se guarda `localStorage.consent = "true"` para no volver a
- * mostrarse una vez aceptado. Montado en app/layout.tsx para vivir en toda
- * la web.
+ * Modal de cookies obligatorio: cubre toda la pantalla (overlay con
+ * backdrop-blur) y bloquea el scroll del body hasta que el usuario acepta.
+ * No se cierra con click afuera, solo con el botón. Montado una sola vez
+ * en app/layout.tsx.
  */
 export function ConsentBanner() {
   const [visible, setVisible] = React.useState(false);
 
   React.useEffect(() => {
-    try {
-      if (window.localStorage.getItem(CONSENT_KEY) !== "true") setVisible(true);
-    } catch {
-      setVisible(true);
-    }
+    setVisible(readConsent() !== "accepted");
   }, []);
 
+  React.useEffect(() => {
+    document.body.style.overflow = visible ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [visible]);
+
   function aceptar() {
-    try {
-      window.localStorage.setItem(CONSENT_KEY, "true");
-    } catch {
-      // localStorage no disponible (modo privado, etc.): igual ocultamos el banner.
-    }
+    writeConsent("accepted");
     setVisible(false);
   }
 
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-4 z-[100] flex justify-center px-4">
-      <div className="flex w-full max-w-md flex-col items-center gap-3 rounded-xl border border-border/60 bg-card/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:justify-between">
-        <p className="text-center text-xs text-muted-foreground sm:text-left">
-          Usamos cookies para que funcione la app.{" "}
-          <Link href="/cookies" className="underline underline-offset-2 hover:text-foreground">
-            Política de Cookies
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="consent-banner-title"
+    >
+      <div className="w-[90%] max-w-md rounded-2xl bg-white p-8 text-center text-black shadow-2xl">
+        <h2 id="consent-banner-title" className="text-2xl font-bold tracking-tight">
+          🍪 Usamos Cookies
+        </h2>
+        <p className="mt-4 text-sm leading-relaxed text-black/80">
+          Usamos cookies necesarias para que Fuera Libreta funcione. Al
+          continuar aceptas nuestro{" "}
+          <Link
+            href="/aviso-privacidad"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-amber-700 underline underline-offset-2"
+          >
+            Aviso de Privacidad
+          </Link>{" "}
+          y{" "}
+          <Link
+            href="/terminos"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-amber-700 underline underline-offset-2"
+          >
+            Términos
           </Link>
+          .
         </p>
-        <Button size="sm" onClick={aceptar} className="shrink-0">
-          Aceptar
-        </Button>
+
+        <button
+          type="button"
+          onClick={aceptar}
+          className="mt-6 h-12 w-full rounded-md bg-black text-base font-bold text-white transition-colors hover:bg-black/85"
+        >
+          Aceptar y continuar
+        </button>
       </div>
     </div>
   );
