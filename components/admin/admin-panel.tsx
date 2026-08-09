@@ -398,7 +398,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
       <ConfirmDeleteDialog
         open={!!deleteNegocioTarget}
         title="Eliminar negocio"
-        description={`Esto borra ${deleteNegocioTarget?.nombre ?? "este negocio"} y todos sus datos (clientes, citas, ventas...). No se puede deshacer.`}
+        description={`¿Borrar todo? Esto cumple con el derecho de cancelación (LFPDPPP / ARCO) del dueño: borra ${deleteNegocioTarget?.nombre ?? "este negocio"} y en cascada todos sus datos (clientes, citas, ventas...). No se puede deshacer.`}
         onClose={() => setDeleteNegocioTarget(null)}
         onConfirm={handleDeleteNegocio}
       />
