@@ -2,32 +2,31 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 
 import { readConsent, writeConsent } from "@/lib/consent";
 
 /**
- * Modal de cookies obligatorio: bloquea toda la web (overlay a pantalla
- * completa, sin cerrar al hacer click afuera) hasta que el usuario decida.
- * Solo desaparece de forma permanente si acepta — reaparece en cada
- * navegación mientras no haya un "accepted" guardado, incluso si antes
- * rechazó.
+ * Modal de cookies obligatorio: cubre toda la pantalla (overlay con
+ * backdrop-blur) y bloquea el scroll del body hasta que el usuario acepta.
+ * No se cierra con click afuera, solo con el botón. Montado una sola vez
+ * en app/layout.tsx.
  */
 export function ConsentBanner() {
-  const pathname = usePathname();
   const [visible, setVisible] = React.useState(false);
 
   React.useEffect(() => {
     setVisible(readConsent() !== "accepted");
-  }, [pathname]);
+  }, []);
+
+  React.useEffect(() => {
+    document.body.style.overflow = visible ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [visible]);
 
   function aceptar() {
     writeConsent("accepted");
-    setVisible(false);
-  }
-
-  function rechazar() {
-    writeConsent("rejected");
     setVisible(false);
   }
 
@@ -35,18 +34,18 @@ export function ConsentBanner() {
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="consent-banner-title"
     >
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 text-black shadow-2xl sm:p-8">
-        <h2 id="consent-banner-title" className="font-display text-xl font-bold tracking-tight">
-          🍪 Aviso de Privacidad y Cookies
+      <div className="w-[90%] max-w-md rounded-2xl bg-white p-8 text-center text-black shadow-2xl">
+        <h2 id="consent-banner-title" className="text-2xl font-bold tracking-tight">
+          🍪 Usamos Cookies
         </h2>
-        <p className="mt-3 text-sm leading-relaxed text-black/80">
-          Usamos cookies necesarias para que funcione Fuera Libreta. Al
-          continuar navegando aceptas nuestro{" "}
+        <p className="mt-4 text-sm leading-relaxed text-black/80">
+          Usamos cookies necesarias para que Fuera Libreta funcione. Al
+          continuar aceptas nuestro{" "}
           <Link
             href="/aviso-privacidad"
             target="_blank"
@@ -62,27 +61,18 @@ export function ConsentBanner() {
             rel="noopener noreferrer"
             className="font-medium text-amber-700 underline underline-offset-2"
           >
-            Términos y Condiciones
+            Términos
           </Link>
           .
         </p>
 
-        <div className="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={rechazar}
-            className="h-11 shrink-0 rounded-md bg-gray-200 px-5 text-sm font-semibold text-black transition-colors hover:bg-gray-300"
-          >
-            Rechazar
-          </button>
-          <button
-            type="button"
-            onClick={aceptar}
-            className="h-12 shrink-0 rounded-md bg-black px-6 text-base font-bold text-white transition-colors hover:bg-black/85"
-          >
-            Aceptar y continuar
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={aceptar}
+          className="mt-6 h-12 w-full rounded-md bg-black text-base font-bold text-white transition-colors hover:bg-black/85"
+        >
+          Aceptar y continuar
+        </button>
       </div>
     </div>
   );
