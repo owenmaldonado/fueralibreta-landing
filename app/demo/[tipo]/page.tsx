@@ -8,6 +8,7 @@ import { ArrowLeft, ArrowRight, Loader2, Scissors, UtensilsCrossed, ShoppingBask
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SiteFooter } from "@/components/site-footer";
 import { writeDemoPreview } from "@/lib/demoPreview";
 import {
   generateDemoAbarrotes,
@@ -196,6 +197,7 @@ export default function DemoIntakePage() {
           </div>
         )}
       </div>
+      <SiteFooter />
     </main>
   );
 }
