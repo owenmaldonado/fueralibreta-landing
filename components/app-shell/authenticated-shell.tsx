@@ -160,9 +160,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
 
       {business.demo && (
         <div className="sticky top-14 z-20 flex items-center justify-between gap-3 border-b border-primary/30 bg-primary/10 px-4 py-2.5">
-          <p className="text-xs leading-tight text-foreground">
-            Estás viendo una <span className="font-semibold text-primary">demo</span> de {business.nombre}
-          </p>
+          <p className="text-xs leading-tight text-foreground">Estás probando una demo de abarrotera - FueraLibreta</p>
           <Button asChild size="sm">
             <Link href="/login">Lo quiero · $499/mes</Link>
           </Button>
