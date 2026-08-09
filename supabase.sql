@@ -243,6 +243,18 @@ begin
     raise exception 'Negocio no encontrado o inactivo';
   end if;
 
+  -- Esta función es security definer y anon tiene permiso de ejecutarla
+  -- directamente (grant execute más abajo), así que valida aunque la API
+  -- (app/api/public/citas) ya lo haya hecho — nunca confíes solo en el
+  -- frontend/backend de Next para lo que la base de datos puede exponer
+  -- por su cuenta.
+  if p_nombre is null or length(trim(p_nombre)) < 2 or length(p_nombre) > 50 or p_nombre ~ '[<>]' then
+    raise exception 'Nombre inválido';
+  end if;
+  if p_telefono is null or p_telefono !~ '^[0-9]{7,15}$' then
+    raise exception 'Teléfono inválido';
+  end if;
+
   select id into v_id from barberia_clientes where negocio_id = p_negocio_id and telefono = p_telefono limit 1;
 
   if v_id is null then
@@ -867,6 +879,53 @@ update profiles set role = 'admin' where email = 'owenxmaldonado100@gmail.com';
 --       components/auth/phone-otp-flow.tsx asume que a) y b) ya están
 --       hechos — pruébalo tú con un número real una vez que actives ambos
 --       providers.
+
+-- ============================================================================
+-- HARDENING — validación a nivel de base de datos (defensa en profundidad)
+-- ============================================================================
+-- Las rutas de Next.js (app/api/public/*) y el frontend ya validan con zod
+-- (teléfono solo dígitos, nombre ≤ 50 caracteres sin < >), pero cualquiera
+-- puede pegarle directo a la API REST de Supabase con la anon key sin pasar
+-- por Next.js. Estos CHECK repiten la misma regla adentro de Postgres, que
+-- es la última línea de defensa real. NOT VALID: se aplican a partir de
+-- ahora sin tronar si ya existiera una fila vieja que no cumpliera (no hay
+-- forma de saber desde aquí si este script corre sobre una base nueva o con
+-- datos reales ya cargados).
+--
+-- Se aplican solo donde el dato lo escribe (directa o indirectamente) un
+-- visitante sin login: reservas públicas (barberia_citas, barberia_clientes
+-- vía find_or_create_barberia_cliente) y el formulario de contacto de la
+-- landing (contactos).
+do $$
+begin
+  alter table barberia_citas drop constraint if exists barberia_citas_cliente_nombre_check;
+  alter table barberia_citas add constraint barberia_citas_cliente_nombre_check
+    check (char_length(cliente_nombre) <= 50 and cliente_nombre !~ '[<>]') not valid;
+
+  alter table barberia_citas drop constraint if exists barberia_citas_cliente_telefono_check;
+  alter table barberia_citas add constraint barberia_citas_cliente_telefono_check
+    check (cliente_telefono ~ '^[0-9]{0,15}$') not valid;
+
+  alter table barberia_clientes drop constraint if exists barberia_clientes_nombre_check;
+  alter table barberia_clientes add constraint barberia_clientes_nombre_check
+    check (char_length(nombre) <= 50 and nombre !~ '[<>]') not valid;
+
+  alter table barberia_clientes drop constraint if exists barberia_clientes_telefono_check;
+  alter table barberia_clientes add constraint barberia_clientes_telefono_check
+    check (telefono ~ '^[0-9]{0,15}$') not valid;
+
+  alter table contactos drop constraint if exists contactos_nombre_check;
+  alter table contactos add constraint contactos_nombre_check
+    check (char_length(nombre) <= 50 and nombre !~ '[<>]') not valid;
+
+  alter table contactos drop constraint if exists contactos_telefono_check;
+  alter table contactos add constraint contactos_telefono_check
+    check (telefono ~ '^[0-9]{0,15}$') not valid;
+
+  alter table contactos drop constraint if exists contactos_mensaje_check;
+  alter table contactos add constraint contactos_mensaje_check
+    check (mensaje is null or (char_length(mensaje) <= 1000 and mensaje !~ '[<>]')) not valid;
+end $$;
 
 -- ============================================================================
 -- Red de seguridad final: si corriste este script completo (tablas nuevas,

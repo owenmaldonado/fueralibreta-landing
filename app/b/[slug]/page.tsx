@@ -11,10 +11,11 @@ import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { getAvailableSlots } from "@/lib/agenda";
-import { fetchNegocioBySlug, fetchPublicBookingData, insertPublicCita, findOrCreateBarberiaCliente, type PublicBookingData } from "@/lib/data";
+import { fetchNegocioBySlug, fetchPublicBookingData, submitPublicCita, type PublicBookingData } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { readDemoPreview, writeDemoPreview } from "@/lib/demoPreview";
 import { formatMoney, todayISO, waLink } from "@/lib/mock";
+import { nombreSchema, telefonoSchema } from "@/lib/validation";
 import type { Business, Appointment } from "@/lib/types";
 
 export default function ReservaPublicaPage() {
@@ -31,7 +32,7 @@ export default function ReservaPublicaPage() {
   const [nombre, setNombre] = React.useState("");
   const [telefono, setTelefono] = React.useState("");
   const [enviando, setEnviando] = React.useState(false);
-  const [reservaError, setReservaError] = React.useState(false);
+  const [reservaError, setReservaError] = React.useState<string | null>(null);
   const [confirmada, setConfirmada] = React.useState<{ servicio: string; fecha: string; hora: string } | null>(null);
   // Negocio armado con generateDemoBarberia (/demo/barberia) vive solo en
   // localStorage (demoPreview) hasta que alguien inicia sesión y lo activa —
@@ -111,10 +112,22 @@ export default function ReservaPublicaPage() {
 
   async function reservar() {
     if (!servicio || !hora || nombre.trim().length < 2 || telefono.trim().length < 6) return;
+
+    const nombreParsed = nombreSchema.safeParse(nombre);
+    const telefonoParsed = telefonoSchema.safeParse(telefono.replace(/\D/g, ""));
+    if (!nombreParsed.success) {
+      setReservaError(nombreParsed.error.errors[0]?.message ?? "Nombre inválido.");
+      return;
+    }
+    if (!telefonoParsed.success) {
+      setReservaError(telefonoParsed.error.errors[0]?.message ?? "Teléfono inválido.");
+      return;
+    }
+
     setEnviando(true);
-    setReservaError(false);
-    const nombreFinal = nombre.trim();
-    const telefonoFinal = telefono.trim();
+    setReservaError(null);
+    const nombreFinal = nombreParsed.data;
+    const telefonoFinal = telefonoParsed.data;
     try {
       if (modoDemo) {
         // Mismo flujo que en Supabase (buscar por teléfono, crear o
@@ -150,23 +163,18 @@ export default function ReservaPublicaPage() {
           writeDemoPreview({ ...demo, barberia: { ...demo.barberia, clientes, citas: [nuevaCita, ...demo.barberia.citas] } });
         }
       } else {
-        const clienteId = await findOrCreateBarberiaCliente(business!.id, nombreFinal, telefonoFinal);
-        await insertPublicCita(business!.id, {
-          clienteId,
-          clienteNombre: nombreFinal,
-          clienteTelefono: telefonoFinal,
+        await submitPublicCita(params.slug, {
           servicioId: servicio.id,
-          servicioNombre: servicio.nombre,
-          precio: servicio.precio,
+          nombre: nombreFinal,
+          telefono: telefonoFinal,
           fecha,
           hora,
-          estado: "pendiente",
         });
       }
       setConfirmada({ servicio: servicio.nombre, fecha, hora });
     } catch (err) {
-      console.error("No se pudo agendar la cita:", err);
-      setReservaError(true);
+      console.error("No se pudo agendar la cita.");
+      setReservaError(err instanceof Error ? err.message : "No se pudo agendar tu cita. Intenta de nuevo.");
       setEnviando(false);
     }
   }
@@ -283,17 +291,21 @@ export default function ReservaPublicaPage() {
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label>Tu nombre</Label>
-            <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre" />
+            <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre" maxLength={50} />
           </div>
           <div className="space-y-1.5">
             <Label>Tu teléfono</Label>
-            <Input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="331 000 0000" />
+            <Input
+              type="tel"
+              value={telefono}
+              onChange={(e) => setTelefono(e.target.value)}
+              placeholder="331 000 0000"
+              maxLength={15}
+            />
           </div>
         </div>
 
-        {reservaError && (
-          <p className="text-center text-sm text-destructive">No se pudo agendar tu cita. Intenta de nuevo.</p>
-        )}
+        {reservaError && <p className="text-center text-sm text-destructive">{reservaError}</p>}
 
         <Button
           size="lg"
