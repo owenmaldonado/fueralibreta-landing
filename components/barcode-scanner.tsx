@@ -38,13 +38,21 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
     }
 
     import("html5-qrcode")
-      .then(({ Html5Qrcode }) => {
+      .then(({ Html5Qrcode, Html5QrcodeSupportedFormats }) => {
         if (cancelled) return;
-        // useBarCodeDetectorIfSupported: usa el detector de códigos de
-        // barras nativo del chip (BarcodeDetector API) en vez de decodificar
-        // cuadro por cuadro en JS — mismo enfoque de Mercado Pago/Clip para
-        // no calentar el celular ni drenar la pila.
-        instance = new Html5Qrcode(scanId, { useBarCodeDetectorIfSupported: true, verbose: false });
+        // El BarcodeDetector nativo (useBarCodeDetectorIfSupported) en
+        // Android solo reconoce QR en la mayoría de los chips — no lee
+        // CODE_128/EAN_13 de productos de abarrotera. Se fuerza el decoder
+        // en JS con los formatos de barras reales que usa el negocio.
+        const formats = [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+        ];
+        instance = new Html5Qrcode(scanId, { formatsToSupport: formats, verbose: false });
         return instance.start(
           { facingMode: "environment" },
           {
@@ -59,6 +67,7 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
             disableFlip: true,
           },
           (decodedText: string) => {
+            console.log(decodedText);
             if (navigator.vibrate) navigator.vibrate(100);
             // Un código ya es suficiente: apaga la cámara de inmediato en
             // vez de esperar a que el padre desmonte este componente.
