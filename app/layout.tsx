@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 
+import { ConsentBanner } from "@/components/ConsentBanner";
+
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -53,6 +55,7 @@ export default function RootLayout({
         className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
         {children}
+        <ConsentBanner />
         <Toaster theme="dark" richColors position="top-right" />
       </body>
     </html>

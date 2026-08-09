@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LoadingBlock } from "@/components/app-shell/loading";
+import { SiteFooter } from "@/components/site-footer";
 import { fetchNegocioBySlug, fetchCitasByTelefono, type CitaCliente } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { readDemoPreview } from "@/lib/demoPreview";
@@ -176,6 +177,7 @@ export default function ClientePublicoPage() {
           </div>
         )}
       </div>
+      <SiteFooter />
     </main>
   );
 }

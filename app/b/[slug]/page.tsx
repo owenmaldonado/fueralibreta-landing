@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { LoadingBlock } from "@/components/app-shell/loading";
+import { SiteFooter } from "@/components/site-footer";
 import { getAvailableSlots } from "@/lib/agenda";
 import { fetchNegocioBySlug, fetchPublicBookingData, submitPublicCita, type PublicBookingData } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/supabase";
@@ -314,7 +315,19 @@ export default function ReservaPublicaPage() {
         >
           {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : "Reservar cita"}
         </Button>
+        <p className="text-center text-[10px] text-muted-foreground">
+          Al continuar aceptas nuestro{" "}
+          <Link href="/aviso-privacidad" className="underline underline-offset-2 hover:text-foreground">
+            Aviso de Privacidad
+          </Link>{" "}
+          y{" "}
+          <Link href="/terminos" className="underline underline-offset-2 hover:text-foreground">
+            Términos
+          </Link>
+          .
+        </p>
       </div>
+      <SiteFooter />
     </main>
   );
 }
