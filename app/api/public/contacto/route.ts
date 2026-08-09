@@ -3,9 +3,14 @@ import { ZodError } from "zod";
 
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { createSupabasePublicClient } from "@/lib/supabase-public";
-import { contactoSchema } from "@/lib/validation";
+import { contactoSchema, normalizeTipoNegocio } from "@/lib/validation";
 
-/** Formulario de contacto de la landing (antes insertaba directo a Supabase desde el navegador). */
+/**
+ * Formulario de contacto de la landing (antes insertaba directo a Supabase
+ * desde el navegador). Escribe en `leads` para que el panel super-admin
+ * (/admin, tab "Leads") le dé seguimiento — no en la vieja tabla `contactos`,
+ * que se conserva solo como historial.
+ */
 export async function POST(req: Request) {
   const ip = getClientIp(req);
   const rate = checkRateLimit(`contacto:${ip}`, 10);
@@ -32,10 +37,10 @@ export async function POST(req: Request) {
   }
 
   const supabase = createSupabasePublicClient();
-  const { error } = await supabase.from("contactos").insert({
+  const { error } = await supabase.from("leads").insert({
     nombre: input.nombre,
-    telefono: input.telefono,
-    negocio: input.negocio,
+    whatsapp: input.telefono,
+    tipo_negocio: normalizeTipoNegocio(input.negocio),
     mensaje: input.mensaje || null,
   });
 

@@ -14,6 +14,7 @@ import { LoadingBlock } from "@/components/app-shell/loading";
 import { MetricsCards } from "./metrics-cards";
 import { UsersTable } from "./users-table";
 import { OrgsTable } from "./orgs-table";
+import { LeadsTable } from "./leads-table";
 import { UserDetailDialog } from "./user-detail-dialog";
 import { NegocioDetailDialog } from "./negocio-detail-dialog";
 import { ChangeOwnerDialog } from "./change-owner-dialog";
@@ -28,14 +29,17 @@ import {
   changeNegocioOwner,
   deleteUserCompletely,
   impersonateUser,
+  updateLeadEstado,
   type AdminOverview,
   type AdminProfile,
   type AdminNegocio,
+  type AdminLead,
 } from "@/lib/admin-data";
 
 type RoleFilter = "todos" | "admin" | "user";
 type PlanFilter = "todos" | "free" | "pro";
 type SortOrder = "recientes" | "antiguos";
+type LeadEstadoFilter = "todos" | "nuevo" | "contactado" | "convertido";
 
 export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   const searchParams = useSearchParams();
@@ -48,6 +52,8 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   const [planFilter, setPlanFilter] = React.useState<PlanFilter>("todos");
   const [sortOrder, setSortOrder] = React.useState<SortOrder>("recientes");
   const [orgQuery, setOrgQuery] = React.useState("");
+  const [leadQuery, setLeadQuery] = React.useState("");
+  const [leadEstadoFilter, setLeadEstadoFilter] = React.useState<LeadEstadoFilter>("todos");
 
   const [detailUserId, setDetailUserId] = React.useState<string | null>(null);
   const [deleteUserTarget, setDeleteUserTarget] = React.useState<AdminProfile | null>(null);
@@ -105,6 +111,17 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
       (n) => n.nombre.toLowerCase().includes(needle) || n.ownerEmail?.toLowerCase().includes(needle)
     );
   }, [overview, orgQuery]);
+
+  const filteredLeads = React.useMemo(() => {
+    if (!overview) return [];
+    let list = overview.leads;
+    if (leadQuery.trim()) {
+      const needle = leadQuery.trim().toLowerCase();
+      list = list.filter((l) => l.nombre.toLowerCase().includes(needle) || l.whatsapp.includes(needle));
+    }
+    if (leadEstadoFilter !== "todos") list = list.filter((l) => l.estado === leadEstadoFilter);
+    return list;
+  }, [overview, leadQuery, leadEstadoFilter]);
 
   async function handleToggleRole(p: AdminProfile) {
     const nextRole = p.role === "admin" ? "user" : "admin";
@@ -199,6 +216,26 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     }
   }
 
+  async function handleMarkLeadContactado(lead: AdminLead) {
+    try {
+      await updateLeadEstado(lead.id, "contactado");
+      toast.success(`${lead.nombre} marcado como contactado.`);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo actualizar el lead.");
+    }
+  }
+
+  async function handleConvertirLead(lead: AdminLead) {
+    try {
+      await updateLeadEstado(lead.id, "convertido");
+      toast.success(`${lead.nombre} marcado como convertido. Crea el negocio manualmente desde /onboarding.`);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo actualizar el lead.");
+    }
+  }
+
   if (loading || !overview) return <LoadingBlock />;
 
   return (
@@ -230,8 +267,9 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
             tabs={[
               { value: "usuarios", label: `Usuarios · ${overview.profiles.length}` },
               { value: "negocios", label: `Negocios · ${overview.negocios.length}` },
+              { value: "leads", label: `Leads · ${overview.leads.length}` },
             ]}
-            className="max-w-sm"
+            className="max-w-lg"
           />
         </div>
 
@@ -283,7 +321,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
               />
             </div>
           </div>
-        ) : (
+        ) : tab === "negocios" ? (
           <div className="mt-4">
             <div className="relative max-w-sm">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -304,11 +342,50 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
               />
             </div>
           </div>
+        ) : (
+          <div className="mt-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative min-w-[220px] flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={leadQuery}
+                  onChange={(e) => setLeadQuery(e.target.value)}
+                  placeholder="Buscar por nombre o WhatsApp..."
+                  className="pl-9"
+                />
+              </div>
+              <ChipGroup>
+                <Chip selected={leadEstadoFilter === "todos"} onClick={() => setLeadEstadoFilter("todos")}>
+                  Todos
+                </Chip>
+                <Chip selected={leadEstadoFilter === "nuevo"} onClick={() => setLeadEstadoFilter("nuevo")}>
+                  Nuevo
+                </Chip>
+                <Chip selected={leadEstadoFilter === "contactado"} onClick={() => setLeadEstadoFilter("contactado")}>
+                  Contactado
+                </Chip>
+                <Chip selected={leadEstadoFilter === "convertido"} onClick={() => setLeadEstadoFilter("convertido")}>
+                  Convertido
+                </Chip>
+              </ChipGroup>
+            </div>
+            <div className="mt-4 overflow-hidden rounded-2xl border border-border">
+              <LeadsTable leads={filteredLeads} onMarkContactado={handleMarkLeadContactado} onConvertir={handleConvertirLead} />
+            </div>
+          </div>
         )}
       </div>
 
       <UserDetailDialog userId={detailUserId} onClose={() => setDetailUserId(null)} />
-      <NegocioDetailDialog negocio={detailNegocio} onClose={() => setDetailNegocio(null)} />
+      <NegocioDetailDialog
+        negocio={detailNegocio}
+        onClose={() => setDetailNegocio(null)}
+        onToggleActive={handleToggleNegocioActive}
+        onDeleteRequest={(n) => {
+          setDetailNegocio(null);
+          setDeleteNegocioTarget(n);
+        }}
+      />
       <ChangeOwnerDialog negocio={changeOwnerNegocio} onClose={() => setChangeOwnerNegocio(null)} onSelect={handleChangeOwner} />
 
       <ConfirmDeleteDialog
