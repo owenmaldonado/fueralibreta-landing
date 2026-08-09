@@ -1,10 +1,11 @@
 "use client";
 
-import { Eye, UserCog, Ban, CheckCircle2, Trash2 } from "lucide-react";
+import { Eye, UserCog, Ban, CheckCircle2, Trash2, MessageCircle } from "lucide-react";
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, type DropdownItem } from "@/components/ui/dropdown-menu";
+import { waLink } from "@/lib/mock";
 import type { AdminNegocio } from "@/lib/admin-data";
 
 const TIPO_LABEL: Record<AdminNegocio["tipo"], string> = {
@@ -32,6 +33,7 @@ export function OrgsTable({ negocios, onViewDetail, onChangeOwner, onToggleActiv
         <TableRow>
           <TableHead>Negocio</TableHead>
           <TableHead>Owner</TableHead>
+          <TableHead>WhatsApp</TableHead>
           <TableHead>Miembros</TableHead>
           <TableHead>Creado</TableHead>
           <TableHead>Estado</TableHead>
@@ -58,6 +60,20 @@ export function OrgsTable({ negocios, onViewDetail, onChangeOwner, onToggleActiv
                 <p className="font-mono text-xs text-muted-foreground">{TIPO_LABEL[n.tipo]}</p>
               </TableCell>
               <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">{n.ownerEmail ?? "—"}</TableCell>
+              <TableCell>
+                {n.ownerPhone ? (
+                  <a
+                    href={waLink(n.ownerPhone, `Hola, te escribo de Fuera Libreta sobre ${n.nombre}.`)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 font-mono text-sm text-primary hover:underline"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" /> {n.ownerPhone}
+                  </a>
+                ) : (
+                  <span className="text-sm text-muted-foreground">—</span>
+                )}
+              </TableCell>
               <TableCell className="text-sm text-muted-foreground">1</TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {new Date(n.createdAt).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}

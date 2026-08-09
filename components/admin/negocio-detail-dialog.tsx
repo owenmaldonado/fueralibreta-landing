@@ -2,14 +2,14 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Copy, Check, MessageCircle, LogIn, Ban, CheckCircle2, Trash2, ShieldQuestion } from "lucide-react";
+import { Loader2, Copy, Check, MessageCircle, Mail, LogIn, Ban, CheckCircle2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { waLink, formatMoney } from "@/lib/mock";
+import { waLink, formatMoney, formatRelativeTime } from "@/lib/mock";
 import { fetchNegocioDetail, prepareArcoRequest, type AdminNegocio, type NegocioDetail } from "@/lib/admin-data";
 
 const TIPO_LABEL: Record<AdminNegocio["tipo"], string> = {
@@ -85,6 +85,7 @@ export function NegocioDetailDialog({
 
   return (
     <Dialog open={!!negocio} onOpenChange={(o) => !o && onClose()} className="max-w-xl">
+      {/* Sección 1: header — nombre, email del dueño, badges de tipo y estado */}
       <DialogHeader
         title={detail?.nombre ?? negocio?.nombre ?? "Negocio"}
         description={detail?.ownerEmail ?? negocio?.ownerEmail ?? undefined}
@@ -105,7 +106,8 @@ export function NegocioDetailDialog({
             <Badge variant={detail.isActive ? "ledger" : "outline"}>{detail.isActive ? "Activo" : "Pausado"}</Badge>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {/* Sección 2: métricas en grid 2x2 */}
+          <div className="grid grid-cols-2 gap-3">
             {detail.stats.map((s) => (
               <div key={s.label} className="rounded-xl border border-border bg-surface p-3">
                 <p className="font-display text-xl font-bold">{s.value}</p>
@@ -117,14 +119,15 @@ export function NegocioDetailDialog({
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Ingresos totales</p>
             </div>
             <div className="rounded-xl border border-border bg-surface p-3">
-              <p className="font-display text-sm font-bold leading-tight">
-                {detail.ultimaActividad ? fechaLarga(detail.ultimaActividad) : "Sin actividad"}
+              <p className="font-display text-xl font-bold leading-tight">
+                {detail.ultimaActividad ? formatRelativeTime(detail.ultimaActividad) : "Sin actividad"}
               </p>
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Última actividad</p>
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3">
+          {/* Sección 3: contacto y acceso */}
+          <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-3">
             <div className="flex items-center gap-2">
               <p className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">{publicUrl}</p>
               <Button variant="outline" size="sm" onClick={copiarLink}>
@@ -139,7 +142,12 @@ export function NegocioDetailDialog({
                 rel="noreferrer"
                 className="flex items-center gap-1.5 text-sm text-primary hover:underline"
               >
-                <MessageCircle className="h-4 w-4" /> WhatsApp del dueño · {detail.ownerPhone}
+                <MessageCircle className="h-4 w-4 shrink-0" /> WhatsApp del dueño · {detail.ownerPhone}
+              </a>
+            )}
+            {detail.ownerEmail && (
+              <a href={`mailto:${detail.ownerEmail}`} className="flex items-center gap-1.5 text-sm text-primary hover:underline">
+                <Mail className="h-4 w-4 shrink-0" /> {detail.ownerEmail}
               </a>
             )}
           </div>
@@ -149,6 +157,7 @@ export function NegocioDetailDialog({
             <span className="font-mono">{detail.id.slice(0, 8)}</span>
           </p>
 
+          {/* Sección 4: acciones de soporte */}
           <div className="flex flex-col gap-2 border-t border-border pt-4">
             <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={handleEntrarComoDueno}>
@@ -158,18 +167,22 @@ export function NegocioDetailDialog({
                 {detail.isActive ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
                 {detail.isActive ? "Suspender" : "Reactivar"}
               </Button>
-              <Button variant="outline" size="sm" onClick={handleArco}>
-                <ShieldQuestion className="h-4 w-4" /> Ver consentimientos / Borrar datos ARCO
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn("border-destructive text-destructive hover:bg-destructive/10 hover:border-destructive")}
+                onClick={() => onDeleteRequest(detail)}
+              >
+                <Trash2 className="h-4 w-4" /> Eliminar negocio
               </Button>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className={cn("w-fit border-destructive text-destructive hover:bg-destructive/10 hover:border-destructive")}
-              onClick={() => onDeleteRequest(detail)}
+            <button
+              type="button"
+              onClick={handleArco}
+              className="w-fit text-left text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
             >
-              <Trash2 className="h-4 w-4" /> Eliminar negocio
-            </Button>
+              Ver consentimientos / Fecha aceptación aviso privacidad
+            </button>
           </div>
         </div>
       ) : null}

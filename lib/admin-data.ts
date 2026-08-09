@@ -50,6 +50,9 @@ export interface AdminMetrics {
   totalNegocios: number;
   totalMovimientos: number;
   usuariosNuevosHoy: number;
+  totalBarberias: number;
+  totalFondas: number;
+  totalAbarrotes: number;
 }
 
 export interface AdminOverview {
@@ -117,6 +120,9 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
       totalNegocios: negocios.length,
       totalMovimientos: (citasRes.count ?? 0) + (pedidosRes.count ?? 0) + (ventasRes.count ?? 0),
       usuariosNuevosHoy,
+      totalBarberias: negocios.filter((n) => n.tipo === "barberia").length,
+      totalFondas: negocios.filter((n) => n.tipo === "fonda").length,
+      totalAbarrotes: negocios.filter((n) => n.tipo === "abarrotes").length,
     },
   };
 }
@@ -185,7 +191,9 @@ async function computeNegocioExtra(negocioId: string, tipo: BusinessType): Promi
     };
   }
   if (tipo === "fonda") {
-    const [pedidos, entregados, ultimoPedido] = await Promise.all([
+    // fonda no tiene tabla de clientes propia (el nombre/teléfono vive inline
+    // en cada pedido): se aproxima con teléfonos distintos entre sus pedidos.
+    const [pedidos, entregados, ultimoPedido, telefonos] = await Promise.all([
       supabase.from("fonda_pedidos").select("*", { count: "exact", head: true }).eq("negocio_id", negocioId),
       supabase.from("fonda_pedidos").select("total").eq("negocio_id", negocioId).eq("estado", "entregado"),
       supabase
@@ -195,9 +203,14 @@ async function computeNegocioExtra(negocioId: string, tipo: BusinessType): Promi
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase.from("fonda_pedidos").select("cliente_telefono").eq("negocio_id", negocioId),
     ]);
+    const clientesUnicos = new Set((telefonos.data ?? []).map((p) => p.cliente_telefono).filter(Boolean)).size;
     return {
-      stats: [{ label: "Pedidos", value: pedidos.count ?? 0 }],
+      stats: [
+        { label: "Clientes", value: clientesUnicos },
+        { label: "Pedidos", value: pedidos.count ?? 0 },
+      ],
       ingresosTotales: (entregados.data ?? []).reduce((sum, p) => sum + Number(p.total), 0),
       ultimaActividad: ultimoPedido.data?.created_at ?? null,
     };
