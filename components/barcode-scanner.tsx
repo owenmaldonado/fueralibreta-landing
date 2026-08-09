@@ -11,7 +11,9 @@ interface Props {
 
 /** Escáner de códigos de barras con la cámara, sin apps externas (html5-qrcode). */
 export function BarcodeScanner({ onScan, onClose }: Props) {
-  const regionId = React.useId().replace(/[:]/g, "");
+  // Prefijo con letra: un id que arranca con dígito no es un selector CSS
+  // válido para el <style> de abajo.
+  const scanId = `bcs-${React.useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const [error, setError] = React.useState<string | null>(null);
   const onScanRef = React.useRef(onScan);
   onScanRef.current = onScan;
@@ -23,11 +25,14 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
     import("html5-qrcode")
       .then(({ Html5Qrcode }) => {
         if (cancelled) return;
-        instance = new Html5Qrcode(regionId);
+        instance = new Html5Qrcode(scanId);
         return instance.start(
           { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 240, height: 150 } },
-          (decodedText: string) => onScanRef.current(decodedText),
+          { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+          (decodedText: string) => {
+            if (navigator.vibrate) navigator.vibrate(100);
+            onScanRef.current(decodedText);
+          },
           () => {}
         );
       })
@@ -42,7 +47,7 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
           .catch(() => {});
       }
     };
-  }, [regionId]);
+  }, [scanId]);
 
   return (
     <div className="fixed inset-0 z-[110] flex flex-col bg-black">
@@ -54,8 +59,22 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
           <X className="h-5 w-5" />
         </button>
       </div>
-      <div id={regionId} className="mx-auto w-full max-w-sm flex-1" />
+      <div className="flex flex-1 items-center justify-center px-4 pb-4">
+        {/* Contenedor cuadrado: si no coincide con el aspect-ratio real de la
+            cámara, html5-qrcode estira o recorta el <video> para llenarlo —
+            de ahí la imagen "chueca y borrosa" que se reportó. Cuadrado +
+            object-fit: cover mantiene la imagen nítida y sin distorsión. */}
+        <div id={scanId} className="relative aspect-square w-full max-w-sm overflow-hidden rounded-2xl bg-black" />
+      </div>
       {error && <p className="bg-destructive/90 p-4 text-center text-sm text-white">{error}</p>}
+      <style>{`
+        #${scanId} video {
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: cover !important;
+          transform: none !important;
+        }
+      `}</style>
     </div>
   );
 }

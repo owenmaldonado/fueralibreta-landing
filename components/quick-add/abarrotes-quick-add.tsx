@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ShoppingCart, PackagePlus, HandCoins, Receipt, CalendarClock } from "lucide-react";
+import { ShoppingCart, PackagePlus, HandCoins, Receipt, CalendarClock, ScanLine } from "lucide-react";
 
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { VentaCart } from "@/components/abarrotes/venta-cart";
+import { BarcodeScanner } from "@/components/barcode-scanner";
 import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatMoney, todayISO } from "@/lib/mock";
 import type { TenantData, Expense, GroceryProduct, Apartado } from "@/lib/types";
@@ -57,6 +58,8 @@ export function AbarrotesQuickAdd({ active, onClose, session, update }: Props) {
 
 function NuevoProductoForm({ onClose, update }: { onClose: () => void; update: Props["update"] }) {
   const [nombre, setNombre] = React.useState("");
+  const [codigo, setCodigo] = React.useState("");
+  const [scanning, setScanning] = React.useState(false);
   const [categoria, setCategoria] = React.useState("");
   const [emoji, setEmoji] = React.useState("");
   const [costo, setCosto] = React.useState("");
@@ -76,7 +79,7 @@ function NuevoProductoForm({ onClose, update }: { onClose: () => void; update: P
       const producto = {
         id: uid("gp"),
         nombre: nombre.trim(),
-        codigo: Math.floor(1000000000 + Math.random() * 8999999999).toString(),
+        codigo: codigo.trim() || Math.floor(1000000000 + Math.random() * 8999999999).toString(),
         categoria: categoria.trim() || "General",
         emoji: emoji.trim() || undefined,
         costo: Number(costo),
@@ -99,6 +102,15 @@ function NuevoProductoForm({ onClose, update }: { onClose: () => void; update: P
         <div className="space-y-1.5">
           <Label>Nombre</Label>
           <Input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej. Sabritas 45g" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Código de barras / SKU</Label>
+          <div className="flex gap-2">
+            <Input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Escanéalo o escríbelo" className="flex-1" />
+            <Button type="button" variant="outline" onClick={() => setScanning(true)}>
+              <ScanLine className="h-4 w-4" /> Escanear
+            </Button>
+          </div>
         </div>
         <div className="space-y-1.5">
           <Label>Categoría</Label>
@@ -166,6 +178,15 @@ function NuevoProductoForm({ onClose, update }: { onClose: () => void; update: P
           Guardar producto
         </Button>
       </SheetFooter>
+      {scanning && (
+        <BarcodeScanner
+          onScan={(code) => {
+            setCodigo(code);
+            setScanning(false);
+          }}
+          onClose={() => setScanning(false)}
+        />
+      )}
     </>
   );
 }

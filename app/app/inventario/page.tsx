@@ -336,6 +336,8 @@ function ProductoForm({
   update: ReturnType<typeof useSession>["update"];
 }) {
   const [nombre, setNombre] = React.useState(producto?.nombre ?? "");
+  const [codigoInput, setCodigoInput] = React.useState(producto?.codigo ?? codigo ?? "");
+  const [scanning, setScanning] = React.useState(false);
   const [categoria, setCategoria] = React.useState(producto?.categoria ?? "");
   const [emoji, setEmoji] = React.useState(producto?.emoji ?? "");
   const [costo, setCosto] = React.useState(String(producto?.costo ?? ""));
@@ -368,7 +370,7 @@ function ProductoForm({
       }
       const nuevo: GroceryProduct = {
         id: uid("gp"),
-        codigo: codigo ?? Math.floor(1000000000 + Math.random() * 8999999999).toString(),
+        codigo: codigoInput.trim() || Math.floor(1000000000 + Math.random() * 8999999999).toString(),
         minimo: 5,
         ...datos,
       };
@@ -379,15 +381,25 @@ function ProductoForm({
 
   return (
     <>
-      <SheetHeader
-        title={producto ? "Editar producto" : "Nuevo producto"}
-        description={producto ? `Código ${producto.codigo}` : codigo ? `Código escaneado: ${codigo}` : "Sin escanear"}
-        onClose={onClose}
-      />
+      <SheetHeader title={producto ? "Editar producto" : "Nuevo producto"} onClose={onClose} />
       <div className="flex flex-col gap-4">
         <div className="space-y-1.5">
           <Label>Nombre</Label>
           <Input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej. Sabritas 45g" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Código de barras / SKU</Label>
+          <div className="flex gap-2">
+            <Input
+              value={codigoInput}
+              onChange={(e) => setCodigoInput(e.target.value)}
+              placeholder="Escanéalo o escríbelo"
+              className="flex-1"
+            />
+            <Button type="button" variant="outline" onClick={() => setScanning(true)}>
+              <ScanLine className="h-4 w-4" /> Escanear
+            </Button>
+          </div>
         </div>
         <div className="space-y-1.5">
           <Label>Categoría</Label>
@@ -455,6 +467,15 @@ function ProductoForm({
           {producto ? "Guardar cambios" : "Guardar producto"}
         </Button>
       </SheetFooter>
+      {scanning && (
+        <BarcodeScanner
+          onScan={(code) => {
+            setCodigoInput(code);
+            setScanning(false);
+          }}
+          onClose={() => setScanning(false)}
+        />
+      )}
     </>
   );
 }
