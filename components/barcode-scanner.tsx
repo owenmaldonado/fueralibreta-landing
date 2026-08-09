@@ -9,16 +9,17 @@ interface Props {
   onClose: () => void;
 }
 
-// Chrome expone focusMode/zoom en MediaTrackCapabilities y
-// MediaTrackConstraintSet como extensión no estándar — el DOM lib de TS
-// no los declara, así que se amplían aquí en vez de castear a `any`.
+// Chrome expone focusMode en MediaTrackCapabilities/MediaTrackConstraintSet
+// como extensión no estándar — el DOM lib de TS no la declara, así que se
+// amplía aquí en vez de castear todo a `any`.
 interface ExtendedTrackCapabilities extends MediaTrackCapabilities {
   focusMode?: string[];
-  zoom?: { min: number; max: number; step: number };
 }
 interface ExtendedConstraintSet extends MediaTrackConstraintSet {
   focusMode?: string;
-  zoom?: number;
+}
+interface ExtendedVideoConstraints extends MediaTrackConstraints {
+  focusMode?: ConstrainDOMString;
 }
 
 /** Escáner de códigos de barras con la cámara, sin apps externas (html5-qrcode). */
@@ -65,6 +66,12 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
           Html5QrcodeSupportedFormats.UPC_E,
         ];
         instance = new Html5Qrcode(scanId, { formatsToSupport: formats, verbose: false });
+        const videoConstraints: ExtendedVideoConstraints = {
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          focusMode: { ideal: "continuous" },
+        };
         const started = instance.start(
           { facingMode: "environment" },
           {
@@ -74,11 +81,7 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
             // ahora es puramente visual (el <div> de abajo), la librería
             // siempre lee el video completo a su resolución nativa.
             fps: 15,
-            videoConstraints: {
-              facingMode: "environment",
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-            },
+            videoConstraints: videoConstraints as MediaTrackConstraints,
           },
           (decodedText: string) => {
             console.log(decodedText);
@@ -92,19 +95,12 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
         );
         return started.then(() => {
           if (cancelled || !instance) return;
-          // El autofoco/zoom por defecto del navegador suele quedar en modo
-          // "lejos" y no engancha bien un código de barras a 10-15cm.
-          // Se fuerza foco continuo y un zoom leve (1.5x) sobre el track en
-          // vivo, si el hardware los expone.
+          // El zoom digital (aunque sea 1.x) recorta y reescala el frame en
+          // el propio hardware, dejando el mismo blur que qrbox causaba en
+          // software — por eso solo se toca el foco, nunca el zoom.
           const capabilities = instance.getRunningTrackCapabilities() as ExtendedTrackCapabilities;
-          const advanced: ExtendedConstraintSet[] = [];
           if (capabilities.focusMode?.includes("continuous")) {
-            advanced.push({ focusMode: "continuous" });
-          }
-          if (capabilities.zoom) {
-            advanced.push({ zoom: Math.min(1.5, capabilities.zoom.max) });
-          }
-          if (advanced.length > 0) {
+            const advanced: ExtendedConstraintSet[] = [{ focusMode: "continuous" }];
             instance.applyVideoConstraints({ advanced } as MediaTrackConstraints).catch(() => {});
           }
         });
@@ -132,7 +128,7 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
             (inyecta su propio <video>), así que el recuadro guía vive en un
             <div> hermano dentro de este contenedor "relative", no dentro
             de #scanId — si no, la librería lo borra en cuanto renderiza. */}
-        <div className="relative aspect-video w-full max-w-sm overflow-hidden rounded-2xl bg-black">
+        <div className="relative h-[300px] w-full max-w-sm overflow-hidden rounded-2xl bg-black">
           <div id={scanId} className="absolute inset-0" />
           <div className="pointer-events-none absolute left-1/2 top-1/2 h-[40%] w-[80%] -translate-x-1/2 -translate-y-1/2 rounded-xl border-2 border-white/90">
             <span className="absolute -left-0.5 -top-0.5 h-6 w-6 rounded-tl-xl border-l-4 border-t-4 border-white" />
