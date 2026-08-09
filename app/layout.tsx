@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 
-import { ConsentBanner } from "@/components/consent-banner";
+import { ConsentBanner } from "@/components/ConsentBanner";
 
 import "./globals.css";
 

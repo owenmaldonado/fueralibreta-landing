@@ -12,13 +12,17 @@ export function SiteFooter() {
         <span>
           Fuera<span className="text-primary">Libreta</span> · Tepic, Nayarit
         </span>
-        <nav className="flex items-center gap-3 normal-case tracking-normal">
+        <nav className="flex items-center gap-2 normal-case tracking-normal">
           <Link href="/aviso-privacidad" className="transition-colors hover:text-foreground">
             Aviso de Privacidad
           </Link>
           <span aria-hidden>|</span>
           <Link href="/terminos" className="transition-colors hover:text-foreground">
             Términos y Condiciones
+          </Link>
+          <span aria-hidden>|</span>
+          <Link href="/cookies" className="transition-colors hover:text-foreground">
+            Cookies
           </Link>
         </nav>
         <span>© {new Date().getFullYear()} — Hecho a mano, sin libreta</span>
