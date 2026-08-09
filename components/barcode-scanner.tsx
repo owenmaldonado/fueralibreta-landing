@@ -9,6 +9,18 @@ interface Props {
   onClose: () => void;
 }
 
+// Chrome expone focusMode/zoom en MediaTrackCapabilities y
+// MediaTrackConstraintSet como extensión no estándar — el DOM lib de TS
+// no los declara, así que se amplían aquí en vez de castear a `any`.
+interface ExtendedTrackCapabilities extends MediaTrackCapabilities {
+  focusMode?: string[];
+  zoom?: { min: number; max: number; step: number };
+}
+interface ExtendedConstraintSet extends MediaTrackConstraintSet {
+  focusMode?: string;
+  zoom?: number;
+}
+
 /** Escáner de códigos de barras con la cámara, sin apps externas (html5-qrcode). */
 export function BarcodeScanner({ onScan, onClose }: Props) {
   // Prefijo con letra: un id que arranca con dígito no es un selector CSS
@@ -53,18 +65,20 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
           Html5QrcodeSupportedFormats.UPC_E,
         ];
         instance = new Html5Qrcode(scanId, { formatsToSupport: formats, verbose: false });
-        return instance.start(
+        const started = instance.start(
           { facingMode: "environment" },
           {
-            fps: 12, // 12 es suficiente, 20 calienta
-            qrbox: { width: 250, height: 150 }, // rectangular para barcode, no cuadrado, lee más rápido
-            aspectRatio: 1.777, // 16:9 nativo, no fuerza al cel
+            // Sin qrbox: con recuadro, html5-qrcode recorta y reescala el
+            // frame antes de decodificar, y ese downscale es lo que
+            // borronea el código de barras. El recuadro que ve el usuario
+            // ahora es puramente visual (el <div> de abajo), la librería
+            // siempre lee el video completo a su resolución nativa.
+            fps: 15,
             videoConstraints: {
               facingMode: "environment",
-              width: { ideal: 1280 }, // 720p ideal, no 1080 — no calienta
+              width: { ideal: 1280 },
               height: { ideal: 720 },
             },
-            disableFlip: true,
           },
           (decodedText: string) => {
             console.log(decodedText);
@@ -76,6 +90,24 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
           },
           () => {}
         );
+        return started.then(() => {
+          if (cancelled || !instance) return;
+          // El autofoco/zoom por defecto del navegador suele quedar en modo
+          // "lejos" y no engancha bien un código de barras a 10-15cm.
+          // Se fuerza foco continuo y un zoom leve (1.5x) sobre el track en
+          // vivo, si el hardware los expone.
+          const capabilities = instance.getRunningTrackCapabilities() as ExtendedTrackCapabilities;
+          const advanced: ExtendedConstraintSet[] = [];
+          if (capabilities.focusMode?.includes("continuous")) {
+            advanced.push({ focusMode: "continuous" });
+          }
+          if (capabilities.zoom) {
+            advanced.push({ zoom: Math.min(1.5, capabilities.zoom.max) });
+          }
+          if (advanced.length > 0) {
+            instance.applyVideoConstraints({ advanced } as MediaTrackConstraints).catch(() => {});
+          }
+        });
       })
       .catch(() => setError("No se pudo acceder a la cámara. Revisa los permisos del navegador."));
 
@@ -96,12 +128,19 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
         </button>
       </div>
       <div className="flex flex-1 items-center justify-center px-4 pb-4">
-        {/* 16:9 (aspectRatio: 1.777), igual que la resolución 720p ideal de
-            la cámara — si el contenedor no coincide con esa proporción,
-            html5-qrcode estira o recorta el <video> para llenarlo, que es
-            justo la imagen "chueca y borrosa" que se reportó antes.
-            object-fit: cover mantiene la imagen nítida y sin distorsión. */}
-        <div id={scanId} className="relative aspect-video w-full max-w-sm overflow-hidden rounded-2xl bg-black" />
+        {/* html5-qrcode toma dueño exclusivo del DOM dentro de #scanId
+            (inyecta su propio <video>), así que el recuadro guía vive en un
+            <div> hermano dentro de este contenedor "relative", no dentro
+            de #scanId — si no, la librería lo borra en cuanto renderiza. */}
+        <div className="relative aspect-video w-full max-w-sm overflow-hidden rounded-2xl bg-black">
+          <div id={scanId} className="absolute inset-0" />
+          <div className="pointer-events-none absolute left-1/2 top-1/2 h-[40%] w-[80%] -translate-x-1/2 -translate-y-1/2 rounded-xl border-2 border-white/90">
+            <span className="absolute -left-0.5 -top-0.5 h-6 w-6 rounded-tl-xl border-l-4 border-t-4 border-white" />
+            <span className="absolute -right-0.5 -top-0.5 h-6 w-6 rounded-tr-xl border-r-4 border-t-4 border-white" />
+            <span className="absolute -bottom-0.5 -left-0.5 h-6 w-6 rounded-bl-xl border-b-4 border-l-4 border-white" />
+            <span className="absolute -bottom-0.5 -right-0.5 h-6 w-6 rounded-br-xl border-b-4 border-r-4 border-white" />
+          </div>
+        </div>
       </div>
       {error && <p className="bg-destructive/90 p-4 text-center text-sm text-white">{error}</p>}
       <style>{`
@@ -109,6 +148,7 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
           width: 100% !important;
           height: 100% !important;
           object-fit: cover !important;
+          filter: none !important;
           transform: none !important;
         }
       `}</style>
