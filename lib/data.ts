@@ -716,27 +716,31 @@ export async function fetchPublicBookingData(negocioId: string): Promise<PublicB
   };
 }
 
-/**
- * Busca (o crea) el cliente de una reserva pública por teléfono, vía la
- * función find_or_create_barberia_cliente (security definer) — así el
- * cliente sin login nunca necesita permiso de lectura sobre
- * barberia_clientes completa, solo puede resolver SU propio registro.
- * Si el teléfono ya existía con otro nombre, la función lo actualiza.
- */
-export async function findOrCreateBarberiaCliente(negocioId: string, nombre: string, telefono: string): Promise<string> {
-  const { data, error } = await supabase.rpc("find_or_create_barberia_cliente", {
-    p_negocio_id: negocioId,
-    p_nombre: nombre,
-    p_telefono: telefono,
-  });
-  if (error) throw error;
-  return data as string;
+export interface SubmitCitaInput {
+  servicioId: string;
+  nombre: string;
+  telefono: string;
+  fecha: string;
+  hora: string;
 }
 
-/** Cliente público reservando desde /b/[slug]. RLS solo permite estado='pendiente'. */
-export async function insertPublicCita(negocioId: string, cita: Omit<Appointment, "id">): Promise<void> {
-  const { error } = await supabase.from("barberia_citas").insert(citaToRow({ ...cita, id: crypto.randomUUID() }, negocioId));
-  if (error) throw error;
+/**
+ * Reserva pública desde /b/[slug]. En vez de escribir directo a Supabase
+ * desde el navegador, pasa por /api/public/citas: esa ruta valida el body
+ * (zod), confirma que el slug es de un negocio activo y aplica rate limit
+ * por IP (10/min) antes de tocar la base de datos. RLS sigue siendo la
+ * última línea de defensa (la ruta usa la anon key, no service_role).
+ */
+export async function submitPublicCita(slug: string, input: SubmitCitaInput): Promise<void> {
+  const res = await fetch("/api/public/citas", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ slug, ...input }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || "No se pudo agendar tu cita.");
+  }
 }
 
 export interface CitaCliente {
@@ -749,17 +753,23 @@ export interface CitaCliente {
 
 /**
  * Citas pendientes de un cliente en /b/[slug]/cliente, buscadas por su
- * propio teléfono vía get_citas_por_telefono (security definer) — mismo
- * modelo que findOrCreateBarberiaCliente: sin login, el teléfono exacto es
- * la prueba de que son sus propias citas.
+ * propio teléfono vía /api/public/citas/lookup (que a su vez llama a
+ * get_citas_por_telefono, security definer). Sin login, el teléfono exacto
+ * es la prueba de que son sus propias citas — por eso esta ruta lleva rate
+ * limit por IP, para que no se pueda usar como barrido de teléfonos.
  */
-export async function fetchCitasByTelefono(negocioId: string, telefono: string): Promise<CitaCliente[]> {
-  const { data, error } = await supabase.rpc("get_citas_por_telefono", {
-    p_negocio_id: negocioId,
-    p_telefono: telefono,
+export async function fetchCitasByTelefono(slug: string, telefono: string): Promise<CitaCliente[]> {
+  const res = await fetch("/api/public/citas/lookup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ slug, telefono }),
   });
-  if (error) throw error;
-  return (data ?? []).map((r: Record<string, unknown>) => ({
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || "No se pudieron buscar tus citas.");
+  }
+  const { citas } = await res.json();
+  return ((citas ?? []) as Record<string, unknown>[]).map((r) => ({
     clienteNombre: r.cliente_nombre as string,
     servicioNombre: r.servicio_nombre as string,
     precio: Number(r.precio),

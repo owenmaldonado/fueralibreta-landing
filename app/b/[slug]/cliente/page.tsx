@@ -13,6 +13,7 @@ import { fetchNegocioBySlug, fetchCitasByTelefono, type CitaCliente } from "@/li
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { readDemoPreview } from "@/lib/demoPreview";
 import { formatMoney, mensajeRecordatorioCita, waLink } from "@/lib/mock";
+import { telefonoSchema } from "@/lib/validation";
 import type { Business } from "@/lib/types";
 
 /**
@@ -86,8 +87,9 @@ export default function ClientePublicoPage() {
   }
 
   async function buscar() {
-    const tel = telefono.trim();
-    if (tel.length < 6) return;
+    const parsed = telefonoSchema.safeParse(telefono.replace(/\D/g, ""));
+    if (!parsed.success) return;
+    const tel = parsed.data;
     setBuscando(true);
     setBuscado(false);
     try {
@@ -105,11 +107,11 @@ export default function ClientePublicoPage() {
           .sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora));
         setCitas(propias);
       } else {
-        const propias = await fetchCitasByTelefono(business!.id, tel);
+        const propias = await fetchCitasByTelefono(params.slug, tel);
         setCitas(propias);
       }
     } catch (err) {
-      console.error("No se pudieron buscar tus citas:", err);
+      console.error("No se pudieron buscar tus citas.");
       setCitas([]);
     } finally {
       setBuscando(false);
@@ -137,6 +139,7 @@ export default function ClientePublicoPage() {
             onChange={(e) => setTelefono(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && buscar()}
             placeholder="331 000 0000"
+            maxLength={15}
           />
         </div>
         <Button size="lg" disabled={telefono.trim().length < 6 || buscando} onClick={buscar}>

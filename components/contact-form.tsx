@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import { contactoSchema } from "@/lib/validation";
 
 type Status = "idle" | "loading" | "success" | "error";
 
@@ -26,12 +27,18 @@ export function ContactForm() {
     const form = e.currentTarget;
     const data = new FormData(form);
 
-    const payload = {
+    const parsed = contactoSchema.safeParse({
       nombre: String(data.get("nombre") ?? ""),
-      telefono: String(data.get("telefono") ?? ""),
+      telefono: String(data.get("telefono") ?? "").replace(/\D/g, ""),
       negocio,
       mensaje: String(data.get("mensaje") ?? ""),
-    };
+    });
+
+    if (!parsed.success) {
+      setStatus("error");
+      setErrorMsg(parsed.error.errors[0]?.message ?? "Revisa los datos del formulario.");
+      return;
+    }
 
     if (!isSupabaseConfigured) {
       // Permite ver el formulario funcionando en preview sin variables de entorno.
@@ -41,11 +48,19 @@ export function ContactForm() {
       return;
     }
 
-    const { error } = await supabase.from("contactos").insert(payload);
-
-    if (error) {
+    try {
+      const res = await fetch("/api/public/contacto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed.data),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "No se pudo enviar.");
+      }
+    } catch (err) {
       setStatus("error");
-      setErrorMsg("No se pudo enviar. Intenta de nuevo o escríbenos por WhatsApp.");
+      setErrorMsg(err instanceof Error ? err.message : "No se pudo enviar. Intenta de nuevo o escríbenos por WhatsApp.");
       return;
     }
 
@@ -74,7 +89,7 @@ export function ContactForm() {
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="nombre">Nombre</Label>
-          <Input id="nombre" name="nombre" placeholder="Tu nombre" required />
+          <Input id="nombre" name="nombre" placeholder="Tu nombre" maxLength={50} required />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="telefono">WhatsApp</Label>
@@ -83,6 +98,7 @@ export function ContactForm() {
             name="telefono"
             type="tel"
             placeholder="311 000 0000"
+            maxLength={15}
             required
           />
         </div>
@@ -113,6 +129,7 @@ export function ContactForm() {
         <Textarea
           id="mensaje"
           name="mensaje"
+          maxLength={1000}
           placeholder="Ej. Tengo una barbería en el centro de Tepic, somos 3 barberos y llevamos todo en libreta..."
         />
       </div>
