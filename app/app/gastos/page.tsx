@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Tabs } from "@/components/ui/tabs";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -56,6 +57,8 @@ export default function GastosPage() {
   const [borrando, setBorrando] = React.useState<Expense | null>(null);
   const [rango, setRango] = React.useState<RangoTiempo>("semanal");
   const [chartTab, setChartTab] = React.useState<ChartTab>("ambos");
+  const anioActual = new Date().getFullYear();
+  const [anioSeleccionado, setAnioSeleccionado] = React.useState(anioActual);
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -75,8 +78,22 @@ export default function GastosPage() {
           label: v.items.length === 1 ? `${v.items[0].cantidad} ${v.items[0].productoNombre}` : `${v.items.length} productos`,
         }));
 
-  const gastosFiltrados = filterByRango(gastos, rango, (g) => g.fecha).sort((a, b) => b.fecha.localeCompare(a.fecha));
-  const ventasFiltradas = filterByRango(ventas, rango, (v) => v.fecha).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  // Años con al menos un movimiento (para el selector de histórico), más el
+  // año en curso aunque todavía no tenga nada — se lee el año directo del
+  // string ISO (sin pasar por Date) para no arrastrar corrimientos de UTC.
+  const aniosDisponibles = Array.from(
+    new Set([anioActual, ...gastos.map((g) => Number(g.fecha.slice(0, 4))), ...ventas.map((v) => Number(v.fecha.slice(0, 4)))])
+  ).sort((a, b) => a - b);
+
+  // "Anual" con el año en curso sigue siendo el rolling de los últimos 12
+  // meses (el default de siempre). Elegir un año pasado cambia el reloj de
+  // referencia al 31 de diciembre de ese año — el mismo rolling de 12 meses
+  // "terminando ahí" da exactamente Ene-Dic de ese año, sin duplicar la
+  // lógica de buckets.
+  const now = rango === "anual" && anioSeleccionado !== anioActual ? new Date(anioSeleccionado, 11, 31) : new Date();
+
+  const gastosFiltrados = filterByRango(gastos, rango, (g) => g.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const ventasFiltradas = filterByRango(ventas, rango, (v) => v.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const totalGastos = gastosFiltrados.reduce((acc, g) => acc + g.monto, 0);
   const totalVentas = ventasFiltradas.reduce((acc, v) => acc + v.monto, 0);
   const ganancia = totalVentas - totalGastos;
@@ -86,13 +103,14 @@ export default function GastosPage() {
     ...gastosFiltrados.map((g) => ({ id: g.id, fecha: g.fecha, monto: g.monto, label: g.categoria, tipo: "gasto" as const })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
-  const serieGastos = aggregateByRange(gastos, rango, (g) => g.fecha, (g) => g.monto);
-  const serieVentas = aggregateByRange(ventas, rango, (v) => v.fecha, (v) => v.monto);
+  const serieGastos = aggregateByRange(gastos, rango, (g) => g.fecha, (g) => g.monto, now);
+  const serieVentas = aggregateByRange(ventas, rango, (v) => v.fecha, (v) => v.monto, now);
   const serieDoble = aggregateTwoByRange(
     [...ventas.map((v) => ({ fecha: v.fecha, a: v.monto, b: 0 })), ...gastos.map((g) => ({ fecha: g.fecha, a: 0, b: g.monto }))],
     rango,
     (x) => x.fecha,
-    (x) => ({ a: x.a, b: x.b })
+    (x) => ({ a: x.a, b: x.b }),
+    now
   );
 
   function withGastos(prev: TenantData, next: (gastos: Expense[]) => Expense[]): TenantData {
@@ -150,6 +168,15 @@ export default function GastosPage() {
 
       <div className="flex flex-col gap-3 px-4 pt-4">
         <Tabs value={rango} onValueChange={(v) => setRango(v as RangoTiempo)} tabs={RANGO_TABS} />
+        {rango === "anual" && aniosDisponibles.length > 1 && (
+          <ChipGroup>
+            {aniosDisponibles.map((a) => (
+              <Chip key={a} selected={anioSeleccionado === a} onClick={() => setAnioSeleccionado(a)}>
+                {a}
+              </Chip>
+            ))}
+          </ChipGroup>
+        )}
         {chartTab === "gastos" && (
           <TrendBarChart data={serieGastos} bars={[{ key: "value", name: "Gastado", color: "hsl(4 78% 58%)" }]} emptyText="Sin gastos en este periodo" />
         )}
