@@ -31,6 +31,7 @@ const SEGMENTOS_DE_NEGOCIO = new Set([
   "clientes",
   "configuracion",
   "fiados",
+  "frutas-verdura",
   "gastos",
   "historial",
   "inicio",

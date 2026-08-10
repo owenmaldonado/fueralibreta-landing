@@ -2,19 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Home,
-  CalendarDays,
-  Users,
-  Wallet,
-  Settings,
-  ClipboardList,
-  UtensilsCrossed,
-  Receipt,
-  Boxes,
-  HandCoins,
-  CalendarClock,
-} from "lucide-react";
+import { Home, CalendarDays, Users, Wallet, Settings, ClipboardList, UtensilsCrossed, Receipt, Boxes, HandCoins } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { BusinessType } from "@/lib/types";
@@ -22,7 +10,9 @@ import type { BusinessType } from "@/lib/types";
 interface NavItem {
   href: string;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  /** Uno de los dos: ícono de lucide o un emoji (ej. Frutas y Verdura usa 🥑). */
+  icon?: React.ComponentType<{ className?: string }>;
+  emoji?: string;
 }
 
 const NAV_BARBERIA: NavItem[] = [
@@ -44,7 +34,7 @@ const NAV_ABARROTES: NavItem[] = [
   { href: "/app/inicio", label: "Hoy", icon: Home },
   { href: "/app/inventario", label: "Inventario", icon: Boxes },
   { href: "/app/fiados", label: "Fiados", icon: HandCoins },
-  { href: "/app/apartados", label: "Apartados", icon: CalendarClock },
+  { href: "/app/frutas-verdura", label: "Frutas y Verdura", emoji: "🥑" },
   { href: "/app/gastos", label: "Gastos", icon: Receipt },
 ];
 
@@ -69,11 +59,11 @@ export function BottomNav({ tipo }: { tipo: BusinessType }) {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors",
+                "flex flex-1 flex-col items-center gap-1 py-2.5 text-center text-[11px] font-medium leading-tight transition-colors",
                 active ? "text-primary" : "text-muted-foreground"
               )}
             >
-              <Icon className="h-5 w-5" />
+              {item.emoji ? <span className="text-base leading-none">{item.emoji}</span> : Icon && <Icon className="h-5 w-5" />}
               {item.label}
             </Link>
           );

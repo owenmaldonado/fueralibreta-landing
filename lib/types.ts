@@ -143,6 +143,8 @@ export interface GroceryProduct {
   /** Emoji/ícono elegido a mano para este producto (se ve en el grid de Nueva Venta). Si no hay, se usa un default por categoría. */
   emoji?: string;
   lotes?: { cantidad: number; fecha: string }[];
+  /** Producto de precio volátil (fruta/verdura): vive en el panel "Frutas y Verdura", no en la lista normal de Inventario. */
+  isVolatile?: boolean;
 }
 
 export interface FiadoMovimiento {
