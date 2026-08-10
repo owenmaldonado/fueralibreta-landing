@@ -21,7 +21,7 @@ import { useSession } from "@/lib/session";
 import { formatMoney, todayISO, uid } from "@/lib/mock";
 import { aggregateByRange, aggregateTwoByRange, filterByRango, type RangoTiempo } from "@/lib/chart-buckets";
 import { cn } from "@/lib/utils";
-import type { Expense, TenantData } from "@/lib/types";
+import type { Expense, TenantData, FondaOrder } from "@/lib/types";
 
 const RANGO_TABS = [
   { value: "semanal", label: "Semanal" },
@@ -55,6 +55,8 @@ export default function GastosPage() {
   const [addOpen, setAddOpen] = React.useState(false);
   const [editando, setEditando] = React.useState<Expense | null>(null);
   const [borrando, setBorrando] = React.useState<Expense | null>(null);
+  const [editandoVenta, setEditandoVenta] = React.useState<FondaOrder | null>(null);
+  const [borrandoVenta, setBorrandoVenta] = React.useState<FondaOrder | null>(null);
   const [rango, setRango] = React.useState<RangoTiempo>("semanal");
   const [chartTab, setChartTab] = React.useState<ChartTab>("ambos");
   const anioActual = new Date().getFullYear();
@@ -66,7 +68,10 @@ export default function GastosPage() {
   const gastos: Expense[] = session.fonda?.gastos ?? session.abarrotes?.gastos ?? [];
 
   // Un pedido de fonda solo cuenta como venta una vez "entregado" — mientras
-  // está pendiente todavía no es dinero cobrado.
+  // está pendiente todavía no es dinero cobrado. En Fondita se vende
+  // servicio: el precio completo del platillo cuenta, no hay costo de
+  // insumo por separado que restar (a diferencia de Abarrotes, que sí tiene
+  // costo/precio por producto en Inventario).
   const pedidosEntregados = (session.fonda?.pedidos ?? []).filter((p) => p.estado === "entregado");
   const ventas: Movimiento[] =
     modulo === "fonda"
@@ -91,6 +96,9 @@ export default function GastosPage() {
   // "terminando ahí" da exactamente Ene-Dic de ese año, sin duplicar la
   // lógica de buckets.
   const now = rango === "anual" && anioSeleccionado !== anioActual ? new Date(anioSeleccionado, 11, 31) : new Date();
+
+  const hoy = todayISO(0);
+  const ventasHoy = ventas.filter((v) => v.fecha.slice(0, 10) === hoy).reduce((acc, v) => acc + v.monto, 0);
 
   const gastosFiltrados = filterByRango(gastos, rango, (g) => g.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const ventasFiltradas = filterByRango(ventas, rango, (v) => v.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -125,6 +133,28 @@ export default function GastosPage() {
     setBorrando(null);
   }
 
+  // Editar/eliminar una venta desde este panel solo aplica a pedidos de
+  // Fondita (concepto/monto/hora encajan directo con FondaOrder). Las
+  // ventas de Abarrotes ya tienen su propio editor completo en Inventario
+  // > Ventas (con items y recálculo de total), así que aquí se quedan de
+  // solo lectura para no duplicar ese flujo con uno más simple/menos fiel.
+  function abrirEditarVenta(id: string) {
+    const pedido = session!.fonda!.pedidos.find((p) => p.id === id);
+    if (pedido) setEditandoVenta(pedido);
+  }
+  function abrirBorrarVenta(id: string) {
+    const pedido = session!.fonda!.pedidos.find((p) => p.id === id);
+    if (pedido) setBorrandoVenta(pedido);
+  }
+  function eliminarVenta() {
+    if (!borrandoVenta) return;
+    update((prev) => {
+      const f = prev.fonda!;
+      return { ...prev, fonda: { ...f, pedidos: f.pedidos.filter((p) => p.id !== borrandoVenta.id) } };
+    });
+    setBorrandoVenta(null);
+  }
+
   return (
     <>
       <PageHeader
@@ -141,28 +171,55 @@ export default function GastosPage() {
         <Tabs value={chartTab} onValueChange={(v) => setChartTab(v as ChartTab)} tabs={CHART_TABS} />
       </div>
 
-      {chartTab === "ambos" ? (
-        <div className="mx-4 mt-3 flex items-center justify-center gap-3 rounded-xl border border-border bg-card px-3 py-4 text-center">
-          <div>
-            <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ventas</p>
-            <p className="font-display text-lg font-bold text-ledger">{formatMoney(totalVentas)}</p>
+      {modulo === "abarrotes" ? (
+        chartTab === "ambos" ? (
+          <div className="mx-4 mt-3 flex items-center justify-center gap-3 rounded-xl border border-border bg-card px-3 py-4 text-center">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ventas</p>
+              <p className="font-display text-lg font-bold text-ledger">{formatMoney(totalVentas)}</p>
+            </div>
+            <span className="text-muted-foreground">−</span>
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Gastos</p>
+              <p className="font-display text-lg font-bold text-destructive">{formatMoney(totalGastos)}</p>
+            </div>
+            <span className="text-muted-foreground">=</span>
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ganancia</p>
+              <p className={cn("font-display text-lg font-bold", ganancia >= 0 ? "text-ledger" : "text-destructive")}>
+                {formatMoney(ganancia)}
+              </p>
+            </div>
           </div>
-          <span className="text-muted-foreground">−</span>
-          <div>
-            <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Gastos</p>
-            <p className="font-display text-lg font-bold text-destructive">{formatMoney(totalGastos)}</p>
+        ) : (
+          <div className="px-4 pt-3">
+            <StatTile label={chartTab === "gastos" ? "Total gastos" : "Total ventas"} value={formatMoney(chartTab === "gastos" ? totalGastos : totalVentas)} />
           </div>
-          <span className="text-muted-foreground">=</span>
-          <div>
-            <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ganancia</p>
+        )
+      ) : chartTab === "gastos" ? (
+        <div className="px-4 pt-3">
+          <StatTile label="Total gastos" value={formatMoney(totalGastos)} />
+        </div>
+      ) : chartTab === "ventas" ? (
+        // Fondita vende servicio: el precio completo del platillo cuenta,
+        // sin costo de insumo que restar — por eso aquí son totales de
+        // venta, no una "ganancia" con margen.
+        <div className="grid grid-cols-2 gap-3 px-4 pt-3">
+          <StatTile label="Vendido hoy" value={formatMoney(ventasHoy)} />
+          <StatTile label="Vendido en el periodo" value={formatMoney(totalVentas)} />
+        </div>
+      ) : (
+        <div className="px-4 pt-3">
+          <div className="grid grid-cols-2 gap-3">
+            <StatTile label="Total ventas" value={formatMoney(totalVentas)} />
+            <StatTile label="Total gastos" value={formatMoney(totalGastos)} />
+          </div>
+          <div className="mt-3 rounded-xl border border-border bg-card px-3 py-3 text-center">
+            <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">En caja (informativo)</p>
             <p className={cn("font-display text-lg font-bold", ganancia >= 0 ? "text-ledger" : "text-destructive")}>
               {formatMoney(ganancia)}
             </p>
           </div>
-        </div>
-      ) : (
-        <div className="px-4 pt-3">
-          <StatTile label={chartTab === "gastos" ? "Total gastos" : "Total ventas"} value={formatMoney(chartTab === "gastos" ? totalGastos : totalVentas)} />
         </div>
       )}
 
@@ -237,6 +294,24 @@ export default function GastosPage() {
                   <p className="text-xs text-muted-foreground">{formatFechaCorta(v.fecha)}</p>
                 </div>
                 <span className="shrink-0 font-mono text-sm text-ledger">+{formatMoney(v.monto)}</span>
+                {modulo === "fonda" && (
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <button
+                      onClick={() => abrirEditarVenta(v.id)}
+                      aria-label="Editar venta"
+                      className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => abrirBorrarVenta(v.id)}
+                      aria-label="Eliminar venta"
+                      className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
             ))
           ))}
@@ -255,6 +330,48 @@ export default function GastosPage() {
                   {m.tipo === "venta" ? "+" : "-"}
                   {formatMoney(m.monto)}
                 </span>
+                {m.tipo === "gasto" && (
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <button
+                      onClick={() => {
+                        const g = gastos.find((x) => x.id === m.id);
+                        if (g) setEditando(g);
+                      }}
+                      aria-label="Editar gasto"
+                      className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        const g = gastos.find((x) => x.id === m.id);
+                        if (g) setBorrando(g);
+                      }}
+                      aria-label="Eliminar gasto"
+                      className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+                {m.tipo === "venta" && modulo === "fonda" && (
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <button
+                      onClick={() => abrirEditarVenta(m.id)}
+                      aria-label="Editar venta"
+                      className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => abrirBorrarVenta(m.id)}
+                      aria-label="Eliminar venta"
+                      className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
             ))
           ))}
@@ -274,6 +391,18 @@ export default function GastosPage() {
         description={`Se borrará "${borrando?.categoria}" por ${borrando ? formatMoney(borrando.monto) : ""}.`}
         onClose={() => setBorrando(null)}
         onConfirm={eliminar}
+      />
+
+      <Sheet open={!!editandoVenta} onOpenChange={(o) => !o && setEditandoVenta(null)}>
+        {editandoVenta && <VentaFondaForm pedido={editandoVenta} onClose={() => setEditandoVenta(null)} update={update} />}
+      </Sheet>
+
+      <ConfirmDialog
+        open={!!borrandoVenta}
+        title="Eliminar venta"
+        description={`Se borrará el pedido de ${borrandoVenta?.clienteNombre ?? ""} por ${borrandoVenta ? formatMoney(borrandoVenta.total) : ""}.`}
+        onClose={() => setBorrandoVenta(null)}
+        onConfirm={eliminarVenta}
       />
     </>
   );
@@ -349,6 +478,65 @@ function GastoForm({
       <SheetFooter>
         <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>
           {gasto ? "Guardar cambios" : "Guardar gasto"}
+        </Button>
+      </SheetFooter>
+    </>
+  );
+}
+
+function VentaFondaForm({
+  pedido,
+  onClose,
+  update,
+}: {
+  pedido: FondaOrder;
+  onClose: () => void;
+  update: ReturnType<typeof useSession>["update"];
+}) {
+  const [clienteNombre, setClienteNombre] = React.useState(pedido.clienteNombre);
+  const [total, setTotal] = React.useState(String(pedido.total));
+  const [hora, setHora] = React.useState(pedido.hora);
+
+  const puedeGuardar = clienteNombre.trim().length > 1 && Number(total) > 0 && hora.length > 0;
+
+  function guardar() {
+    if (!puedeGuardar) return;
+    update((prev) => {
+      const f = prev.fonda!;
+      return {
+        ...prev,
+        fonda: {
+          ...f,
+          pedidos: f.pedidos.map((p) =>
+            p.id === pedido.id ? { ...p, clienteNombre: clienteNombre.trim(), total: Number(total), hora } : p
+          ),
+        },
+      };
+    });
+    onClose();
+  }
+
+  return (
+    <>
+      <SheetHeader title="Editar venta" description="Concepto, monto y hora del pedido" onClose={onClose} />
+      <div className="flex flex-col gap-4">
+        <div className="space-y-1.5">
+          <Label>Concepto (cliente)</Label>
+          <Input autoFocus value={clienteNombre} onChange={(e) => setClienteNombre(e.target.value)} placeholder="Nombre del cliente" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Monto</Label>
+          <Input type="number" inputMode="decimal" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="$0" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Hora</Label>
+          {/* type="time" nativo: siempre 24h real, sin ambigüedad AM/PM. */}
+          <Input type="time" min="00:00" max="23:59" value={hora} onChange={(e) => setHora(e.target.value)} />
+        </div>
+      </div>
+      <SheetFooter>
+        <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>
+          Guardar cambios
         </Button>
       </SheetFooter>
     </>
