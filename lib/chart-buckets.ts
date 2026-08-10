@@ -113,6 +113,21 @@ export function aggregateByRange<T>(
 }
 
 /**
+ * Filtra `items` a los que caen dentro de la ventana completa del rango
+ * (la unión de todos sus buckets) — para que una lista de abajo respete el
+ * mismo semanal/mensual/anual que ya usa la gráfica de arriba.
+ */
+export function filterByRango<T>(items: T[], rango: RangoTiempo, dateOf: (item: T) => string, now: Date = new Date()): T[] {
+  const buckets = getBuckets(rango, now);
+  const start = buckets[0].start;
+  const end = buckets[buckets.length - 1].end;
+  return items.filter((item) => {
+    const fecha = parseFecha(dateOf(item));
+    return !Number.isNaN(fecha.getTime()) && fecha >= start && fecha < end;
+  });
+}
+
+/**
  * Igual que aggregateByRange pero suma dos series independientes por bucket
  * (por ejemplo ingresos vs gastos) en una sola pasada.
  */

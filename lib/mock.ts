@@ -484,7 +484,37 @@ export function generateDemoAbarrotes(form: DemoFormAbarrotes): TenantData {
     unidad: "pieza" as const,
     lotes: [],
   };
-  data.productos = [p1, p2];
+  const jitomate = {
+    id: uid("gp"),
+    nombre: "Jitomate",
+    codigo: Math.floor(1000000000 + Math.random() * 8999999999).toString(),
+    categoria: "Frutas y Verdura",
+    emoji: "🍅",
+    costo: 12,
+    precio: 18,
+    stock: 20,
+    minimo: 0,
+    controlCaducidad: false,
+    unidad: "kg" as const,
+    lotes: [],
+    isVolatile: true,
+  };
+  const aguacate = {
+    id: uid("gp"),
+    nombre: "Aguacate",
+    codigo: Math.floor(1000000000 + Math.random() * 8999999999).toString(),
+    categoria: "Frutas y Verdura",
+    emoji: "🥑",
+    costo: 35,
+    precio: 55,
+    stock: 12,
+    minimo: 0,
+    controlCaducidad: false,
+    unidad: "kg" as const,
+    lotes: [],
+    isVolatile: true,
+  };
+  data.productos = [p1, p2, jitomate, aguacate];
 
   data.ventas = [
     {

@@ -70,7 +70,10 @@ export default function InventarioPage() {
   if (!ready || !session) return <LoadingBlock />;
 
   const data = session.abarrotes!;
-  const filtrados = data.productos.filter(
+  // Frutas y Verdura (isVolatile) tiene su propio panel de precios — no
+  // duplicarlas aquí, aunque sí sigan siendo vendibles desde Nueva Venta.
+  const productosInventario = data.productos.filter((p) => !p.isVolatile);
+  const filtrados = productosInventario.filter(
     (p) => p.nombre.toLowerCase().includes(q.toLowerCase()) || p.codigo.includes(q)
   );
   const ventas = [...data.ventas].sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -121,7 +124,7 @@ export default function InventarioPage() {
 
       <PageHeader
         title="Inventario"
-        subtitle={`${data.productos.length} productos`}
+        subtitle={`${productosInventario.length} productos`}
         action={
           <Button size="sm" onClick={() => setScanning(true)}>
             <ScanLine className="h-4 w-4" /> Escanear
