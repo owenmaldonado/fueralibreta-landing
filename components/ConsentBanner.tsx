@@ -2,21 +2,27 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { readConsent, writeConsent } from "@/lib/consent";
 
 /**
- * Modal de cookies obligatorio: cubre toda la pantalla (overlay con
- * backdrop-blur) y bloquea el scroll del body hasta que el usuario acepta.
+ * Modal de cookies obligatorio, pero SOLO en la página principal ("/"): ahí
+ * bloquea toda la pantalla (overlay + scroll del body) hasta que el usuario
+ * acepta. En cualquier otra ruta —incluidas las legales /aviso-privacidad,
+ * /terminos y /cookies— no se muestra, para que se puedan leer sin pedir
+ * que se acepten primero. Al volver a "/" sin haber aceptado, reaparece.
  * No se cierra con click afuera, solo con el botón. Montado una sola vez
  * en app/layout.tsx.
  */
 export function ConsentBanner() {
+  const pathname = usePathname();
+  const isHome = pathname === "/";
   const [visible, setVisible] = React.useState(false);
 
   React.useEffect(() => {
-    setVisible(readConsent() !== "accepted");
-  }, []);
+    setVisible(isHome && readConsent() !== "accepted");
+  }, [isHome]);
 
   React.useEffect(() => {
     document.body.style.overflow = visible ? "hidden" : "";
@@ -46,21 +52,11 @@ export function ConsentBanner() {
         <p className="mt-4 text-sm leading-relaxed text-black/80">
           Usamos cookies necesarias para que Fuera Libreta funcione. Al
           continuar aceptas nuestro{" "}
-          <Link
-            href="/aviso-privacidad"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-amber-700 underline underline-offset-2"
-          >
+          <Link href="/aviso-privacidad" className="font-medium text-amber-700 underline underline-offset-2">
             Aviso de Privacidad
           </Link>{" "}
           y{" "}
-          <Link
-            href="/terminos"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-amber-700 underline underline-offset-2"
-          >
+          <Link href="/terminos" className="font-medium text-amber-700 underline underline-offset-2">
             Términos
           </Link>
           .
