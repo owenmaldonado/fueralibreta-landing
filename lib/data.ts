@@ -47,6 +47,7 @@ function businessFromRow(row: Row): Business {
     tipo: row.tipo as Business["tipo"],
     dueno: row.dueno as string,
     telefono: row.telefono as string,
+    whatsapp: (row.whatsapp as string) ?? undefined,
     direccion: (row.direccion as string) ?? undefined,
     is_active: row.is_active as boolean,
     trial_fin: row.trial_fin as string,
@@ -65,6 +66,7 @@ function businessToRow(b: Business): Row {
     tipo: b.tipo,
     dueno: b.dueno,
     telefono: b.telefono,
+    whatsapp: b.whatsapp ?? null,
     direccion: b.direccion ?? null,
     is_active: b.is_active,
     trial_fin: b.trial_fin,
@@ -781,6 +783,15 @@ export async function fetchCitasByTelefono(slug: string, telefono: string): Prom
 /** Compara el estado anterior y el nuevo de la sesión y aplica los cambios en Supabase. */
 export async function syncTenantDiff(prev: TenantData, next: TenantData): Promise<void> {
   const negocioId = next.business.id;
+
+  // A diferencia de barberia/fonda/abarrotes (sub-objetos con listas que se
+  // diffean campo por campo), `business` vive directo en la fila `negocios`
+  // — el único campo editable desde /app hoy es `whatsapp` (Configuración >
+  // Perfil), así que solo ese se compara y sincroniza.
+  if (prev.business.whatsapp !== next.business.whatsapp) {
+    const { error } = await supabase.from("negocios").update({ whatsapp: next.business.whatsapp ?? null }).eq("id", negocioId);
+    if (error) throw error;
+  }
 
   if (prev.barberia && next.barberia) {
     const p = prev.barberia;

@@ -13,7 +13,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { fetchNegocioBySlug, fetchCitasByTelefono, type CitaCliente } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { readDemoPreview } from "@/lib/demoPreview";
-import { formatMoney, mensajeRecordatorioCita, waLink } from "@/lib/mock";
+import { formatMoney, mensajeRecordatorioCita, waLink, whatsappDe } from "@/lib/mock";
 import { telefonoSchema } from "@/lib/validation";
 import type { Business } from "@/lib/types";
 
@@ -166,11 +166,15 @@ export default function ClientePublicoPage() {
                     · {c.hora} · {formatMoney(c.precio)}
                   </p>
                   <p className="mt-3 text-sm">{mensajeRecordatorioCita(c, business.nombre)}</p>
-                  <Button asChild size="sm" variant="outline" className="mt-3">
-                    <Link href={waLink(business.telefono, `Hola, tengo una cita el ${c.fecha} a las ${c.hora}`)} target="_blank">
-                      <MessageCircle className="h-4 w-4" /> Confirmar por WhatsApp
-                    </Link>
-                  </Button>
+                  {whatsappDe(business) ? (
+                    <Button asChild size="sm" variant="outline" className="mt-3">
+                      <Link href={waLink(whatsappDe(business)!, mensajeRecordatorioCita(c, business.nombre))} target="_blank">
+                        <MessageCircle className="h-4 w-4" /> Confirmar por WhatsApp
+                      </Link>
+                    </Button>
+                  ) : (
+                    <p className="mt-3 text-xs text-muted-foreground">Configura tu WhatsApp en Ajustes</p>
+                  )}
                 </div>
               ))
             )}

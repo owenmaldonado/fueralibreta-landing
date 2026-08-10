@@ -115,6 +115,19 @@ export function onlyDigits(s: string): string {
   return s.replace(/\D/g, "");
 }
 
+/**
+ * Número de WhatsApp configurado para recibir citas (Configuración > Perfil).
+ * Deliberadamente NO cae de vuelta a `business.telefono`: son campos
+ * distintos (el dueño puede querer recibir citas en un número diferente al
+ * de contacto general), así que hasta que no se configure explícito, los
+ * botones de WhatsApp del link público deben avisar en vez de mandar a un
+ * número que el dueño nunca eligió para esto.
+ */
+export function whatsappDe(business: Pick<Business, "whatsapp">): string | null {
+  const numero = business.whatsapp?.trim();
+  return numero ? numero : null;
+}
+
 /** Construye un link de WhatsApp con mensaje precargado. */
 export function waLink(telefono: string, mensaje: string): string {
   let digits = onlyDigits(telefono);

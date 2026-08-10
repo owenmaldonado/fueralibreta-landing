@@ -12,6 +12,8 @@ export interface Business {
   tipo: BusinessType;
   dueno: string;
   telefono: string;
+  /** Número de WhatsApp para recibir citas/confirmaciones (ej. 521XXXXXXXXXX). Distinto de `telefono`: se configura aparte en Configuración > Perfil. */
+  whatsapp?: string;
   direccion?: string;
   is_active: boolean;
   trial_fin: string; // ISO date

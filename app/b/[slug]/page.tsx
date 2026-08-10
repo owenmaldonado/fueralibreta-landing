@@ -15,7 +15,7 @@ import { getAvailableSlots } from "@/lib/agenda";
 import { fetchNegocioBySlug, fetchPublicBookingData, submitPublicCita, type PublicBookingData } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { readDemoPreview, writeDemoPreview } from "@/lib/demoPreview";
-import { formatMoney, todayISO, waLink } from "@/lib/mock";
+import { formatMoney, todayISO, waLink, whatsappDe } from "@/lib/mock";
 import { nombreSchema, telefonoSchema } from "@/lib/validation";
 import type { Business, Appointment } from "@/lib/types";
 
@@ -110,6 +110,7 @@ export default function ReservaPublicaPage() {
 
   const servicio = booking.servicios.find((s) => s.id === servicioId) ?? booking.servicios[0];
   const slots = getAvailableSlots(booking, fecha);
+  const numeroWhatsapp = whatsappDe(business);
 
   async function reservar() {
     if (!servicio || !hora || nombre.trim().length < 2 || telefono.trim().length < 6) return;
@@ -190,16 +191,20 @@ export default function ReservaPublicaPage() {
             {confirmada.servicio} el {confirmada.fecha} a las {confirmada.hora} en {business.nombre}.
           </p>
         </div>
-        <Button asChild variant="outline">
-          <Link
-            href={waLink(
-              business.telefono,
-              `Hola, acabo de agendar una cita en ${business.nombre} para el ${confirmada.fecha} a las ${confirmada.hora}`
-            )}
-          >
-            <MessageCircle className="h-4 w-4" /> Confirmar por WhatsApp
-          </Link>
-        </Button>
+        {numeroWhatsapp ? (
+          <Button asChild variant="outline">
+            <Link
+              href={waLink(
+                numeroWhatsapp,
+                `Hola, acabo de agendar una cita de ${confirmada.servicio} en ${business.nombre} para el ${confirmada.fecha} a las ${confirmada.hora}. ¡Confirmo!`
+              )}
+            >
+              <MessageCircle className="h-4 w-4" /> Confirmar por WhatsApp
+            </Link>
+          </Button>
+        ) : (
+          <p className="text-xs text-muted-foreground">Este negocio todavía no configuró su WhatsApp para citas.</p>
+        )}
       </main>
     );
   }
@@ -216,11 +221,15 @@ export default function ReservaPublicaPage() {
             <MapPin className="h-3.5 w-3.5" /> {business.direccion}
           </p>
         )}
-        <Button asChild size="sm" variant="outline" className="mt-4">
-          <Link href={waLink(business.telefono, `Hola, quiero agendar una cita en ${business.nombre}`)} target="_blank">
-            <MessageCircle className="h-4 w-4" /> WhatsApp
-          </Link>
-        </Button>
+        {numeroWhatsapp ? (
+          <Button asChild size="sm" variant="outline" className="mt-4">
+            <Link href={waLink(numeroWhatsapp, `Hola, quiero agendar una cita en ${business.nombre}`)} target="_blank">
+              <MessageCircle className="h-4 w-4" /> WhatsApp
+            </Link>
+          </Button>
+        ) : (
+          <p className="mt-4 text-xs text-muted-foreground">Configura tu WhatsApp en Ajustes</p>
+        )}
         <p className="mt-3 text-xs text-muted-foreground">
           ¿Ya tienes cita?{" "}
           <Link href={`/b/${params.slug}/cliente`} className="font-medium text-primary underline-offset-2 hover:underline">

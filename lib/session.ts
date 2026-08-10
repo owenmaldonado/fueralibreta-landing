@@ -49,6 +49,9 @@ export function useSession() {
      * pestaña/dispositivo) deben aparecer en el panel del barbero (Agenda, el
      * "Hoy" del dashboard) sin que tenga que recargar — de ahí esta
      * suscripción en tiempo real, en vez de solo el fetch inicial de arriba.
+     * También escucha UPDATE: si el dueño cambia el estado de una cita (Listo,
+     * Cancelar, Mover) desde otra pestaña/dispositivo suyo, esta sesión debe
+     * verlo también, no solo los inserts nuevos.
      */
     function escucharCitasEnVivo(negocioId: string) {
       detenerCitasEnVivo();
@@ -63,6 +66,20 @@ export function useSession() {
               if (!prev?.barberia) return prev;
               if (prev.barberia.citas.some((c) => c.id === nueva.id)) return prev;
               return { ...prev, barberia: { ...prev.barberia, citas: [nueva, ...prev.barberia.citas] } };
+            });
+          }
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
+          (payload) => {
+            const actualizada = citaFromRow(payload.new as Record<string, unknown>);
+            setSessionState((prev) => {
+              if (!prev?.barberia) return prev;
+              return {
+                ...prev,
+                barberia: { ...prev.barberia, citas: prev.barberia.citas.map((c) => (c.id === actualizada.id ? actualizada : c)) },
+              };
             });
           }
         )
