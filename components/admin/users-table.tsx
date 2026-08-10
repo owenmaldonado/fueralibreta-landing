@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, ShieldCheck, ShieldOff, Ban, CheckCircle2, UserCog, Trash2, Crown } from "lucide-react";
+import { Eye, ShieldCheck, ShieldOff, Ban, CheckCircle2, UserCog, Trash2 } from "lucide-react";
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Avatar } from "@/components/ui/avatar";
@@ -14,7 +14,6 @@ interface UsersTableProps {
   currentUserId: string;
   onViewDetail: (userId: string) => void;
   onToggleRole: (profile: AdminProfile) => void;
-  onTogglePlan: (profile: AdminProfile) => void;
   onToggleBanned: (profile: AdminProfile) => void;
   onImpersonate: (profile: AdminProfile) => void;
   onDeleteRequest: (profile: AdminProfile) => void;
@@ -25,7 +24,6 @@ export function UsersTable({
   currentUserId,
   onViewDetail,
   onToggleRole,
-  onTogglePlan,
   onToggleBanned,
   onImpersonate,
   onDeleteRequest,
@@ -41,7 +39,6 @@ export function UsersTable({
           <TableHead>Usuario</TableHead>
           <TableHead>Rol</TableHead>
           <TableHead className="text-center">Negocios</TableHead>
-          <TableHead>Plan</TableHead>
           <TableHead>Registro</TableHead>
           <TableHead>Estado</TableHead>
           <TableHead className="text-right">Acciones</TableHead>
@@ -56,11 +53,6 @@ export function UsersTable({
               label: p.role === "admin" ? "Quitar admin" : "Hacer admin",
               icon: p.role === "admin" ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />,
               onClick: () => onToggleRole(p),
-            },
-            {
-              label: p.plan === "pro" ? "Bajar a plan free" : "Subir a plan pro",
-              icon: <Crown className="h-4 w-4" />,
-              onClick: () => onTogglePlan(p),
             },
             {
               label: p.isBanned ? "Desbanear" : "Banear",
@@ -100,9 +92,6 @@ export function UsersTable({
                 <Badge variant={p.role === "admin" ? "default" : "outline"}>{p.role === "admin" ? "Admin" : "User"}</Badge>
               </TableCell>
               <TableCell className="text-center font-mono text-sm">{p.negociosCount}</TableCell>
-              <TableCell>
-                <Badge variant={p.plan === "pro" ? "ledger" : "outline"}>{p.plan}</Badge>
-              </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {new Date(p.createdAt).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}
               </TableCell>

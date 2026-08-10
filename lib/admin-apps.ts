@@ -28,6 +28,8 @@ export interface AppConStats extends MisApp {
    * y agregar eso genéricamente no tiene sentido todavía. Lo que SÍ es
    * uniforme es lo que TÚ le cobras a cada negocio por usar tu software:
    * MRR estimado = negocios en plan 'pro' bajo esa app × PRECIO_PRO_MXN.
+   * Solo cuenta 'pro' (no 'pro_plus') porque todavía no hay un precio
+   * definido para ese tier — cuando lo haya, se suma aquí.
    */
   ingresosMrr: number;
 }
@@ -60,21 +62,13 @@ function misAppFromRow(row: Record<string, unknown>): MisApp {
  * siempre — si falla ese, ahí sí no hay nada que mostrar y se propaga.
  */
 export async function fetchAppsConStats(): Promise<AppsConStatsResult> {
-  const negociosRes = await supabase.from("negocios").select("app_slug, owner_id");
+  const negociosRes = await supabase.from("negocios").select("app_slug, plan");
   if (negociosRes.error) throw negociosRes.error;
-  const negocios = (negociosRes.data ?? []) as { app_slug: string; owner_id: string | null }[];
-
-  const ownerIds = Array.from(new Set(negocios.map((n) => n.owner_id).filter((id): id is string => !!id)));
-  let planByOwner = new Map<string, string>();
-  if (ownerIds.length > 0) {
-    const { data: profiles, error: profilesError } = await supabase.from("profiles").select("id, plan").in("id", ownerIds);
-    if (profilesError) throw profilesError;
-    planByOwner = new Map((profiles ?? []).map((p) => [p.id as string, p.plan as string]));
-  }
+  const negocios = (negociosRes.data ?? []) as { app_slug: string; plan: string }[];
 
   function statsFor(slug: string) {
     const deEstaApp = negocios.filter((n) => n.app_slug === slug);
-    const proCount = deEstaApp.filter((n) => n.owner_id && planByOwner.get(n.owner_id) === "pro").length;
+    const proCount = deEstaApp.filter((n) => n.plan === "pro").length;
     return { totalClientes: deEstaApp.length, ingresosMrr: proCount * PRECIO_PRO_MXN };
   }
 

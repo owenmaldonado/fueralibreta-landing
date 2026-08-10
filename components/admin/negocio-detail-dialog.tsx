@@ -10,12 +10,26 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { waLink, formatMoney, formatRelativeTime } from "@/lib/mock";
+import { estadoEfectivo } from "@/lib/planes";
 import { fetchNegocioDetail, prepareArcoRequest, type AdminNegocio, type NegocioDetail } from "@/lib/admin-data";
+import type { PlanNegocio, EstadoNegocio } from "@/lib/types";
 
 const TIPO_LABEL: Record<AdminNegocio["tipo"], string> = {
   barberia: "Barbería",
   fonda: "Fonda",
   abarrotes: "Abarrotes",
+};
+
+const PLAN_LABEL: Record<PlanNegocio, string> = {
+  basico: "Básico",
+  pro: "Pro",
+  pro_plus: "Pro+",
+};
+
+const ESTADO_LABEL: Record<EstadoNegocio, string> = {
+  prueba: "Prueba",
+  activo: "Activo",
+  suspendido: "Suspendido",
 };
 
 function fechaLarga(iso: string) {
@@ -26,11 +40,15 @@ export function NegocioDetailDialog({
   negocio,
   onClose,
   onToggleActive,
+  onChangePlan,
+  onChangeEstado,
   onDeleteRequest,
 }: {
   negocio: AdminNegocio | null;
   onClose: () => void;
   onToggleActive: (negocio: AdminNegocio) => void;
+  onChangePlan: (negocio: AdminNegocio, plan: PlanNegocio) => void;
+  onChangeEstado: (negocio: AdminNegocio, estado: EstadoNegocio) => void;
   onDeleteRequest: (negocio: AdminNegocio) => void;
 }) {
   const router = useRouter();
@@ -104,6 +122,12 @@ export function NegocioDetailDialog({
               {TIPO_LABEL[detail.tipo]}
             </Badge>
             <Badge variant={detail.isActive ? "ledger" : "outline"}>{detail.isActive ? "Activo" : "Pausado"}</Badge>
+            <Badge variant={detail.plan === "pro_plus" ? "ledger" : detail.plan === "pro" ? "default" : "outline"}>
+              {PLAN_LABEL[detail.plan]}
+            </Badge>
+            <Badge variant={estadoEfectivo(detail) === "activo" ? "ledger" : estadoEfectivo(detail) === "prueba" ? "default" : "outline"}>
+              {ESTADO_LABEL[estadoEfectivo(detail)]}
+            </Badge>
           </div>
 
           {/* Sección 2: métricas en grid 2x2 */}
@@ -165,8 +189,24 @@ export function NegocioDetailDialog({
               </Button>
               <Button variant="outline" size="sm" onClick={() => onToggleActive(detail)}>
                 {detail.isActive ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                {detail.isActive ? "Suspender" : "Reactivar"}
+                {detail.isActive ? "Pausar" : "Activar"}
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onChangePlan(detail, detail.plan === "basico" ? "pro" : detail.plan === "pro" ? "pro_plus" : "basico")}
+              >
+                {detail.plan === "basico" ? "Subir a Pro" : detail.plan === "pro" ? "Subir a Pro+" : "Bajar a Básico"}
+              </Button>
+              {estadoEfectivo(detail) === "suspendido" ? (
+                <Button variant="outline" size="sm" onClick={() => onChangeEstado(detail, "activo")}>
+                  <CheckCircle2 className="h-4 w-4" /> Marcar como pagado
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => onChangeEstado(detail, "suspendido")}>
+                  <Ban className="h-4 w-4" /> Suspender por impago
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"

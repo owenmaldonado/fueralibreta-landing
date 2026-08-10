@@ -4,6 +4,19 @@
 
 export type BusinessType = "barberia" | "fonda" | "abarrotes";
 
+/** Nivel de producto contratado. Los límites de cada uno viven en lib/planes.ts. */
+export type PlanNegocio = "basico" | "pro" | "pro_plus";
+
+/**
+ * Si el plan está al corriente ahora mismo. Independiente de `is_active`
+ * (esa es la pausa manual del admin / visibilidad pública, por cualquier
+ * motivo): `estado` es puramente de facturación.
+ * - "prueba": primeros 7 días desde que se creó el negocio, gratis.
+ * - "activo": plan pagado en regla.
+ * - "suspendido": se venció la prueba sin pagar, o el admin lo suspendió por impago.
+ */
+export type EstadoNegocio = "prueba" | "activo" | "suspendido";
+
 export interface Business {
   id: string;
   ownerId?: string; // auth.users.id en Supabase; ausente mientras es solo una demo local
@@ -16,7 +29,11 @@ export interface Business {
   whatsapp?: string;
   direccion?: string;
   is_active: boolean;
-  trial_fin: string; // ISO date
+  plan: PlanNegocio;
+  estado: EstadoNegocio;
+  fechaInicioPrueba: string; // ISO date
+  /** ISO date del corte de la prueba (o del plan, si algún día tiene fecha de corte). null = sin fecha de corte. */
+  fechaVencimiento: string | null;
   created_at: string; // ISO date
   demo?: boolean;
   /** A qué app del hub de super admin pertenece (ver mis_apps). Este repo solo genera 'fuera-libreta'. */

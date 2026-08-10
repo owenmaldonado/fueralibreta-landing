@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import type { BusinessType } from "./types";
+import type { BusinessType, PlanNegocio, EstadoNegocio } from "./types";
 import type { LeadTipoNegocio } from "./validation";
 
 // ============================================================================
@@ -10,7 +10,8 @@ import type { LeadTipoNegocio } from "./validation";
 // ============================================================================
 
 export type Role = "admin" | "user";
-export type Plan = "free" | "pro";
+// profiles.plan queda deprecado en la base (no se borra) desde que el plan
+// se mudó a negocios.plan — ver AdminNegocio. Ya no se lee ni se edita aquí.
 
 /**
  * Chequeo de admin por email, hardcodeado a propósito: profiles.role
@@ -27,7 +28,6 @@ export interface AdminProfile {
   email: string | null;
   avatarUrl: string | null;
   role: Role;
-  plan: Plan;
   isBanned: boolean;
   createdAt: string;
   negociosCount: number;
@@ -42,6 +42,9 @@ export interface AdminNegocio {
   ownerEmail: string | null;
   ownerPhone: string;
   isActive: boolean;
+  plan: PlanNegocio;
+  estado: EstadoNegocio;
+  fechaVencimiento: string | null;
   createdAt: string;
 }
 
@@ -89,7 +92,6 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
     email: p.email,
     avatarUrl: p.avatar_url ?? null,
     role: p.role,
-    plan: p.plan,
     isBanned: p.is_banned,
     createdAt: p.created_at,
     negociosCount: negociosByOwner.get(p.id) ?? 0,
@@ -104,6 +106,9 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
     ownerEmail: n.owner_id ? (profilesById.get(n.owner_id)?.email ?? null) : null,
     ownerPhone: n.telefono ?? "",
     isActive: n.is_active,
+    plan: n.plan,
+    estado: n.estado,
+    fechaVencimiento: n.fecha_vencimiento ?? null,
     createdAt: n.created_at,
   }));
 
@@ -129,11 +134,6 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
 
 export async function updateUserRole(userId: string, role: Role): Promise<void> {
   const { error } = await supabase.from("profiles").update({ role }).eq("id", userId);
-  if (error) throw error;
-}
-
-export async function updateUserPlan(userId: string, plan: Plan): Promise<void> {
-  const { error } = await supabase.from("profiles").update({ plan }).eq("id", userId);
   if (error) throw error;
 }
 
@@ -266,7 +266,6 @@ export async function fetchUserDetail(
         email: profileRow.email,
         avatarUrl: profileRow.avatar_url ?? null,
         role: profileRow.role,
-        plan: profileRow.plan,
         isBanned: profileRow.is_banned,
         createdAt: profileRow.created_at,
         negociosCount: negocios.length,
@@ -299,6 +298,22 @@ export async function toggleNegocioActive(negocioId: string, isActive: boolean):
 
 export async function changeNegocioOwner(negocioId: string, newOwnerId: string): Promise<void> {
   const { error } = await supabase.from("negocios").update({ owner_id: newOwnerId }).eq("id", negocioId);
+  if (error) throw error;
+}
+
+/**
+ * Solo el admin puede tocar plan/estado (ver el trigger
+ * protect_negocio_plan_fields en supabase.sql) — estas dos funciones corren
+ * con la sesión normal del admin, apoyándose en esa protección para que
+ * quede claro que ningún otro código del proyecto puede llamarlas con éxito.
+ */
+export async function updateNegocioPlan(negocioId: string, plan: PlanNegocio): Promise<void> {
+  const { error } = await supabase.from("negocios").update({ plan }).eq("id", negocioId);
+  if (error) throw error;
+}
+
+export async function updateNegocioEstado(negocioId: string, estado: EstadoNegocio): Promise<void> {
+  const { error } = await supabase.from("negocios").update({ estado }).eq("id", negocioId);
   if (error) throw error;
 }
 

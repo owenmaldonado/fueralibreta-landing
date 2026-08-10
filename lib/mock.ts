@@ -225,7 +225,11 @@ export function createBusiness(input: NuevoNegocioInput): Business {
     dueno: input.dueno,
     telefono: input.telefono,
     is_active: true,
-    trial_fin: todayISO(7),
+    // Todo negocio nuevo nace en pro con 7 días de prueba gratis (ver lib/planes.ts).
+    plan: "pro",
+    estado: "prueba",
+    fechaInicioPrueba: todayISO(0),
+    fechaVencimiento: todayISO(7),
     created_at: todayISO(0),
     demo: input.demo ?? false,
     appSlug: "fuera-libreta",

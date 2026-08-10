@@ -195,7 +195,20 @@ export function useSession() {
   const claim = useCallback(async (tenant: TenantData, ownerId: string) => {
     const activated: TenantData = {
       ...tenant,
-      business: { ...tenant.business, ownerId, demo: false, is_active: true, trial_fin: todayISO(7) },
+      business: {
+        ...tenant.business,
+        ownerId,
+        demo: false,
+        is_active: true,
+        // Se reinician aquí (no en createBusiness) porque la demo pudo
+        // armarse en el navegador días antes de activarse: la prueba de 7
+        // días debe empezar a contar desde AHORA, no desde que se tocó por
+        // primera vez /demo/[tipo].
+        plan: "pro",
+        estado: "prueba",
+        fechaInicioPrueba: todayISO(0),
+        fechaVencimiento: todayISO(7),
+      },
     };
     await persistTenant(activated, ownerId);
     clearDemoPreview();

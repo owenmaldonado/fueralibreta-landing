@@ -53,7 +53,6 @@ export function UserDetailDialog({ userId, onClose }: { userId: string | null; o
               <p className="font-medium">{profile.email ?? "Sin email"}</p>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 <Badge variant={profile.role === "admin" ? "default" : "outline"}>{profile.role}</Badge>
-                <Badge variant={profile.plan === "pro" ? "ledger" : "outline"}>{profile.plan}</Badge>
                 {profile.isBanned && (
                   <Badge variant="outline" className="border-destructive/40 text-destructive">
                     Baneado

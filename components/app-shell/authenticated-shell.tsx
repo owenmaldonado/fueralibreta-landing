@@ -13,6 +13,7 @@ import { Fab } from "./fab";
 import { Button } from "@/components/ui/button";
 import { waLink, NUMERO_CONTACTO } from "@/lib/mock";
 import { ADMIN_EMAIL } from "@/lib/admin-data";
+import { estaSuspendido } from "@/lib/planes";
 import { BarberiaQuickAdd, BARBERIA_ACTIONS } from "@/components/quick-add/barberia-quick-add";
 import { FondaQuickAdd, FONDA_ACTIONS } from "@/components/quick-add/fonda-quick-add";
 import { AbarrotesQuickAdd, ABARROTES_ACTIONS } from "@/components/quick-add/abarrotes-quick-add";
@@ -139,6 +140,38 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
           <h1 className="font-display text-xl font-bold">Cuenta suspendida</h1>
           <p className="mt-2 max-w-xs text-sm text-muted-foreground">
             Tu cuenta de {business.nombre} está pausada. Contáctanos para reactivarla.
+          </p>
+        </div>
+        <Button asChild size="lg">
+          <Link
+            href={waLink(NUMERO_CONTACTO, `Hola, mi cuenta de ${business.nombre} está suspendida, quiero reactivarla`)}
+            target="_blank"
+          >
+            Contactar 33 2909 8631
+          </Link>
+        </Button>
+      </main>
+    );
+  }
+
+  // Eje aparte de is_active (arriba): ese es la pausa manual del admin por
+  // cualquier motivo, este es puramente de facturación (prueba vencida o
+  // admin suspendió por impago). estaSuspendido() recalcula la prueba
+  // vencida al vuelo — no depende de que nada la haya marcado en la base.
+  if (estaSuspendido(business)) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-5 bg-background px-6 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-destructive/10">
+          <Lock className="h-8 w-8 text-destructive" />
+        </div>
+        <div>
+          <h1 className="font-display text-xl font-bold">
+            {business.estado === "prueba" ? "Tu prueba gratis terminó" : "Cuenta suspendida"}
+          </h1>
+          <p className="mt-2 max-w-xs text-sm text-muted-foreground">
+            {business.estado === "prueba"
+              ? `Tus 7 días gratis de ${business.nombre} ya se vencieron. Contáctanos para seguir usando tu sistema.`
+              : `Tu cuenta de ${business.nombre} está suspendida. Contáctanos para reactivarla.`}
           </p>
         </div>
         <Button asChild size="lg">

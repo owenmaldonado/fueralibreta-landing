@@ -973,6 +973,352 @@ drop policy if exists "leads_admin_all" on leads;
 create policy "leads_admin_all" on leads for all using (is_admin()) with check (is_admin());
 
 -- ============================================================================
+-- PLANES (basico / pro / pro_plus) Y ESTADO DE FACTURACIÓN
+-- ============================================================================
+-- plan: qué nivel de producto tiene contratado el negocio. Los límites de
+-- cada uno (empleados, reportes, auditoría, offline) viven en lib/planes.ts,
+-- no aquí — esto solo guarda el dato.
+--
+-- estado: si ese plan está al corriente ahora mismo.
+--   - prueba: los primeros 7 días desde que se creó el negocio, gratis.
+--   - activo: plan pagado en regla.
+--   - suspendido: se venció la prueba sin pagar, o el admin lo pausó por
+--     impago. No puede generar actividad nueva (ventas, citas, pedidos) —
+--     pero sigue viendo su historial para poder exportarlo o reclamar.
+--
+-- is_active (arriba, en la tabla negocios) es un eje aparte a propósito: es
+-- la visibilidad pública / pausa manual del admin por CUALQUIER motivo (abuso,
+-- etc), no solo impago. No se fusiona con estado para no acoplar dos cosas
+-- que pueden pasar por separado.
+do $$ begin
+  create type plan_negocio as enum ('basico', 'pro', 'pro_plus');
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create type estado_negocio as enum ('prueba', 'activo', 'suspendido');
+exception when duplicate_object then null;
+end $$;
+
+-- 'pro' es el default correcto tanto para negocios ya existentes (se quedan
+-- en pro, como pediste) como para negocios nuevos (nacen en pro con 7 días
+-- de prueba — ver createBusiness() en lib/mock.ts) — por eso un solo default
+-- sirve para los dos casos, sin necesitar backfill aparte.
+alter table negocios add column if not exists plan plan_negocio not null default 'pro';
+
+alter table negocios add column if not exists fecha_inicio_prueba date not null default current_date;
+
+-- estado SÍ necesita trato especial: el default 'prueba' es correcto para
+-- negocios nuevos, pero los que ya existían antes de esta migración deben
+-- quedar en 'activo' sin que se les imponga una prueba con vencimiento. Este
+-- bloque hace ese backfill una sola vez — si la columna ya existía de una
+-- corrida anterior de este script, no toca nada. Sin esta guarda, volver a
+-- pegar el script en el SQL Editor reactivaría por accidente cualquier
+-- negocio que en ese momento sí esté legítimamente en prueba.
+do $$
+declare
+  v_estado_ya_existia boolean;
+begin
+  select exists (
+    select 1 from information_schema.columns
+    where table_name = 'negocios' and column_name = 'estado'
+  ) into v_estado_ya_existia;
+
+  if not v_estado_ya_existia then
+    alter table negocios add column estado estado_negocio not null default 'prueba';
+    update negocios set estado = 'activo';
+  end if;
+end $$;
+
+-- Renombra trial_fin -> fecha_vencimiento: mismo campo, nombre más claro
+-- ahora que también aplica a un plan pagado con corte (no solo a la prueba).
+-- Nullable: null = sin fecha de corte (plan activo indefinido).
+do $$
+begin
+  if exists (select 1 from information_schema.columns where table_name = 'negocios' and column_name = 'trial_fin')
+     and not exists (select 1 from information_schema.columns where table_name = 'negocios' and column_name = 'fecha_vencimiento')
+  then
+    alter table negocios rename column trial_fin to fecha_vencimiento;
+  end if;
+end $$;
+
+alter table negocios alter column fecha_vencimiento drop not null;
+alter table negocios alter column fecha_vencimiento set default (current_date + interval '7 days');
+
+-- ---------- funciones de habilitación ----------
+
+-- ¿Este negocio (sin importar quién pregunta) tiene su plan al corriente?
+-- Sin chequeo de dueño a propósito: la usan tanto las policies del dueño
+-- (compuesta con is_negocio_owner más abajo) como el insert público de citas
+-- (barberia_citas_public_insert) y find_or_create_barberia_cliente, donde
+-- quien escribe es un visitante sin sesión.
+create or replace function negocio_esta_habilitado(p_negocio_id uuid)
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (
+    select 1 from negocios n
+    where n.id = p_negocio_id
+      and (
+        n.estado = 'activo'
+        or (n.estado = 'prueba' and (n.fecha_vencimiento is null or n.fecha_vencimiento >= current_date))
+      )
+  );
+$$;
+
+-- Dueño Y plan al corriente. Reemplaza a is_negocio_owner en las policies de
+-- ESCRITURA (insert/update/delete) de las tablas de negocio — las de lectura
+-- (*_owner_select, más abajo) se quedan con is_negocio_owner a secas, para
+-- que un negocio suspendido pueda seguir viendo (no generando) su historial.
+create or replace function is_negocio_habilitado(p_negocio_id uuid)
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select is_negocio_owner(p_negocio_id) and negocio_esta_habilitado(p_negocio_id);
+$$;
+
+-- ---------- protege plan/estado: solo el admin los puede cambiar ----------
+-- Sin esto, el dueño podría hacer supabase.from('negocios').update({estado:
+-- 'activo'}) con su propia sesión (la policy negocios_update de arriba ya lo
+-- deja tocar SU fila, para cosas como whatsapp en Configuración > Perfil) y
+-- auto-reactivarse. El candado va aquí, no en RLS, porque RLS no distingue
+-- columnas dentro de la misma fila. auth.uid() is null cubre corridas sin
+-- sesión de usuario (este mismo script, o un futuro cron con service_role)
+-- — esas ya son de por sí confiables y no deben quedar bloqueadas.
+create or replace function protect_negocio_plan_fields()
+returns trigger
+language plpgsql
+security definer
+as $$
+begin
+  if auth.uid() is not null and not is_admin() then
+    if new.plan is distinct from old.plan
+       or new.estado is distinct from old.estado
+       or new.fecha_inicio_prueba is distinct from old.fecha_inicio_prueba
+       or new.fecha_vencimiento is distinct from old.fecha_vencimiento
+    then
+      raise exception 'Solo un administrador puede cambiar el plan o estado de un negocio.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists negocios_protect_plan_fields on negocios;
+create trigger negocios_protect_plan_fields
+  before update on negocios
+  for each row execute function protect_negocio_plan_fields();
+
+-- ---------- split de las policies de dueño: ver siempre, escribir solo si
+-- el plan está al corriente ----------
+-- Mismo patrón repetido en cada tabla de negocio: la policy "_owner" original
+-- (for all) se reemplaza por dos — "_owner_select" (is_negocio_owner, como
+-- antes) y "_owner_write" (is_negocio_habilitado, nueva). Con RLS, una fila es
+-- visible/escribible si CUALQUIER policy aplicable la permite, así que
+-- "_owner_write" declarada "for all" no vuelve a restringir el select — ya
+-- lo abrió "_owner_select" — pero sí es la única que aplica a
+-- insert/update/delete. Las policies "*_admin_all" no cambian: el admin
+-- sigue sin restricción de plan.
+
+drop policy if exists "barberia_servicios_owner" on barberia_servicios;
+drop policy if exists "barberia_servicios_owner_select" on barberia_servicios;
+drop policy if exists "barberia_servicios_owner_write" on barberia_servicios;
+create policy "barberia_servicios_owner_select" on barberia_servicios for select using (is_negocio_owner(negocio_id));
+create policy "barberia_servicios_owner_write" on barberia_servicios for all
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+drop policy if exists "barberia_horario_owner" on barberia_horario;
+drop policy if exists "barberia_horario_owner_select" on barberia_horario;
+drop policy if exists "barberia_horario_owner_write" on barberia_horario;
+create policy "barberia_horario_owner_select" on barberia_horario for select using (is_negocio_owner(negocio_id));
+create policy "barberia_horario_owner_write" on barberia_horario for all
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+drop policy if exists "barberia_excepciones_owner" on barberia_excepciones;
+drop policy if exists "barberia_excepciones_owner_select" on barberia_excepciones;
+drop policy if exists "barberia_excepciones_owner_write" on barberia_excepciones;
+create policy "barberia_excepciones_owner_select" on barberia_excepciones for select using (is_negocio_owner(negocio_id));
+create policy "barberia_excepciones_owner_write" on barberia_excepciones for all
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+drop policy if exists "barberia_clientes_owner" on barberia_clientes;
+drop policy if exists "barberia_clientes_owner_select" on barberia_clientes;
+drop policy if exists "barberia_clientes_owner_write" on barberia_clientes;
+create policy "barberia_clientes_owner_select" on barberia_clientes for select using (is_negocio_owner(negocio_id));
+create policy "barberia_clientes_owner_write" on barberia_clientes for all
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+drop policy if exists "barberia_caja_owner" on barberia_caja;
+drop policy if exists "barberia_caja_owner_select" on barberia_caja;
+drop policy if exists "barberia_caja_owner_write" on barberia_caja;
+create policy "barberia_caja_owner_select" on barberia_caja for select using (is_negocio_owner(negocio_id));
+create policy "barberia_caja_owner_write" on barberia_caja for all
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+drop policy if exists "barberia_productos_owner" on barberia_productos;
+drop policy if exists "barberia_productos_owner_select" on barberia_productos;
+drop policy if exists "barberia_productos_owner_write" on barberia_productos;
+create policy "barberia_productos_owner_select" on barberia_productos for select using (is_negocio_owner(negocio_id));
+create policy "barberia_productos_owner_write" on barberia_productos for all
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+-- barberia_citas: owner_select ya era de solo lectura, se queda igual.
+-- owner_write (solo UPDATE — no hay delete de citas) pasa a exigir plan al
+-- corriente. public_insert gana el mismo chequeo: una vez suspendido, ni el
+-- dueño desde el FAB ni un cliente desde /b/[slug] pueden crear una cita
+-- nueva (ambos insertan por esta misma policy, ver supabase.sql arriba).
+drop policy if exists "barberia_citas_owner_write" on barberia_citas;
+create policy "barberia_citas_owner_write" on barberia_citas for update
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+drop policy if exists "barberia_citas_public_insert" on barberia_citas;
+create policy "barberia_citas_public_insert" on barberia_citas for insert
+  with check (
+    estado = 'pendiente'
+    and exists (select 1 from negocios n where n.id = negocio_id and n.is_active)
+    and negocio_esta_habilitado(negocio_id)
+  );
+
+drop policy if exists "fonda_platillos_owner" on fonda_platillos;
+drop policy if exists "fonda_platillos_owner_select" on fonda_platillos;
+drop policy if exists "fonda_platillos_owner_write" on fonda_platillos;
+create policy "fonda_platillos_owner_select" on fonda_platillos for select using (is_negocio_owner(negocio_id));
+create policy "fonda_platillos_owner_write" on fonda_platillos for all
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+drop policy if exists "fonda_pedidos_owner" on fonda_pedidos;
+drop policy if exists "fonda_pedidos_owner_select" on fonda_pedidos;
+drop policy if exists "fonda_pedidos_owner_write" on fonda_pedidos;
+create policy "fonda_pedidos_owner_select" on fonda_pedidos for select using (is_negocio_owner(negocio_id));
+create policy "fonda_pedidos_owner_write" on fonda_pedidos for all
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+drop policy if exists "fonda_pedido_items_owner" on fonda_pedido_items;
+drop policy if exists "fonda_pedido_items_owner_select" on fonda_pedido_items;
+drop policy if exists "fonda_pedido_items_owner_write" on fonda_pedido_items;
+create policy "fonda_pedido_items_owner_select" on fonda_pedido_items for select
+  using (exists (select 1 from fonda_pedidos p where p.id = pedido_id and is_negocio_owner(p.negocio_id)));
+create policy "fonda_pedido_items_owner_write" on fonda_pedido_items for all
+  using (exists (select 1 from fonda_pedidos p where p.id = pedido_id and is_negocio_habilitado(p.negocio_id)))
+  with check (exists (select 1 from fonda_pedidos p where p.id = pedido_id and is_negocio_habilitado(p.negocio_id)));
+
+drop policy if exists "fonda_gastos_owner" on fonda_gastos;
+drop policy if exists "fonda_gastos_owner_select" on fonda_gastos;
+drop policy if exists "fonda_gastos_owner_write" on fonda_gastos;
+create policy "fonda_gastos_owner_select" on fonda_gastos for select using (is_negocio_owner(negocio_id));
+create policy "fonda_gastos_owner_write" on fonda_gastos for all
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+drop policy if exists "abarrotes_productos_owner" on abarrotes_productos;
+drop policy if exists "abarrotes_productos_owner_select" on abarrotes_productos;
+drop policy if exists "abarrotes_productos_owner_write" on abarrotes_productos;
+create policy "abarrotes_productos_owner_select" on abarrotes_productos for select using (is_negocio_owner(negocio_id));
+create policy "abarrotes_productos_owner_write" on abarrotes_productos for all
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+drop policy if exists "abarrotes_lotes_owner" on abarrotes_lotes;
+drop policy if exists "abarrotes_lotes_owner_select" on abarrotes_lotes;
+drop policy if exists "abarrotes_lotes_owner_write" on abarrotes_lotes;
+create policy "abarrotes_lotes_owner_select" on abarrotes_lotes for select
+  using (exists (select 1 from abarrotes_productos p where p.id = producto_id and is_negocio_owner(p.negocio_id)));
+create policy "abarrotes_lotes_owner_write" on abarrotes_lotes for all
+  using (exists (select 1 from abarrotes_productos p where p.id = producto_id and is_negocio_habilitado(p.negocio_id)))
+  with check (exists (select 1 from abarrotes_productos p where p.id = producto_id and is_negocio_habilitado(p.negocio_id)));
+
+drop policy if exists "abarrotes_ventas_owner" on abarrotes_ventas;
+drop policy if exists "abarrotes_ventas_owner_select" on abarrotes_ventas;
+drop policy if exists "abarrotes_ventas_owner_write" on abarrotes_ventas;
+create policy "abarrotes_ventas_owner_select" on abarrotes_ventas for select using (is_negocio_owner(negocio_id));
+create policy "abarrotes_ventas_owner_write" on abarrotes_ventas for all
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+drop policy if exists "abarrotes_sale_items_owner" on abarrotes_sale_items;
+drop policy if exists "abarrotes_sale_items_owner_select" on abarrotes_sale_items;
+drop policy if exists "abarrotes_sale_items_owner_write" on abarrotes_sale_items;
+create policy "abarrotes_sale_items_owner_select" on abarrotes_sale_items for select
+  using (exists (select 1 from abarrotes_ventas v where v.id = venta_id and is_negocio_owner(v.negocio_id)));
+create policy "abarrotes_sale_items_owner_write" on abarrotes_sale_items for all
+  using (exists (select 1 from abarrotes_ventas v where v.id = venta_id and is_negocio_habilitado(v.negocio_id)))
+  with check (exists (select 1 from abarrotes_ventas v where v.id = venta_id and is_negocio_habilitado(v.negocio_id)));
+
+drop policy if exists "abarrotes_fiados_owner" on abarrotes_fiados;
+drop policy if exists "abarrotes_fiados_owner_select" on abarrotes_fiados;
+drop policy if exists "abarrotes_fiados_owner_write" on abarrotes_fiados;
+create policy "abarrotes_fiados_owner_select" on abarrotes_fiados for select using (is_negocio_owner(negocio_id));
+create policy "abarrotes_fiados_owner_write" on abarrotes_fiados for all
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+drop policy if exists "abarrotes_fiado_movimientos_owner" on abarrotes_fiado_movimientos;
+drop policy if exists "abarrotes_fiado_movimientos_owner_select" on abarrotes_fiado_movimientos;
+drop policy if exists "abarrotes_fiado_movimientos_owner_write" on abarrotes_fiado_movimientos;
+create policy "abarrotes_fiado_movimientos_owner_select" on abarrotes_fiado_movimientos for select
+  using (exists (select 1 from abarrotes_fiados f where f.id = fiado_id and is_negocio_owner(f.negocio_id)));
+create policy "abarrotes_fiado_movimientos_owner_write" on abarrotes_fiado_movimientos for all
+  using (exists (select 1 from abarrotes_fiados f where f.id = fiado_id and is_negocio_habilitado(f.negocio_id)))
+  with check (exists (select 1 from abarrotes_fiados f where f.id = fiado_id and is_negocio_habilitado(f.negocio_id)));
+
+drop policy if exists "abarrotes_apartados_owner" on abarrotes_apartados;
+drop policy if exists "abarrotes_apartados_owner_select" on abarrotes_apartados;
+drop policy if exists "abarrotes_apartados_owner_write" on abarrotes_apartados;
+create policy "abarrotes_apartados_owner_select" on abarrotes_apartados for select using (is_negocio_owner(negocio_id));
+create policy "abarrotes_apartados_owner_write" on abarrotes_apartados for all
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+drop policy if exists "abarrotes_gastos_owner" on abarrotes_gastos;
+drop policy if exists "abarrotes_gastos_owner_select" on abarrotes_gastos;
+drop policy if exists "abarrotes_gastos_owner_write" on abarrotes_gastos;
+create policy "abarrotes_gastos_owner_select" on abarrotes_gastos for select using (is_negocio_owner(negocio_id));
+create policy "abarrotes_gastos_owner_write" on abarrotes_gastos for all
+  using (is_negocio_habilitado(negocio_id)) with check (is_negocio_habilitado(negocio_id));
+
+-- find_or_create_barberia_cliente (definida arriba): mismo criterio que
+-- barberia_citas_public_insert — un negocio suspendido tampoco puede recibir
+-- clientes nuevos desde una reserva pública.
+create or replace function find_or_create_barberia_cliente(p_negocio_id uuid, p_nombre text, p_telefono text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+begin
+  if not exists (select 1 from negocios n where n.id = p_negocio_id and n.is_active) then
+    raise exception 'Negocio no encontrado o inactivo';
+  end if;
+
+  if not negocio_esta_habilitado(p_negocio_id) then
+    raise exception 'Este negocio no puede recibir citas nuevas en este momento';
+  end if;
+
+  if p_nombre is null or length(trim(p_nombre)) < 2 or length(p_nombre) > 50 or p_nombre ~ '[<>]' then
+    raise exception 'Nombre inválido';
+  end if;
+  if p_telefono is null or p_telefono !~ '^[0-9]{7,15}$' then
+    raise exception 'Teléfono inválido';
+  end if;
+
+  select id into v_id from barberia_clientes where negocio_id = p_negocio_id and telefono = p_telefono limit 1;
+
+  if v_id is null then
+    insert into barberia_clientes (negocio_id, nombre, telefono, visitas)
+    values (p_negocio_id, p_nombre, p_telefono, 0)
+    returning id into v_id;
+  else
+    update barberia_clientes set nombre = p_nombre where id = v_id and nombre is distinct from p_nombre;
+  end if;
+
+  return v_id;
+end;
+$$;
+
+notify pgrst, 'reload schema';
+
+-- ============================================================================
 -- Red de seguridad final: si corriste este script completo (tablas nuevas,
 -- columnas nuevas, policies nuevas), fuerza a PostgREST a recargar su cache
 -- de esquema ya. Sin esto, a veces sigue devolviendo "does not exist" para

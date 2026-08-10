@@ -22,10 +22,11 @@ import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
 import {
   fetchAdminOverview,
   updateUserRole,
-  updateUserPlan,
   setUserBanned,
   deleteNegocio,
   toggleNegocioActive,
+  updateNegocioPlan,
+  updateNegocioEstado,
   changeNegocioOwner,
   deleteUserCompletely,
   impersonateUser,
@@ -35,9 +36,9 @@ import {
   type AdminNegocio,
   type AdminLead,
 } from "@/lib/admin-data";
+import type { PlanNegocio, EstadoNegocio } from "@/lib/types";
 
 type RoleFilter = "todos" | "admin" | "user";
-type PlanFilter = "todos" | "free" | "pro";
 type SortOrder = "recientes" | "antiguos";
 type LeadEstadoFilter = "todos" | "nuevo" | "contactado" | "convertido";
 
@@ -49,7 +50,6 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
 
   const [q, setQ] = React.useState("");
   const [roleFilter, setRoleFilter] = React.useState<RoleFilter>("todos");
-  const [planFilter, setPlanFilter] = React.useState<PlanFilter>("todos");
   const [sortOrder, setSortOrder] = React.useState<SortOrder>("recientes");
   const [orgQuery, setOrgQuery] = React.useState("");
   const [leadQuery, setLeadQuery] = React.useState("");
@@ -97,11 +97,10 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
       list = list.filter((p) => p.email?.toLowerCase().includes(needle));
     }
     if (roleFilter !== "todos") list = list.filter((p) => p.role === roleFilter);
-    if (planFilter !== "todos") list = list.filter((p) => p.plan === planFilter);
     return [...list].sort((a, b) =>
       sortOrder === "recientes" ? b.createdAt.localeCompare(a.createdAt) : a.createdAt.localeCompare(b.createdAt)
     );
-  }, [overview, q, roleFilter, planFilter, sortOrder]);
+  }, [overview, q, roleFilter, sortOrder]);
 
   const filteredNegocios = React.useMemo(() => {
     if (!overview) return [];
@@ -131,17 +130,6 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
       load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo cambiar el rol.");
-    }
-  }
-
-  async function handleTogglePlan(p: AdminProfile) {
-    const nextPlan = p.plan === "pro" ? "free" : "pro";
-    try {
-      await updateUserPlan(p.id, nextPlan);
-      toast.success(`${p.email ?? "Usuario"} ahora está en plan ${nextPlan}.`);
-      load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo cambiar el plan.");
     }
   }
 
@@ -189,6 +177,26 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
       load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo actualizar el negocio.");
+    }
+  }
+
+  async function handleChangeNegocioPlan(n: AdminNegocio, plan: PlanNegocio) {
+    try {
+      await updateNegocioPlan(n.id, plan);
+      toast.success(`${n.nombre} ahora está en plan ${plan}.`);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo cambiar el plan.");
+    }
+  }
+
+  async function handleChangeNegocioEstado(n: AdminNegocio, estado: EstadoNegocio) {
+    try {
+      await updateNegocioEstado(n.id, estado);
+      toast.success(estado === "suspendido" ? `${n.nombre} suspendido por impago.` : `${n.nombre} marcado como pagado.`);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo cambiar el estado.");
     }
   }
 
@@ -291,17 +299,6 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                   User
                 </Chip>
               </ChipGroup>
-              <ChipGroup>
-                <Chip selected={planFilter === "todos"} onClick={() => setPlanFilter("todos")}>
-                  Free + Pro
-                </Chip>
-                <Chip selected={planFilter === "free"} onClick={() => setPlanFilter("free")}>
-                  Free
-                </Chip>
-                <Chip selected={planFilter === "pro"} onClick={() => setPlanFilter("pro")}>
-                  Pro
-                </Chip>
-              </ChipGroup>
               <Select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as SortOrder)} className="w-44">
                 <option value="recientes">Más recientes</option>
                 <option value="antiguos">Más antiguos</option>
@@ -314,7 +311,6 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 currentUserId={currentUserId}
                 onViewDetail={setDetailUserId}
                 onToggleRole={handleToggleRole}
-                onTogglePlan={handleTogglePlan}
                 onToggleBanned={handleToggleBanned}
                 onImpersonate={handleImpersonate}
                 onDeleteRequest={setDeleteUserTarget}
@@ -338,6 +334,8 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 onViewDetail={setDetailNegocio}
                 onChangeOwner={setChangeOwnerNegocio}
                 onToggleActive={handleToggleNegocioActive}
+                onChangePlan={handleChangeNegocioPlan}
+                onChangeEstado={handleChangeNegocioEstado}
                 onDeleteRequest={setDeleteNegocioTarget}
               />
             </div>
@@ -381,6 +379,8 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
         negocio={detailNegocio}
         onClose={() => setDetailNegocio(null)}
         onToggleActive={handleToggleNegocioActive}
+        onChangePlan={handleChangeNegocioPlan}
+        onChangeEstado={handleChangeNegocioEstado}
         onDeleteRequest={(n) => {
           setDetailNegocio(null);
           setDeleteNegocioTarget(n);
