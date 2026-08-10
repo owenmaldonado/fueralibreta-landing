@@ -41,6 +41,13 @@ create table if not exists negocios (
 -- negocio ya existente antes de esta columna también es de esa app.
 alter table negocios add column if not exists app_slug text not null default 'fuera-libreta';
 
+-- Número de WhatsApp para recibir citas (Configuración > Perfil, barbería).
+-- Separado de `telefono`: un negocio puede querer recibir las citas en un
+-- número distinto al de contacto general. NULL hasta que el dueño lo
+-- configure — los botones de WhatsApp del link público muestran una alerta
+-- en vez de un link roto mientras tanto.
+alter table negocios add column if not exists whatsapp text;
+
 create index if not exists negocios_owner_id_idx on negocios(owner_id);
 create index if not exists negocios_slug_idx on negocios(slug);
 create index if not exists negocios_app_slug_idx on negocios(app_slug);

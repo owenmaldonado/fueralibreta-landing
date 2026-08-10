@@ -14,9 +14,10 @@ import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
 import { formatMoney, todayISO, toISODate, uid } from "@/lib/mock";
-import type { HorarioDia } from "@/lib/types";
+import type { Business, HorarioDia } from "@/lib/types";
 
 const SECTIONS = [
+  { value: "perfil", label: "Perfil" },
   { value: "horario", label: "Horario" },
   { value: "excepciones", label: "Excepciones" },
   { value: "servicios", label: "Servicios" },
@@ -60,6 +61,8 @@ export default function ConfiguracionPage() {
       <div className="px-4 pb-4">
         <Tabs value={tab} onValueChange={setTab} tabs={SECTIONS} />
       </div>
+
+      {tab === "perfil" && <PerfilSection business={session.business} update={update} />}
 
       {tab === "horario" && (
         <div className="flex flex-col gap-2 px-4 pb-6">
@@ -158,6 +161,46 @@ export default function ConfiguracionPage() {
         <NuevoServicioForm onClose={() => setAddServicio(false)} update={update} />
       </Sheet>
     </>
+  );
+}
+
+function PerfilSection({ business, update }: { business: Business; update: ReturnType<typeof useSession>["update"] }) {
+  const [whatsapp, setWhatsapp] = React.useState(business.whatsapp ?? "");
+
+  // Si update() sincroniza con Supabase en segundo plano y falla, session
+  // vuelve a su valor previo — hay que reflejarlo aquí también, no solo en
+  // el guardado optimista inicial.
+  React.useEffect(() => {
+    setWhatsapp(business.whatsapp ?? "");
+  }, [business.whatsapp]);
+
+  const cambiado = whatsapp.trim() !== (business.whatsapp ?? "");
+
+  function guardar() {
+    const valor = whatsapp.trim();
+    update((prev) => ({ ...prev, business: { ...prev.business, whatsapp: valor || undefined } }));
+  }
+
+  return (
+    <div className="flex flex-col gap-4 px-4 pb-6">
+      <div className="space-y-1.5">
+        <Label>Número de WhatsApp para recibir citas</Label>
+        <Input
+          type="tel"
+          inputMode="numeric"
+          value={whatsapp}
+          onChange={(e) => setWhatsapp(e.target.value)}
+          placeholder="521XXXXXXXXXX"
+        />
+        <p className="text-xs text-muted-foreground">
+          A este número llegan los botones de &ldquo;Confirmar por WhatsApp&rdquo; del link público de citas ({" "}
+          <span className="font-mono">/b/{business.slug}</span>).
+        </p>
+      </div>
+      <Button size="lg" disabled={!cambiado} onClick={guardar} className="self-start">
+        Guardar
+      </Button>
+    </div>
   );
 }
 
