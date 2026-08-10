@@ -58,7 +58,7 @@ export default function PedidosPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold">
-                    {p.hora} · {p.clienteNombre}
+                    {formatHora12(p.hora)} · {p.clienteNombre}
                   </p>
                   {p.horaEntrega && (
                     <p className="mt-0.5 text-xs font-medium text-primary">Entrega: {formatHora12(p.horaEntrega)}</p>

@@ -14,28 +14,6 @@ import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatMoney, todayISO } from "@/lib/mock";
 import type { TenantData, OrderItem, Expense } from "@/lib/types";
 
-/**
- * Formatea dígitos sueltos a "HH:MM" mientras se escriben, insertando ":"
- * solo/a cuando ya se sabe si la hora es de 1 o 2 dígitos (12<=12 => 2
- * dígitos de hora; si no, 1): "1"->"1", "12"->"12:", "123"->"12:3",
- * "1235"->"12:35", "930"->"9:30".
- */
-function formatHoraRapida(raw: string): string {
-  const digits = raw.replace(/\D/g, "").slice(0, 4);
-  if (digits.length <= 1) return digits;
-  const horaLen = parseInt(digits.slice(0, 2), 10) <= 12 ? 2 : 1;
-  return `${digits.slice(0, horaLen)}:${digits.slice(horaLen, horaLen + 2)}`;
-}
-
-/** Igual que formatHoraRapida, pero solo devuelve algo (con hora en 2 dígitos) hasta que los minutos ya tienen sus 2 dígitos completos; mientras se sigue escribiendo, undefined. */
-function horaRapidaCompleta(raw: string): string | undefined {
-  const digits = raw.replace(/\D/g, "").slice(0, 4);
-  if (digits.length < 2) return undefined;
-  const horaLen = parseInt(digits.slice(0, 2), 10) <= 12 ? 2 : 1;
-  if (digits.length !== horaLen + 2) return undefined;
-  return `${digits.slice(0, horaLen).padStart(2, "0")}:${digits.slice(horaLen, horaLen + 2)}`;
-}
-
 export const FONDA_ACTIONS: FabAction[] = [
   { key: "pedido", label: "Nuevo Pedido", icon: <ClipboardList className="h-4 w-4" /> },
   { key: "platillo", label: "Platillo", icon: <UtensilsCrossed className="h-4 w-4" /> },
@@ -89,7 +67,7 @@ function NuevoPedidoForm({
   const [clienteNombre, setClienteNombre] = React.useState("");
   const [hora] = React.useState(nowHHMM());
   const [ponerHora, setPonerHora] = React.useState(false);
-  const [horaEntregaDigits, setHoraEntregaDigits] = React.useState("");
+  const [horaEntregaInput, setHoraEntregaInput] = React.useState("");
   const [items, setItems] = React.useState<OrderItem[]>([]);
   const [configurando, setConfigurando] = React.useState<string | null>(null);
   const [qty, setQty] = React.useState(1);
@@ -133,7 +111,7 @@ function NuevoPedidoForm({
     setItems((prev) => prev.filter((it) => it.id !== id));
   }
 
-  const horaEntrega = ponerHora ? horaRapidaCompleta(horaEntregaDigits) : undefined;
+  const horaEntrega = ponerHora && horaEntregaInput ? horaEntregaInput : undefined;
 
   function guardar() {
     if (!clienteNombre.trim() || items.length === 0) return;
@@ -169,20 +147,15 @@ function NuevoPedidoForm({
               checked={ponerHora}
               onCheckedChange={(v) => {
                 setPonerHora(v);
-                if (!v) setHoraEntregaDigits("");
+                if (!v) setHoraEntregaInput("");
               }}
             />
             ¿Poner hora?
           </label>
           {ponerHora && (
-            <Input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={formatHoraRapida(horaEntregaDigits)}
-              onChange={(e) => setHoraEntregaDigits(e.target.value)}
-              placeholder="Ej: 1235 = 12:35"
-            />
+            // type="time" nativo: siempre entrega HH:mm en 24h sin
+            // ambigüedad AM/PM, y en celular abre el selector de reloj.
+            <Input type="time" min="00:00" max="23:59" value={horaEntregaInput} onChange={(e) => setHoraEntregaInput(e.target.value)} />
           )}
         </div>
 
