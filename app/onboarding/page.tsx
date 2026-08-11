@@ -38,7 +38,6 @@ export default function OnboardingPage() {
   const [tipo, setTipo] = React.useState<BusinessType | null>(null);
   const [dueno, setDueno] = React.useState("");
   const [negocio, setNegocio] = React.useState("");
-  const [telefono, setTelefono] = React.useState("");
   const [creating, setCreating] = React.useState(false);
 
   React.useEffect(() => {
@@ -66,11 +65,8 @@ export default function OnboardingPage() {
       }
 
       // El teléfono ya no es requisito para crear el negocio (SMS OTP no
-      // está configurado y estaba bloqueando el alta). Si de casualidad ya
-      // viene uno verificado (login por teléfono en el futuro, Apple, etc.)
-      // se usa como valor inicial; si no, se crea el negocio sin teléfono y
-      // se puede agregar después en Configuración > Perfil.
-      if (user.phone) setTelefono(user.phone);
+      // está configurado y estaba bloqueando el alta) — se crea sin él y se
+      // puede agregar después en Configuración > Perfil.
       const demo = readDemoPreview();
       if (demo) setDemoTenant(demo);
       setPlanElegido(readPlanElegido() !== null);
@@ -84,11 +80,21 @@ export default function OnboardingPage() {
     setActivating(true);
     setError(null);
     try {
-      await claim(demoTenant, userId);
+      // En blanco, no el contenido de ejemplo de la demo (mismo criterio que
+      // el alta automática de lib/session.ts) — solo se reusan tipo/dueño/
+      // nombre para no hacer re-escribir lo que ya puso en /demo/[tipo].
+      const tenant = createEmptyTenant({
+        dueno: demoTenant.business.dueno,
+        nombre: demoTenant.business.nombre,
+        telefono: "",
+        tipo: demoTenant.business.tipo,
+      });
+      await claim(tenant, userId);
+      clearPlanElegido();
       router.push("/app/inicio");
     } catch (err) {
-      console.error("No se pudo activar la demo:", err);
-      setError("No se pudo activar tu demo. Intenta de nuevo.");
+      console.error("No se pudo crear el negocio:", err);
+      setError("No se pudo crear tu sistema. Intenta de nuevo.");
       setActivating(false);
     }
   }
@@ -98,7 +104,7 @@ export default function OnboardingPage() {
     setCreating(true);
     setError(null);
     try {
-      const tenant = createEmptyTenant({ dueno, nombre: negocio, telefono, tipo });
+      const tenant = createEmptyTenant({ dueno, nombre: negocio, telefono: "", tipo });
       await claim(tenant, userId);
       clearPlanElegido();
       router.push("/app/inicio");
@@ -126,8 +132,8 @@ export default function OnboardingPage() {
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight">¡Listo, {demoTenant.business.dueno}!</h1>
           <p className="mt-2 max-w-xs text-sm text-muted-foreground">
-            Vamos a activar <span className="text-foreground">{demoTenant.business.nombre}</span> con 7 días
-            gratis. Tu demo se queda tal cual la armaste.
+            Vamos a crear <span className="text-foreground">{demoTenant.business.nombre}</span> con 7 días
+            gratis, en blanco y listo para tus datos reales.
           </p>
         </div>
         {error && (

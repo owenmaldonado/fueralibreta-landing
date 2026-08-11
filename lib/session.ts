@@ -5,8 +5,8 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { supabase, isSupabaseConfigured } from "./supabase";
 import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow } from "./data";
-import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
-import { todayISO } from "./mock";
+import { readDemoPreview, writeDemoPreview, clearDemoPreview, clearPlanElegido, DEMO_PREVIEW_EVENT } from "./demoPreview";
+import { todayISO, createEmptyTenant } from "./mock";
 import type { TenantData } from "./types";
 
 type Source = "supabase" | "demo" | null;
@@ -102,16 +102,43 @@ export function useSession() {
           setSessionState(tenant);
           if (tenant.business.tipo === "barberia") escucharCitasEnVivo(business.id);
         } else {
-          // Logueado pero sin negocio todavía: SIEMPRE debe pasar por
-          // /onboarding (pedir/confirmar teléfono y crear su negocio), nunca
-          // reusar aquí un fl_demo_preview que haya quedado solo de HABER
-          // VISITADO /demo/[tipo] antes de loguearse (nunca decidió
-          // "activarlo") — si esto cae en loadFromDemoPreview(), session
-          // queda con datos de esa demo y AuthenticatedShell nunca lo manda
-          // a /onboarding, como si ya tuviera negocio. /onboarding sí lee
-          // ese preview por su cuenta cuando corresponde ofrecer activarlo.
-          sourceRef.current = null;
-          setSessionState(null);
+          // Logueado pero sin negocio todavía. Cero teléfono, cero wizard:
+          // si viene de /demo/[tipo] (hay fl_demo_preview con tipo/dueño/
+          // nombre ya puestos ahí), se crea el negocio EN BLANCO con esos
+          // tres datos de inmediato — nunca se reactiva el contenido falso
+          // de la demo (platillos/citas/etc. de ejemplo) ni se pasa por
+          // /onboarding. Sin demo previa no hay de dónde sacar tipo/nombre,
+          // así que se deja session en null para que /onboarding (solo ese
+          // caso) los pida.
+          const demo = readDemoPreview();
+          if (demo) {
+            try {
+              const tenant = createEmptyTenant({
+                dueno: demo.business.dueno,
+                nombre: demo.business.nombre,
+                telefono: "",
+                tipo: demo.business.tipo,
+              });
+              const activated: TenantData = {
+                ...tenant,
+                business: { ...tenant.business, ownerId: userId, demo: false, is_active: true, trial_fin: todayISO(7) },
+              };
+              await persistTenant(activated, userId);
+              if (cancelled) return;
+              clearDemoPreview();
+              clearPlanElegido();
+              sourceRef.current = "supabase";
+              setSessionState(activated);
+              if (activated.business.tipo === "barberia") escucharCitasEnVivo(activated.business.id);
+            } catch (err) {
+              console.error("No se pudo crear el negocio en blanco automáticamente:", err);
+              sourceRef.current = null;
+              setSessionState(null);
+            }
+          } else {
+            sourceRef.current = null;
+            setSessionState(null);
+          }
         }
       } catch (err) {
         console.error("No se pudo cargar el negocio desde Supabase:", err);
