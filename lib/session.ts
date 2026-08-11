@@ -102,8 +102,16 @@ export function useSession() {
           setSessionState(tenant);
           if (tenant.business.tipo === "barberia") escucharCitasEnVivo(business.id);
         } else {
-          // Logueado pero sin negocio todavía: puede tener una demo local por activar.
-          loadFromDemoPreview();
+          // Logueado pero sin negocio todavía: SIEMPRE debe pasar por
+          // /onboarding (pedir/confirmar teléfono y crear su negocio), nunca
+          // reusar aquí un fl_demo_preview que haya quedado solo de HABER
+          // VISITADO /demo/[tipo] antes de loguearse (nunca decidió
+          // "activarlo") — si esto cae en loadFromDemoPreview(), session
+          // queda con datos de esa demo y AuthenticatedShell nunca lo manda
+          // a /onboarding, como si ya tuviera negocio. /onboarding sí lee
+          // ese preview por su cuenta cuando corresponde ofrecer activarlo.
+          sourceRef.current = null;
+          setSessionState(null);
         }
       } catch (err) {
         console.error("No se pudo cargar el negocio desde Supabase:", err);

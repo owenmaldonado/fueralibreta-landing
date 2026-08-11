@@ -12,7 +12,7 @@ import { PhoneOtpFlow } from "@/components/auth/phone-otp-flow";
 import { useSession } from "@/lib/session";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { fetchNegocioByOwner } from "@/lib/data";
-import { readDemoPreview } from "@/lib/demoPreview";
+import { readDemoPreview, readPlanElegido, clearPlanElegido } from "@/lib/demoPreview";
 import { createEmptyTenant } from "@/lib/mock";
 import type { BusinessType, TenantData } from "@/lib/types";
 
@@ -30,6 +30,9 @@ export default function OnboardingPage() {
   const [userId, setUserId] = React.useState<string | null>(null);
   const [needsPhone, setNeedsPhone] = React.useState(false);
   const [demoTenant, setDemoTenant] = React.useState<TenantData | null>(null);
+  // Viene del botón "Lo quiero" del banner de demo: siempre crea un negocio
+  // en blanco aquí, nunca ofrece activar el fl_demo_preview tal cual.
+  const [planElegido, setPlanElegido] = React.useState(false);
   const [activating, setActivating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -77,6 +80,7 @@ export default function OnboardingPage() {
       setTelefono(user.phone);
       const demo = readDemoPreview();
       if (demo) setDemoTenant(demo);
+      setPlanElegido(readPlanElegido() !== null);
       setChecking(false);
     }
     check();
@@ -87,6 +91,7 @@ export default function OnboardingPage() {
     setNeedsPhone(false);
     const demo = readDemoPreview();
     if (demo) setDemoTenant(demo);
+    setPlanElegido(readPlanElegido() !== null);
   }
 
   async function activateDemo() {
@@ -110,6 +115,7 @@ export default function OnboardingPage() {
     try {
       const tenant = createEmptyTenant({ dueno, nombre: negocio, telefono, tipo });
       await claim(tenant, userId);
+      clearPlanElegido();
       router.push("/app/inicio");
     } catch (err) {
       console.error("No se pudo crear el negocio:", err);
@@ -150,7 +156,7 @@ export default function OnboardingPage() {
     );
   }
 
-  if (demoTenant) {
+  if (demoTenant && !planElegido) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background px-6 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
@@ -196,6 +202,9 @@ export default function OnboardingPage() {
         <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
           Crea tu negocio · paso {step + 1} de {steps.length}
         </p>
+        {planElegido && (
+          <p className="mt-1 font-mono text-[11px] uppercase tracking-widest text-primary">Plan Pro · $499/mes</p>
+        )}
         <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
           <div
             className="h-full rounded-full bg-primary transition-all duration-300"
