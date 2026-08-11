@@ -27,7 +27,7 @@ create table if not exists negocios (
   nombre text not null,
   tipo business_type not null,
   dueno text not null,
-  telefono text not null default '',
+  telefono text default '',
   direccion text,
   is_active boolean not null default true,
   trial_fin date not null default (current_date + interval '7 days'),
@@ -37,13 +37,11 @@ create table if not exists negocios (
 );
 
 -- El teléfono ya no se pide al crear el negocio (ver "LOGIN POR SMS" más
--- abajo) — se guarda como opcional ('' hasta que el dueño lo llene en
--- Configuración > Perfil). Si esta tabla ya existía de antes con NOT NULL
--- sin default, esto la alinea con el resto del script sin tronar.
+-- abajo) — nullable, con '' como default, para que un INSERT que no lo
+-- mande explícito nunca truene. Si esta tabla ya existía de antes con NOT
+-- NULL, esto la alinea con el resto del script sin tronar.
 alter table negocios alter column telefono drop not null;
 alter table negocios alter column telefono set default '';
-update negocios set telefono = '' where telefono is null;
-alter table negocios alter column telefono set not null;
 
 -- A qué app (de mis_apps, ver más abajo) pertenece este negocio. Por defecto
 -- 'fuera-libreta' porque hoy es la única app real de este proyecto — todo

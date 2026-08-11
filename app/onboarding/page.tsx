@@ -12,7 +12,7 @@ import { useSession } from "@/lib/session";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { fetchNegocioByOwner } from "@/lib/data";
 import { updateUserPlan } from "@/lib/admin-data";
-import { readDemoPreview, readPlanElegido, clearPlanElegido } from "@/lib/demoPreview";
+import { readDemoPreview, readPlanElegido, clearDemoPreview, clearPlanElegido } from "@/lib/demoPreview";
 import { createEmptyTenant, tenantFromDemo } from "@/lib/mock";
 import type { BusinessType, TenantData } from "@/lib/types";
 
@@ -21,6 +21,27 @@ const TIPOS: { value: BusinessType; label: string; icon: typeof Scissors }[] = [
   { value: "fonda", label: "Fonda", icon: UtensilsCrossed },
   { value: "abarrotes", label: "Abarrotes", icon: ShoppingBasket },
 ];
+
+/**
+ * fl_demo_preview puede venir corrupto o de una versión vieja del esquema
+ * (localStorage no tiene validación de tipos) — sin esto, un dato mal
+ * formado tronaba el efecto entero y dejaba /onboarding pegado en el
+ * spinner. Si no pasa el chequeo, se trata como si no hubiera demo (el
+ * wizard completo de abajo sigue funcionando con negocio vacío) y se
+ * limpia la clave corrupta para no repetir el problema en el próximo intento.
+ */
+function esDemoValida(x: unknown): x is TenantData {
+  if (!x || typeof x !== "object") return false;
+  const business = (x as { business?: unknown }).business as
+    | { tipo?: unknown; dueno?: unknown; nombre?: unknown }
+    | undefined;
+  return (
+    !!business &&
+    typeof business.tipo === "string" &&
+    typeof business.dueno === "string" &&
+    typeof business.nombre === "string"
+  );
+}
 
 /** Loguea el error de Supabase completo (no solo el mensaje genérico) para poder diagnosticarlo desde la consola/Vercel logs. */
 function logCreateError(context: string, err: unknown) {
@@ -82,9 +103,12 @@ export default function OnboardingPage() {
       // está configurado y estaba bloqueando el alta) — se crea sin él y se
       // puede agregar después en Configuración > Perfil.
       const demo = readDemoPreview();
-      if (demo) {
+      if (demo && esDemoValida(demo)) {
         setDemoTenant(demo);
         setNombre(demo.business.nombre);
+      } else if (demo) {
+        console.error("fl_demo_preview tenía un formato inválido, se ignora:", demo);
+        clearDemoPreview();
       }
       setPlanElegido(readPlanElegido() !== null);
       setChecking(false);

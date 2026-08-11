@@ -299,16 +299,23 @@ export function tenantFromDemo(demo: TenantData, overrides: { nombre: string; te
     tipo: demo.business.tipo,
   });
   const data: TenantData = { business };
+  // Los `?? []` son por si fl_demo_preview viene de una versión vieja del
+  // esquema con algún arreglo faltante — nunca debe tronar la creación del
+  // negocio real, en el peor caso ese catálogo queda vacío.
   if (demo.barberia) {
-    data.barberia = { ...emptyBarberiaData(), servicios: demo.barberia.servicios, productos: demo.barberia.productos };
+    data.barberia = {
+      ...emptyBarberiaData(),
+      servicios: demo.barberia.servicios ?? [],
+      productos: demo.barberia.productos ?? [],
+    };
   }
   if (demo.fonda) {
-    data.fonda = { ...emptyFondaData(), platillos: demo.fonda.platillos };
+    data.fonda = { ...emptyFondaData(), platillos: demo.fonda.platillos ?? [] };
   }
   if (demo.abarrotes) {
     data.abarrotes = {
       ...emptyAbarrotesData(),
-      productos: demo.abarrotes.productos.map((p) => ({ ...p, lotes: [] })),
+      productos: (demo.abarrotes.productos ?? []).map((p) => ({ ...p, lotes: [] })),
     };
   }
   return data;
