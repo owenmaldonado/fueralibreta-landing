@@ -5,8 +5,8 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { supabase, isSupabaseConfigured } from "./supabase";
 import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow } from "./data";
-import { readDemoPreview, writeDemoPreview, clearDemoPreview, clearPlanElegido, DEMO_PREVIEW_EVENT } from "./demoPreview";
-import { todayISO, createEmptyTenant } from "./mock";
+import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
+import { todayISO } from "./mock";
 import type { TenantData } from "./types";
 
 type Source = "supabase" | "demo" | null;
@@ -102,43 +102,19 @@ export function useSession() {
           setSessionState(tenant);
           if (tenant.business.tipo === "barberia") escucharCitasEnVivo(business.id);
         } else {
-          // Logueado pero sin negocio todavía. Cero teléfono, cero wizard:
-          // si viene de /demo/[tipo] (hay fl_demo_preview con tipo/dueño/
-          // nombre ya puestos ahí), se crea el negocio EN BLANCO con esos
-          // tres datos de inmediato — nunca se reactiva el contenido falso
-          // de la demo (platillos/citas/etc. de ejemplo) ni se pasa por
-          // /onboarding. Sin demo previa no hay de dónde sacar tipo/nombre,
-          // así que se deja session en null para que /onboarding (solo ese
-          // caso) los pida.
-          const demo = readDemoPreview();
-          if (demo) {
-            try {
-              const tenant = createEmptyTenant({
-                dueno: demo.business.dueno,
-                nombre: demo.business.nombre,
-                telefono: "",
-                tipo: demo.business.tipo,
-              });
-              const activated: TenantData = {
-                ...tenant,
-                business: { ...tenant.business, ownerId: userId, demo: false, is_active: true, trial_fin: todayISO(7) },
-              };
-              await persistTenant(activated, userId);
-              if (cancelled) return;
-              clearDemoPreview();
-              clearPlanElegido();
-              sourceRef.current = "supabase";
-              setSessionState(activated);
-              if (activated.business.tipo === "barberia") escucharCitasEnVivo(activated.business.id);
-            } catch (err) {
-              console.error("No se pudo crear el negocio en blanco automáticamente:", err);
-              sourceRef.current = null;
-              setSessionState(null);
-            }
-          } else {
-            sourceRef.current = null;
-            setSessionState(null);
-          }
+          // Logueado pero sin negocio todavía: se deja session en null y es
+          // /onboarding quien lo crea de forma EXPLÍCITA (un solo botón, un
+          // solo persistTenant) en cuanto el usuario confirma. Antes esto
+          // también intentaba crear el negocio aquí en automático apenas
+          // llegaba el evento de login — pero /onboarding hace su propio
+          // fetchNegocioByOwner en paralelo sin esperar a este hook, así que
+          // los dos podían intentar crear el negocio a la vez (o el usuario
+          // terminaba el wizard mientras esta creación en segundo plano
+          // todavía no acababa), dejando dos negocios para el mismo dueño o
+          // tirando un error confuso en pleno "Crear mi sistema". Un solo
+          // punto de creación es más simple y no tiene esa carrera.
+          sourceRef.current = null;
+          setSessionState(null);
         }
       } catch (err) {
         console.error("No se pudo cargar el negocio desde Supabase:", err);

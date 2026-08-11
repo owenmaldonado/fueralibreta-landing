@@ -11,8 +11,9 @@ import { Chip, ChipGroup } from "@/components/ui/chip";
 import { useSession } from "@/lib/session";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { fetchNegocioByOwner } from "@/lib/data";
+import { updateUserPlan } from "@/lib/admin-data";
 import { readDemoPreview, readPlanElegido, clearPlanElegido } from "@/lib/demoPreview";
-import { createEmptyTenant } from "@/lib/mock";
+import { createEmptyTenant, tenantFromDemo } from "@/lib/mock";
 import type { BusinessType, TenantData } from "@/lib/types";
 
 const TIPOS: { value: BusinessType; label: string; icon: typeof Scissors }[] = [
@@ -21,6 +22,18 @@ const TIPOS: { value: BusinessType; label: string; icon: typeof Scissors }[] = [
   { value: "abarrotes", label: "Abarrotes", icon: ShoppingBasket },
 ];
 
+/** Loguea el error de Supabase completo (no solo el mensaje genérico) para poder diagnosticarlo desde la consola/Vercel logs. */
+function logCreateError(context: string, err: unknown) {
+  const e = err as { message?: string; code?: string; details?: string; hint?: string } | null;
+  console.error(context, {
+    message: e?.message,
+    code: e?.code,
+    details: e?.details,
+    hint: e?.hint,
+    raw: err,
+  });
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const { claim } = useSession();
@@ -28,17 +41,18 @@ export default function OnboardingPage() {
   const [checking, setChecking] = React.useState(true);
   const [userId, setUserId] = React.useState<string | null>(null);
   const [demoTenant, setDemoTenant] = React.useState<TenantData | null>(null);
-  // Viene del botón "Lo quiero" del banner de demo: siempre crea un negocio
-  // en blanco aquí, nunca ofrece activar el fl_demo_preview tal cual.
+  // Viene del botón "Lo quiero" del banner de demo: si está presente, en
+  // cuanto el negocio quede creado se sube profiles.plan a "pro" para que
+  // aparezca correctamente en /admin.
   const [planElegido, setPlanElegido] = React.useState(false);
-  const [activating, setActivating] = React.useState(false);
+  const [nombre, setNombre] = React.useState("");
+  const [creating, setCreating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const [step, setStep] = React.useState(0);
   const [tipo, setTipo] = React.useState<BusinessType | null>(null);
   const [dueno, setDueno] = React.useState("");
   const [negocio, setNegocio] = React.useState("");
-  const [creating, setCreating] = React.useState(false);
 
   React.useEffect(() => {
     async function check() {
@@ -68,37 +82,51 @@ export default function OnboardingPage() {
       // está configurado y estaba bloqueando el alta) — se crea sin él y se
       // puede agregar después en Configuración > Perfil.
       const demo = readDemoPreview();
-      if (demo) setDemoTenant(demo);
+      if (demo) {
+        setDemoTenant(demo);
+        setNombre(demo.business.nombre);
+      }
       setPlanElegido(readPlanElegido() !== null);
       setChecking(false);
     }
     check();
   }, [router]);
 
-  async function activateDemo() {
-    if (!demoTenant || !userId) return;
-    setActivating(true);
-    setError(null);
+  async function activarPlanSiAplica(uid: string) {
+    if (!planElegido) return;
     try {
-      // En blanco, no el contenido de ejemplo de la demo (mismo criterio que
-      // el alta automática de lib/session.ts) — solo se reusan tipo/dueño/
-      // nombre para no hacer re-escribir lo que ya puso en /demo/[tipo].
-      const tenant = createEmptyTenant({
-        dueno: demoTenant.business.dueno,
-        nombre: demoTenant.business.nombre,
-        telefono: "",
-        tipo: demoTenant.business.tipo,
-      });
-      await claim(tenant, userId);
-      clearPlanElegido();
-      router.push("/app/inicio");
+      await updateUserPlan(uid, "pro");
     } catch (err) {
-      console.error("No se pudo crear el negocio:", err);
-      setError("No se pudo crear tu sistema. Intenta de nuevo.");
-      setActivating(false);
+      // No bloquea el alta: el negocio ya quedó creado, esto solo afecta lo
+      // que se ve en /admin y se puede corregir a mano ahí si llega a fallar.
+      console.error("No se pudo marcar el plan pro del usuario:", err);
     }
   }
 
+  // Único paso cuando SÍ hay demo previa (/demo/[tipo] -> "Lo quiero"): ya
+  // sabemos tipo y dueño, solo se confirma/edita el nombre del negocio. El
+  // catálogo (platillos/servicios/productos) que vio en la demo se copia tal
+  // cual — "en blanco" es de actividad (sin citas/pedidos/ventas de ejemplo),
+  // no de catálogo.
+  async function crearDesdeDemo() {
+    if (!demoTenant || !userId || nombre.trim().length < 2) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const tenant = tenantFromDemo(demoTenant, { nombre: nombre.trim(), telefono: "" });
+      await claim(tenant, userId);
+      await activarPlanSiAplica(userId);
+      clearPlanElegido();
+      router.push("/app/inicio");
+    } catch (err) {
+      logCreateError("No se pudo crear el negocio desde la demo:", err);
+      setError("No se pudo crear tu sistema. Intenta de nuevo.");
+      setCreating(false);
+    }
+  }
+
+  // Wizard completo, solo para arranque en frío (sin haber pasado por
+  // /demo/[tipo]) — es la única fuente de tipo/dueño/nombre en ese caso.
   async function createBusinessAndGo() {
     if (!tipo || !userId) return;
     setCreating(true);
@@ -106,10 +134,11 @@ export default function OnboardingPage() {
     try {
       const tenant = createEmptyTenant({ dueno, nombre: negocio, telefono: "", tipo });
       await claim(tenant, userId);
+      await activarPlanSiAplica(userId);
       clearPlanElegido();
       router.push("/app/inicio");
     } catch (err) {
-      console.error("No se pudo crear el negocio:", err);
+      logCreateError("No se pudo crear el negocio:", err);
       setError("No se pudo crear tu sistema. Intenta de nuevo.");
       setCreating(false);
     }
@@ -123,7 +152,7 @@ export default function OnboardingPage() {
     );
   }
 
-  if (demoTenant && !planElegido) {
+  if (demoTenant) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background px-6 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
@@ -132,19 +161,48 @@ export default function OnboardingPage() {
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight">¡Listo, {demoTenant.business.dueno}!</h1>
           <p className="mt-2 max-w-xs text-sm text-muted-foreground">
-            Vamos a crear <span className="text-foreground">{demoTenant.business.nombre}</span> con 7 días
-            gratis, en blanco y listo para tus datos reales.
+            7 días gratis, con el mismo catálogo que armaste en la demo ya cargado — pero privado y tuyo, sin las
+            citas/ventas de ejemplo.
           </p>
         </div>
-        {error && (
-          <div className="flex max-w-xs items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-xs text-destructive">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            {error}
+
+        {creating ? (
+          <div className="flex flex-col items-center gap-3 py-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="font-display text-lg font-semibold">Creando tu sistema…</p>
+          </div>
+        ) : (
+          <div className="w-full max-w-xs text-left">
+            <Label htmlFor="nombre-demo" className="text-base normal-case tracking-normal text-foreground">
+              Nombre de tu negocio
+            </Label>
+            <Input
+              id="nombre-demo"
+              autoFocus
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && crearDesdeDemo()}
+              placeholder="Nombre de tu negocio"
+              className="mt-3 h-14 text-lg"
+            />
+
+            {error && (
+              <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-xs text-destructive">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                {error}
+              </div>
+            )}
+
+            <Button
+              size="lg"
+              className="mt-6 w-full"
+              onClick={crearDesdeDemo}
+              disabled={nombre.trim().length < 2}
+            >
+              Crear mi sistema — 7 días gratis
+            </Button>
           </div>
         )}
-        <Button size="lg" className="w-full max-w-xs" onClick={activateDemo} disabled={activating}>
-          {activating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Activar mi sistema — 7 días gratis"}
-        </Button>
       </main>
     );
   }
