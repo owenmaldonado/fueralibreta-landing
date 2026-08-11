@@ -46,7 +46,7 @@ function businessFromRow(row: Row): Business {
     nombre: row.nombre as string,
     tipo: row.tipo as Business["tipo"],
     dueno: row.dueno as string,
-    telefono: row.telefono as string,
+    telefono: (row.telefono as string) ?? "",
     whatsapp: (row.whatsapp as string) ?? undefined,
     direccion: (row.direccion as string) ?? undefined,
     is_active: row.is_active as boolean,
@@ -101,7 +101,10 @@ export async function fetchNegocioBySlug(slug: string): Promise<Business | null>
 async function mustInsert(table: string, rows: Row[]): Promise<void> {
   if (!rows.length) return;
   const { error } = await supabase.from(table).insert(rows);
-  if (error) throw error;
+  if (error) {
+    console.error(`persistTenant: insert en "${table}" falló:`, error);
+    throw error;
+  }
 }
 
 // ---------- barbería: mapeos ----------
@@ -523,7 +526,10 @@ export async function fetchTenantData(business: Business): Promise<TenantData> {
 export async function persistTenant(tenant: TenantData, ownerId: string): Promise<void> {
   const business: Business = { ...tenant.business, ownerId };
   const { error } = await supabase.from("negocios").insert(businessToRow(business));
-  if (error) throw error;
+  if (error) {
+    console.error('persistTenant: insert en "negocios" falló:', error);
+    throw error;
+  }
 
   const negocioId = business.id;
 
