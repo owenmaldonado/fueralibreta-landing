@@ -864,16 +864,14 @@ update profiles set role = 'admin' where email = 'owenxmaldonado100@gmail.com';
 -- 5. Después de tu primer login con Google, vuelve a correr el UPDATE de
 --    arriba (o cualquiera con permisos de Supabase puede correrlo por ti)
 --    para confirmar que quedaste como admin.
--- 6. LOGIN POR TELÉFONO (OTP): se quitó del UI (/login, /onboarding) — el
---    provider de SMS nunca se configuró en el dashboard de Supabase y el
---    botón "Entrar con Teléfono"/"Verifica tu teléfono" se quedaba
---    trabado en "no se pudo enviar el código", bloqueando altas reales.
---    /login ahora solo ofrece Google; /onboarding crea el negocio sin
---    pedir teléfono (queda opcional, editable después en Configuración >
---    Perfil como "Teléfono de recuperación"). El índice único de
---    profiles.phone de arriba no estorba si se vuelve a activar más
---    adelante — solo hace falta reactivar el provider de Phone en
---    Authentication → Providers y devolver el flujo a la UI.
+-- 6. LOGIN POR SMS: eliminado del UI por completo (/login, /onboarding). El
+--    provider de SMS nunca se configuró en el dashboard de Supabase, así
+--    que ese flujo nunca funcionó en producción y bloqueaba altas reales.
+--    /login ofrece únicamente Google; /onboarding crea el negocio sin
+--    pedir número (queda opcional, editable después en Configuración >
+--    Perfil). El índice único de profiles.phone de arriba no estorba si
+--    se reactiva más adelante — solo hace falta configurar el provider de
+--    Phone en Authentication → Providers y reintroducir el flujo en el UI.
 --    APPLE: sigue sin implementarse en el UI; si se agrega, activarlo en
 --    Authentication → Providers → Apple con credenciales de Apple
 --    Developer (Services ID, Team ID, Key ID, private key .p8).
