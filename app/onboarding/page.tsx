@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
-import { PhoneOtpFlow } from "@/components/auth/phone-otp-flow";
 import { useSession } from "@/lib/session";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { fetchNegocioByOwner } from "@/lib/data";
@@ -28,7 +27,6 @@ export default function OnboardingPage() {
 
   const [checking, setChecking] = React.useState(true);
   const [userId, setUserId] = React.useState<string | null>(null);
-  const [needsPhone, setNeedsPhone] = React.useState(false);
   const [demoTenant, setDemoTenant] = React.useState<TenantData | null>(null);
   // Viene del botón "Lo quiero" del banner de demo: siempre crea un negocio
   // en blanco aquí, nunca ofrece activar el fl_demo_preview tal cual.
@@ -67,17 +65,12 @@ export default function OnboardingPage() {
         console.error("No se pudo verificar si ya tienes un negocio:", err);
       }
 
-      // Quien entró por Teléfono ya trae user.phone verificado. Quien entró
-      // por Google/Apple todavía no — hay que verificarlo antes de dejarlo
-      // crear un negocio, para que "1 teléfono = 1 cuenta" también aplique
-      // a las cuentas que empiezan por redes sociales.
-      if (!user.phone) {
-        setNeedsPhone(true);
-        setChecking(false);
-        return;
-      }
-
-      setTelefono(user.phone);
+      // El teléfono ya no es requisito para crear el negocio (SMS OTP no
+      // está configurado y estaba bloqueando el alta). Si de casualidad ya
+      // viene uno verificado (login por teléfono en el futuro, Apple, etc.)
+      // se usa como valor inicial; si no, se crea el negocio sin teléfono y
+      // se puede agregar después en Configuración > Perfil.
+      if (user.phone) setTelefono(user.phone);
       const demo = readDemoPreview();
       if (demo) setDemoTenant(demo);
       setPlanElegido(readPlanElegido() !== null);
@@ -85,14 +78,6 @@ export default function OnboardingPage() {
     }
     check();
   }, [router]);
-
-  function onPhoneVerified(phone: string) {
-    setTelefono(phone.replace(/^\+52/, ""));
-    setNeedsPhone(false);
-    const demo = readDemoPreview();
-    if (demo) setDemoTenant(demo);
-    setPlanElegido(readPlanElegido() !== null);
-  }
 
   async function activateDemo() {
     if (!demoTenant || !userId) return;
@@ -132,30 +117,6 @@ export default function OnboardingPage() {
     );
   }
 
-  if (needsPhone) {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background px-6 text-center">
-        <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight">Verifica tu teléfono</h1>
-          <p className="mt-2 max-w-xs text-sm text-muted-foreground">
-            Antes de crear tu negocio necesitamos confirmar tu número por SMS. Así cada teléfono es una sola cuenta.
-          </p>
-        </div>
-        <PhoneOtpFlow mode="link" onVerified={onPhoneVerified} />
-        <button
-          type="button"
-          onClick={async () => {
-            await supabase.auth.signOut();
-            router.replace("/login");
-          }}
-          className="text-xs text-muted-foreground underline-offset-4 hover:underline"
-        >
-          ¿Ese teléfono ya es tuyo? Cierra sesión y entra con Teléfono
-        </button>
-      </main>
-    );
-  }
-
   if (demoTenant && !planElegido) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background px-6 text-center">
@@ -182,10 +143,9 @@ export default function OnboardingPage() {
     );
   }
 
-  const steps = ["tipo", "dueno", "negocio", "telefono"] as const;
+  const steps = ["tipo", "dueno", "negocio"] as const;
   const current = steps[step];
-  const canContinue =
-    current === "tipo" ? !!tipo : current === "dueno" ? dueno.trim().length > 1 : current === "negocio" ? negocio.trim().length > 1 : telefono.trim().length > 6;
+  const canContinue = current === "tipo" ? !!tipo : current === "dueno" ? dueno.trim().length > 1 : negocio.trim().length > 1;
 
   function next() {
     if (!canContinue) return;
@@ -265,24 +225,6 @@ export default function OnboardingPage() {
                   onChange={(e) => setNegocio(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && next()}
                   placeholder="Nombre de tu negocio"
-                  className="mt-3 h-14 text-lg"
-                />
-              </>
-            )}
-
-            {current === "telefono" && (
-              <>
-                <Label htmlFor="telefono" className="text-base normal-case tracking-normal text-foreground">
-                  ¿Cuál es tu WhatsApp?
-                </Label>
-                <Input
-                  id="telefono"
-                  autoFocus
-                  type="tel"
-                  value={telefono}
-                  onChange={(e) => setTelefono(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && next()}
-                  placeholder="331 000 0000"
                   className="mt-3 h-14 text-lg"
                 />
               </>

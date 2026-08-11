@@ -786,10 +786,13 @@ export async function syncTenantDiff(prev: TenantData, next: TenantData): Promis
 
   // A diferencia de barberia/fonda/abarrotes (sub-objetos con listas que se
   // diffean campo por campo), `business` vive directo en la fila `negocios`
-  // — el único campo editable desde /app hoy es `whatsapp` (Configuración >
-  // Perfil), así que solo ese se compara y sincroniza.
-  if (prev.business.whatsapp !== next.business.whatsapp) {
-    const { error } = await supabase.from("negocios").update({ whatsapp: next.business.whatsapp ?? null }).eq("id", negocioId);
+  // — los únicos campos editables desde /app hoy son whatsapp y telefono
+  // (Configuración > Perfil), así que solo esos se comparan y sincronizan.
+  const businessChanges: Row = {};
+  if (prev.business.whatsapp !== next.business.whatsapp) businessChanges.whatsapp = next.business.whatsapp ?? null;
+  if (prev.business.telefono !== next.business.telefono) businessChanges.telefono = next.business.telefono;
+  if (Object.keys(businessChanges).length > 0) {
+    const { error } = await supabase.from("negocios").update(businessChanges).eq("id", negocioId);
     if (error) throw error;
   }
 

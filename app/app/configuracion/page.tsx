@@ -166,19 +166,22 @@ export default function ConfiguracionPage() {
 
 function PerfilSection({ business, update }: { business: Business; update: ReturnType<typeof useSession>["update"] }) {
   const [whatsapp, setWhatsapp] = React.useState(business.whatsapp ?? "");
+  const [telefono, setTelefono] = React.useState(business.telefono ?? "");
 
   // Si update() sincroniza con Supabase en segundo plano y falla, session
   // vuelve a su valor previo — hay que reflejarlo aquí también, no solo en
   // el guardado optimista inicial.
   React.useEffect(() => {
     setWhatsapp(business.whatsapp ?? "");
-  }, [business.whatsapp]);
+    setTelefono(business.telefono ?? "");
+  }, [business.whatsapp, business.telefono]);
 
-  const cambiado = whatsapp.trim() !== (business.whatsapp ?? "");
+  const cambiado = whatsapp.trim() !== (business.whatsapp ?? "") || telefono.trim() !== (business.telefono ?? "");
 
   function guardar() {
-    const valor = whatsapp.trim();
-    update((prev) => ({ ...prev, business: { ...prev.business, whatsapp: valor || undefined } }));
+    const nuevoWhatsapp = whatsapp.trim();
+    const nuevoTelefono = telefono.trim();
+    update((prev) => ({ ...prev, business: { ...prev.business, whatsapp: nuevoWhatsapp || undefined, telefono: nuevoTelefono } }));
   }
 
   return (
@@ -196,6 +199,17 @@ function PerfilSection({ business, update }: { business: Business; update: Retur
           A este número llegan los botones de &ldquo;Confirmar por WhatsApp&rdquo; del link público de citas ({" "}
           <span className="font-mono">/b/{business.slug}</span>).
         </p>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Teléfono de recuperación (opcional)</Label>
+        <Input
+          type="tel"
+          inputMode="numeric"
+          value={telefono}
+          onChange={(e) => setTelefono(e.target.value)}
+          placeholder="331 000 0000"
+        />
+        <p className="text-xs text-muted-foreground">Ya no se pide al crear tu cuenta — es solo por si algún día lo necesitas para recuperar el acceso.</p>
       </div>
       <Button size="lg" disabled={!cambiado} onClick={guardar} className="self-start">
         Guardar

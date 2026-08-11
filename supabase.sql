@@ -864,28 +864,19 @@ update profiles set role = 'admin' where email = 'owenxmaldonado100@gmail.com';
 -- 5. Después de tu primer login con Google, vuelve a correr el UPDATE de
 --    arriba (o cualquiera con permisos de Supabase puede correrlo por ti)
 --    para confirmar que quedaste como admin.
--- 6. LOGIN POR TELÉFONO (OTP) Y APPLE — esto NO se activa con SQL, tienes
---    que hacerlo tú en el dashboard de Supabase antes de que /login funcione
---    con esos dos botones:
---    a) Authentication → Providers → Phone: actívalo y conecta un proveedor
---       de SMS (Twilio, MessageBird, Vonage o Textlocal). Eso requiere tu
---       propia cuenta de pago con ese proveedor — Supabase no manda el SMS
---       por su cuenta, solo hace de puente. Sin esto configurado, el botón
---       "Entrar con Teléfono" nunca podrá enviar el código real.
---    b) Authentication → Providers → Apple: actívalo con tus credenciales de
---       Apple Developer (Services ID, Team ID, Key ID, private key .p8).
---       Requiere cuenta de Apple Developer Program (de paga).
---    c) Una vez prendido el provider de Phone, Supabase Auth ya exige que
---       auth.users.phone sea único por su cuenta — el índice único de
---       profiles.phone de arriba es una segunda capa (para que la UI de
---       /admin y el resto de la app puedan confiar en profiles sin tener
---       que pegarle a auth.users con la service_role key en cada consulta).
---    d) Nada de esto se pudo probar de punta a punta en este entorno: no hay
---       proyecto de Supabase real conectado aquí, así que no hay forma de
---       mandar ni recibir un SMS real. El código en /login, /onboarding y
---       components/auth/phone-otp-flow.tsx asume que a) y b) ya están
---       hechos — pruébalo tú con un número real una vez que actives ambos
---       providers.
+-- 6. LOGIN POR TELÉFONO (OTP): se quitó del UI (/login, /onboarding) — el
+--    provider de SMS nunca se configuró en el dashboard de Supabase y el
+--    botón "Entrar con Teléfono"/"Verifica tu teléfono" se quedaba
+--    trabado en "no se pudo enviar el código", bloqueando altas reales.
+--    /login ahora solo ofrece Google; /onboarding crea el negocio sin
+--    pedir teléfono (queda opcional, editable después en Configuración >
+--    Perfil como "Teléfono de recuperación"). El índice único de
+--    profiles.phone de arriba no estorba si se vuelve a activar más
+--    adelante — solo hace falta reactivar el provider de Phone en
+--    Authentication → Providers y devolver el flujo a la UI.
+--    APPLE: sigue sin implementarse en el UI; si se agrega, activarlo en
+--    Authentication → Providers → Apple con credenciales de Apple
+--    Developer (Services ID, Team ID, Key ID, private key .p8).
 
 -- ============================================================================
 -- HARDENING — validación a nivel de base de datos (defensa en profundidad)
