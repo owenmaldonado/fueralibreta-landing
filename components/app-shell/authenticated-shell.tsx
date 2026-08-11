@@ -12,6 +12,7 @@ import { BottomNav } from "./bottom-nav";
 import { Fab } from "./fab";
 import { Button } from "@/components/ui/button";
 import { waLink, NUMERO_CONTACTO } from "@/lib/mock";
+import { writePlanElegido } from "@/lib/demoPreview";
 import { ADMIN_EMAIL } from "@/lib/admin-data";
 import { BarberiaQuickAdd, BARBERIA_ACTIONS } from "@/components/quick-add/barberia-quick-add";
 import { FondaQuickAdd, FONDA_ACTIONS } from "@/components/quick-add/fonda-quick-add";
@@ -162,8 +163,18 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
       {business.demo && (
         <div className="sticky top-14 z-20 flex items-center justify-between gap-3 border-b border-primary/30 bg-primary/10 px-4 py-2.5">
           <p className="text-xs leading-tight text-foreground">Estás probando una demo de abarrotera - FueraLibreta</p>
-          <Button asChild size="sm">
-            <Link href="/login">Lo quiero · $499/mes</Link>
+          <Button
+            size="sm"
+            onClick={() => {
+              // Marca que viene del CTA de pago antes de mandarlo a /login —
+              // /onboarding lo usa para SIEMPRE pedir teléfono y crear el
+              // negocio en blanco ahí, en vez de ofrecer "activar" esta demo
+              // tal cual (ver lib/demoPreview.ts).
+              writePlanElegido({ plan: "pro", precio: 499 });
+              router.push("/login");
+            }}
+          >
+            Lo quiero · $499/mes
           </Button>
         </div>
       )}

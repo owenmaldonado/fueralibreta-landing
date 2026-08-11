@@ -37,3 +37,39 @@ export function clearDemoPreview(): void {
 }
 
 export const DEMO_PREVIEW_EVENT = EVENT;
+
+const PLAN_KEY = "fl_plan_elegido";
+
+export interface PlanElegido {
+  plan: string;
+  precio: number;
+}
+
+/**
+ * Marca que el usuario vino del botón "Lo quiero" del banner de demo (antes
+ * de loguearse). Es señal de control de flujo para /onboarding — cuando
+ * está presente, /onboarding SIEMPRE crea un negocio en blanco (nunca
+ * ofrece "activar" el fl_demo_preview tal cual) y la borra en cuanto el
+ * negocio queda creado. No es un plan de facturación real: profiles.plan
+ * (lib/admin-data.ts) es un campo aparte que solo el panel /admin escribe;
+ * esto es puramente informativo para el flujo de alta.
+ */
+export function readPlanElegido(): PlanElegido | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(PLAN_KEY);
+    return raw ? (JSON.parse(raw) as PlanElegido) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writePlanElegido(plan: PlanElegido): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PLAN_KEY, JSON.stringify(plan));
+}
+
+export function clearPlanElegido(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(PLAN_KEY);
+}

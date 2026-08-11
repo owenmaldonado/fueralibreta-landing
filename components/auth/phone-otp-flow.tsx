@@ -54,11 +54,18 @@ export function PhoneOtpFlow({ mode, onVerified, onCancel }: PhoneOtpFlowProps) 
       mode === "signin" ? await supabase.auth.signInWithOtp({ phone }) : await supabase.auth.updateUser({ phone });
     setLoading(false);
     if (err) {
+      // El mensaje que ve el usuario abajo es genérico a propósito (no todos
+      // los fallos son culpa suya) — el real (credenciales/proveedor SMS mal
+      // configurado en Supabase, número rechazado, rate limit, etc.) se
+      // queda solo en consola para poder diagnosticarlo.
+      console.error("No se pudo enviar el código SMS:", err);
       const msg = err.message.toLowerCase();
       setError(
         msg.includes("already") || msg.includes("registered") || msg.includes("exists")
           ? "Este teléfono ya tiene una cuenta. Cierra sesión y entra con Teléfono en vez de crear una nueva."
-          : "No se pudo enviar el código. Revisa el número e intenta de nuevo."
+          : msg.includes("sms") || msg.includes("provider") || msg.includes("unable to") || msg.includes("not configured") || err.status === 500
+            ? "Por ahora usa Google, SMS en mantenimiento."
+            : "No se pudo enviar el código. Revisa el número e intenta de nuevo."
       );
       return;
     }
@@ -77,6 +84,7 @@ export function PhoneOtpFlow({ mode, onVerified, onCancel }: PhoneOtpFlowProps) 
     });
     setLoading(false);
     if (err) {
+      console.error("No se pudo verificar el código SMS:", err);
       setError("Código incorrecto o vencido. Intenta de nuevo.");
       return;
     }
