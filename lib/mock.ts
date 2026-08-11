@@ -272,13 +272,45 @@ function emptyAbarrotesData(): AbarrotesData {
   };
 }
 
-/** Crea un tenant nuevo y vacío (flujo /onboarding). */
+/** Crea un tenant nuevo y vacío (flujo /onboarding sin demo previa). */
 export function createEmptyTenant(input: NuevoNegocioInput): TenantData {
   const business = createBusiness(input);
   const data: TenantData = { business };
   if (input.tipo === "barberia") data.barberia = emptyBarberiaData();
   if (input.tipo === "fonda") data.fonda = emptyFondaData();
   if (input.tipo === "abarrotes") data.abarrotes = emptyAbarrotesData();
+  return data;
+}
+
+/**
+ * Crea el negocio real a partir de lo que el usuario vio en /demo/[tipo]:
+ * mismo catálogo (platillos/servicios/productos, con los nombres y precios
+ * que armó ahí) pero sin las citas/pedidos/ventas/gastos de ejemplo — esos
+ * sí eran puro relleno para la demo y no deben aparecer como actividad real
+ * de un negocio que apenas se está dando de alta. tipo/dueño vienen fijos
+ * de la demo (no tiene sentido cambiarlos); nombre y teléfono son los
+ * únicos editables en la pantalla de confirmación de /onboarding.
+ */
+export function tenantFromDemo(demo: TenantData, overrides: { nombre: string; telefono: string }): TenantData {
+  const business = createBusiness({
+    dueno: demo.business.dueno,
+    nombre: overrides.nombre,
+    telefono: overrides.telefono,
+    tipo: demo.business.tipo,
+  });
+  const data: TenantData = { business };
+  if (demo.barberia) {
+    data.barberia = { ...emptyBarberiaData(), servicios: demo.barberia.servicios, productos: demo.barberia.productos };
+  }
+  if (demo.fonda) {
+    data.fonda = { ...emptyFondaData(), platillos: demo.fonda.platillos };
+  }
+  if (demo.abarrotes) {
+    data.abarrotes = {
+      ...emptyAbarrotesData(),
+      productos: demo.abarrotes.productos.map((p) => ({ ...p, lotes: [] })),
+    };
+  }
   return data;
 }
 
