@@ -43,7 +43,22 @@ function esDemoValida(x: unknown): x is TenantData {
   );
 }
 
-/** Loguea el error de Supabase completo (no solo el mensaje genérico) para poder diagnosticarlo desde la consola/Vercel logs. */
+/** Nombre para mostrar de la sesión de Google — evita volver a preguntar "¿cómo te llamas?" cuando ya lo sabemos. */
+function duenoDeGoogle(user: { user_metadata?: Record<string, unknown>; email?: string | null }): string {
+  const meta = user.user_metadata ?? {};
+  const nombre = (meta.full_name as string) || (meta.name as string) || "";
+  if (nombre.trim()) return nombre.trim();
+  if (user.email) return user.email.split("@")[0];
+  return "Dueño";
+}
+
+/** Arma el mensaje que se muestra EN PANTALLA (no solo en consola) con el error real de Supabase, no un genérico. */
+function mensajeErrorReal(err: unknown): string {
+  const e = err as { message?: string } | null;
+  return e?.message ? `No se pudo crear tu sistema: ${e.message}` : "No se pudo crear tu sistema. Intenta de nuevo.";
+}
+
+/** Loguea el error de Supabase completo (no solo el mensaje) para poder diagnosticarlo desde la consola/Vercel logs. */
 function logCreateError(context: string, err: unknown) {
   const e = err as { message?: string; code?: string; details?: string; hint?: string } | null;
   console.error(context, {
@@ -60,64 +75,79 @@ export default function OnboardingPage() {
   const { claim } = useSession();
 
   const [checking, setChecking] = React.useState(true);
+  // true si fetchNegocioByOwner falló y no sabemos si ya tiene negocio — en
+  // ese caso NUNCA se muestra el formulario de alta (podría duplicar), se
+  // ofrece reintentar la verificación.
+  const [checkFailed, setCheckFailed] = React.useState(false);
   const [userId, setUserId] = React.useState<string | null>(null);
+  const [dueno, setDueno] = React.useState("");
   const [demoTenant, setDemoTenant] = React.useState<TenantData | null>(null);
-  // Viene del botón "Lo quiero" del banner de demo: si está presente, en
-  // cuanto el negocio quede creado se sube profiles.plan a "pro" para que
-  // aparezca correctamente en /admin.
+  // Viene del botón "Lo quiero" del banner de demo (o simplemente de haber
+  // llegado hasta aquí, que ya implica intención de alta): en cuanto el
+  // negocio quede creado se sube profiles.plan a "pro" para que aparezca
+  // correctamente en /admin.
   const [planElegido, setPlanElegido] = React.useState(false);
   const [nombre, setNombre] = React.useState("");
+  const [tipo, setTipo] = React.useState<BusinessType | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const [step, setStep] = React.useState(0);
-  const [tipo, setTipo] = React.useState<BusinessType | null>(null);
-  const [dueno, setDueno] = React.useState("");
-  const [negocio, setNegocio] = React.useState("");
+  const runCheck = React.useCallback(async () => {
+    setChecking(true);
+    setCheckFailed(false);
 
-  React.useEffect(() => {
-    async function check() {
-      if (!isSupabaseConfigured) {
-        router.replace("/login");
-        return;
-      }
-      const { data } = await supabase.auth.getSession();
-      const user = data.session?.user;
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
-      setUserId(user.id);
-
-      try {
-        const business = await fetchNegocioByOwner(user.id);
-        if (business) {
-          router.replace("/app/inicio");
-          return;
-        }
-      } catch (err) {
-        console.error("No se pudo verificar si ya tienes un negocio:", err);
-      }
-
-      // El teléfono ya no es requisito para crear el negocio (SMS OTP no
-      // está configurado y estaba bloqueando el alta) — se crea sin él y se
-      // puede agregar después en Configuración > Perfil.
-      const demo = readDemoPreview();
-      if (demo && esDemoValida(demo)) {
-        setDemoTenant(demo);
-        setNombre(demo.business.nombre);
-      } else if (demo) {
-        console.error("fl_demo_preview tenía un formato inválido, se ignora:", demo);
-        clearDemoPreview();
-      }
-      setPlanElegido(readPlanElegido() !== null);
-      setChecking(false);
+    if (!isSupabaseConfigured) {
+      router.replace("/login");
+      return;
     }
-    check();
+    const { data } = await supabase.auth.getSession();
+    const user = data.session?.user;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+    setUserId(user.id);
+    setDueno(duenoDeGoogle(user));
+
+    try {
+      const business = await fetchNegocioByOwner(user.id);
+      if (business) {
+        router.replace("/app/inicio");
+        return;
+      }
+    } catch (err) {
+      // No se pudo verificar si ya tiene negocio: NUNCA se muestra el
+      // formulario de alta en este caso (crearía un negocio duplicado si
+      // resulta que sí tenía uno) — se ofrece reintentar en su lugar.
+      console.error("No se pudo verificar si ya tienes un negocio:", err);
+      setCheckFailed(true);
+      setChecking(false);
+      return;
+    }
+
+    // El teléfono ya no es requisito para crear el negocio (SMS OTP no
+    // está configurado y estaba bloqueando el alta) — se crea sin él y se
+    // puede agregar después en Configuración > Perfil.
+    const demo = readDemoPreview();
+    if (demo && esDemoValida(demo)) {
+      setDemoTenant(demo);
+      setNombre(demo.business.nombre);
+    } else if (demo) {
+      console.error("fl_demo_preview tenía un formato inválido, se ignora:", demo);
+      clearDemoPreview();
+    }
+    setPlanElegido(readPlanElegido() !== null);
+    setChecking(false);
   }, [router]);
 
-  async function activarPlanSiAplica(uid: string) {
-    if (!planElegido) return;
+  React.useEffect(() => {
+    runCheck();
+  }, [runCheck]);
+
+  // El plan pro se marca siempre que se completa este flujo de alta — es la
+  // única forma de crear un negocio en la app hoy, así que llegar hasta el
+  // final ya es la señal de "quiero el plan de $499".
+  async function marcarPlanPro(uid: string) {
     try {
       await updateUserPlan(uid, "pro");
     } catch (err) {
@@ -139,31 +169,32 @@ export default function OnboardingPage() {
     try {
       const tenant = tenantFromDemo(demoTenant, { nombre: nombre.trim(), telefono: "" });
       await claim(tenant, userId);
-      await activarPlanSiAplica(userId);
+      await marcarPlanPro(userId);
       clearPlanElegido();
       router.push("/app/inicio");
     } catch (err) {
       logCreateError("No se pudo crear el negocio desde la demo:", err);
-      setError("No se pudo crear tu sistema. Intenta de nuevo.");
+      setError(mensajeErrorReal(err));
       setCreating(false);
     }
   }
 
-  // Wizard completo, solo para arranque en frío (sin haber pasado por
-  // /demo/[tipo]) — es la única fuente de tipo/dueño/nombre en ese caso.
+  // Arranque en frío (sin haber pasado por /demo/[tipo]): único caso donde
+  // hace falta preguntar el tipo de negocio, porque no hay otra fuente. El
+  // dueño ya se sacó del perfil de Google — no se vuelve a preguntar.
   async function createBusinessAndGo() {
-    if (!tipo || !userId) return;
+    if (!tipo || !userId || nombre.trim().length < 2) return;
     setCreating(true);
     setError(null);
     try {
-      const tenant = createEmptyTenant({ dueno, nombre: negocio, telefono: "", tipo });
+      const tenant = createEmptyTenant({ dueno, nombre: nombre.trim(), telefono: "", tipo });
       await claim(tenant, userId);
-      await activarPlanSiAplica(userId);
+      await marcarPlanPro(userId);
       clearPlanElegido();
       router.push("/app/inicio");
     } catch (err) {
       logCreateError("No se pudo crear el negocio:", err);
-      setError("No se pudo crear tu sistema. Intenta de nuevo.");
+      setError(mensajeErrorReal(err));
       setCreating(false);
     }
   }
@@ -172,6 +203,25 @@ export default function OnboardingPage() {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </main>
+    );
+  }
+
+  if (checkFailed) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-5 bg-background px-6 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-destructive/10">
+          <AlertCircle className="h-8 w-8 text-destructive" />
+        </div>
+        <div>
+          <h1 className="font-display text-xl font-bold">No pudimos verificar tu cuenta</h1>
+          <p className="mt-2 max-w-xs text-sm text-muted-foreground">
+            Puede ser un problema de conexión momentáneo. Revisa la consola para el error exacto.
+          </p>
+        </div>
+        <Button size="lg" onClick={runCheck}>
+          Reintentar
+        </Button>
       </main>
     );
   }
@@ -217,13 +267,8 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            <Button
-              size="lg"
-              className="mt-6 w-full"
-              onClick={crearDesdeDemo}
-              disabled={nombre.trim().length < 2}
-            >
-              Crear mi sistema — 7 días gratis
+            <Button size="lg" className="mt-6 w-full" onClick={crearDesdeDemo} disabled={nombre.trim().length < 2}>
+              Iniciar mi prueba de 7 días — $499/mes
             </Button>
           </div>
         )}
@@ -231,109 +276,62 @@ export default function OnboardingPage() {
     );
   }
 
-  const steps = ["tipo", "dueno", "negocio"] as const;
-  const current = steps[step];
-  const canContinue = current === "tipo" ? !!tipo : current === "dueno" ? dueno.trim().length > 1 : negocio.trim().length > 1;
-
-  function next() {
-    if (!canContinue) return;
-    if (step < steps.length - 1) {
-      setStep((s) => s + 1);
-    } else {
-      createBusinessAndGo();
-    }
-  }
-
+  // Arranque en frío: solo tipo de negocio (no hay otra fuente) + nombre.
   return (
-    <main className="flex min-h-screen flex-col bg-background px-6 py-10">
-      <div className="mx-auto flex w-full max-w-sm flex-1 flex-col">
-        <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          Crea tu negocio · paso {step + 1} de {steps.length}
-        </p>
-        {planElegido && (
-          <p className="mt-1 font-mono text-[11px] uppercase tracking-widest text-primary">Plan Pro · $499/mes</p>
-        )}
-        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-          <div
-            className="h-full rounded-full bg-primary transition-all duration-300"
-            style={{ width: `${((step + 1) / steps.length) * 100}%` }}
-          />
-        </div>
-
-        {creating ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="font-display text-lg font-semibold">Creando tu sistema…</p>
-          </div>
-        ) : (
-          <div className="mt-10 flex flex-1 flex-col">
-            {current === "tipo" && (
-              <>
-                <Label className="text-base normal-case tracking-normal text-foreground">
-                  ¿Qué tipo de negocio tienes?
-                </Label>
-                <ChipGroup className="mt-4">
-                  {TIPOS.map((t) => (
-                    <Chip key={t.value} selected={tipo === t.value} onClick={() => setTipo(t.value)}>
-                      <span className="flex items-center gap-1.5">
-                        <t.icon className="h-4 w-4" /> {t.label}
-                      </span>
-                    </Chip>
-                  ))}
-                </ChipGroup>
-              </>
-            )}
-
-            {current === "dueno" && (
-              <>
-                <Label htmlFor="dueno" className="text-base normal-case tracking-normal text-foreground">
-                  ¿Cómo te llamas?
-                </Label>
-                <Input
-                  id="dueno"
-                  autoFocus
-                  value={dueno}
-                  onChange={(e) => setDueno(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && next()}
-                  placeholder="Tu nombre"
-                  className="mt-3 h-14 text-lg"
-                />
-              </>
-            )}
-
-            {current === "negocio" && (
-              <>
-                <Label htmlFor="negocio" className="text-base normal-case tracking-normal text-foreground">
-                  ¿Cómo se llama tu negocio?
-                </Label>
-                <Input
-                  id="negocio"
-                  autoFocus
-                  value={negocio}
-                  onChange={(e) => setNegocio(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && next()}
-                  placeholder="Nombre de tu negocio"
-                  className="mt-3 h-14 text-lg"
-                />
-              </>
-            )}
-
-            {error && (
-              <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-xs text-destructive">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                {error}
-              </div>
-            )}
-
-            <div className="mt-auto pt-10">
-              <Button size="lg" className="w-full" disabled={!canContinue} onClick={next}>
-                {step < steps.length - 1 ? "Continuar" : "Crear mi sistema"}
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
+    <main className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background px-6 text-center">
+      <div>
+        <h1 className="font-display text-2xl font-bold tracking-tight">¡Hola, {dueno}!</h1>
+        <p className="mt-2 max-w-xs text-sm text-muted-foreground">Crea tu negocio y arranca tu prueba de 7 días.</p>
       </div>
+
+      {creating ? (
+        <div className="flex flex-col items-center gap-3 py-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="font-display text-lg font-semibold">Creando tu sistema…</p>
+        </div>
+      ) : (
+        <div className="w-full max-w-xs text-left">
+          <Label className="text-base normal-case tracking-normal text-foreground">¿Qué tipo de negocio tienes?</Label>
+          <ChipGroup className="mt-3">
+            {TIPOS.map((t) => (
+              <Chip key={t.value} selected={tipo === t.value} onClick={() => setTipo(t.value)}>
+                <span className="flex items-center gap-1.5">
+                  <t.icon className="h-4 w-4" /> {t.label}
+                </span>
+              </Chip>
+            ))}
+          </ChipGroup>
+
+          <Label htmlFor="negocio" className="mt-6 block text-base normal-case tracking-normal text-foreground">
+            ¿Cómo se llama tu negocio?
+          </Label>
+          <Input
+            id="negocio"
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && createBusinessAndGo()}
+            placeholder="Nombre de tu negocio"
+            className="mt-3 h-14 text-lg"
+          />
+
+          {error && (
+            <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-xs text-destructive">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              {error}
+            </div>
+          )}
+
+          <Button
+            size="lg"
+            className="mt-6 w-full"
+            onClick={createBusinessAndGo}
+            disabled={!tipo || nombre.trim().length < 2}
+          >
+            Iniciar mi prueba de 7 días — $499/mes
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </main>
   );
 }

@@ -81,14 +81,20 @@ function businessToRow(b: Business): Row {
  * super admin (mis_apps) — este repo genera y solo debe ver los suyos.
  */
 export async function fetchNegocioByOwner(ownerId: string): Promise<Business | null> {
+  // .maybeSingle() truena ("multiple rows returned") si este owner terminó
+  // con más de un negocio — pudo pasar con la carrera que ya se arregló en
+  // lib/session.ts, y esos usuarios existentes NO deben volver a ver el
+  // formulario de alta solo porque quedó una fila duplicada. order+limit(1)
+  // toma la más antigua (la real) sin tronar aunque haya duplicados.
   const { data, error } = await supabase
     .from("negocios")
     .select("*")
     .eq("owner_id", ownerId)
     .eq("app_slug", "fuera-libreta")
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(1);
   if (error) throw error;
-  return data ? businessFromRow(data) : null;
+  return data && data.length > 0 ? businessFromRow(data[0]) : null;
 }
 
 /** Solo negocios activos (RLS público también lo exige). Usado por /b/[slug]. */
