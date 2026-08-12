@@ -7,31 +7,30 @@ import { Button } from "@/components/ui/button";
 import { Tabs } from "@/components/ui/tabs";
 import { StatTile } from "./stat-tile";
 import { EmptyState } from "./empty-state";
-import { formatMoney, formatHora12, toISODate } from "@/lib/mock";
+import { formatMoney, formatHora12, toISODate, todayISOEnTepic } from "@/lib/mock";
 import type { TenantData, SessionUpdater } from "@/lib/types";
 
-const DIAS_LARGOS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+const TEPIC_TZ = "America/Bahia_Banderas";
 
+/** "Hoy es {día} {número}" según la zona horaria del negocio (Tepic), no la del dispositivo que esté viendo el panel. */
 function tituloHoy(): string {
-  const hoy = new Date();
-  return `Hoy es ${DIAS_LARGOS[hoy.getDay()]} ${hoy.getDate()}`;
+  const partes = new Intl.DateTimeFormat("es-MX", { timeZone: TEPIC_TZ, weekday: "long", day: "numeric" }).formatToParts(
+    new Date()
+  );
+  const dia = partes.find((p) => p.type === "weekday")?.value ?? "";
+  const numero = partes.find((p) => p.type === "day")?.value ?? "";
+  return `Hoy es ${dia.charAt(0).toUpperCase()}${dia.slice(1)} ${numero}`;
 }
 
-/** Lunes a domingo de la semana de calendario en curso (misma definición que "Semanal" en la gráfica de Gastos). */
+/** Lunes a domingo de la semana de calendario en curso, anclada al "hoy" de Tepic (misma definición que "Semanal" en la gráfica de Gastos). */
 function rangoSemanaActual(): [string, string] {
-  const hoy = new Date();
+  const hoy = new Date(`${todayISOEnTepic(0)}T00:00:00`);
   const diasDesdeLunes = (hoy.getDay() + 6) % 7;
   const lunes = new Date(hoy);
   lunes.setDate(lunes.getDate() - diasDesdeLunes);
   const domingo = new Date(lunes);
   domingo.setDate(domingo.getDate() + 6);
   return [toISODate(lunes), toISODate(domingo)];
-}
-
-function addDaysISO(offset: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  return toISODate(d);
 }
 
 type FiltroDia = "hoy" | "ayer" | "semana";
@@ -47,11 +46,23 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
   const [filtro, setFiltro] = React.useState<FiltroDia>("hoy");
 
   const [desde, hasta] =
-    filtro === "hoy" ? [addDaysISO(0), addDaysISO(0)] : filtro === "ayer" ? [addDaysISO(-1), addDaysISO(-1)] : rangoSemanaActual();
+    filtro === "hoy"
+      ? [todayISOEnTepic(0), todayISOEnTepic(0)]
+      : filtro === "ayer"
+        ? [todayISOEnTepic(-1), todayISOEnTepic(-1)]
+        : rangoSemanaActual();
 
-  const pedidosPeriodo = data.pedidos
-    .filter((p) => p.fecha >= desde && p.fecha <= hasta)
-    .sort((a, b) => a.hora.localeCompare(b.hora));
+  // En "Hoy" un pedido pendiente SIEMPRE se muestra, sin importar qué fecha
+  // tenga guardada — un pedido tomado cerca de medianoche desde el link
+  // público (el huso del celular del cliente puede no ser el de Tepic) no
+  // debe desaparecer del panel solo por un desfase de un día. "Ayer" y
+  // "Semana" sí siguen filtrando por fecha porque ahí el punto es revisar
+  // el histórico, no lo pendiente de ahora.
+  const pedidosPeriodo = (
+    filtro === "hoy"
+      ? data.pedidos.filter((p) => p.estado === "pendiente" || (p.fecha >= desde && p.fecha <= hasta))
+      : data.pedidos.filter((p) => p.fecha >= desde && p.fecha <= hasta)
+  ).sort((a, b) => a.hora.localeCompare(b.hora));
   const gastosPeriodo = data.gastos.filter((g) => g.fecha >= desde && g.fecha <= hasta);
 
   // Solo cuenta como venta un pedido ya entregado, no uno pendiente.
