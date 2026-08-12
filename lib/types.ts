@@ -21,6 +21,8 @@ export interface Business {
   demo?: boolean;
   /** A qué app del hub de super admin pertenece (ver mis_apps). Este repo solo genera 'fuera-libreta'. */
   appSlug: string;
+  /** IANA (ej. "America/Bahia_Banderas"). Opcional: sin columna en Supabase todavía, los paneles caen a un default fijo si no viene. */
+  timezone?: string;
 }
 
 // ---------- Barbería ----------

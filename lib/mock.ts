@@ -86,18 +86,6 @@ export function todayISO(offsetDays = 0): string {
   return toISODate(addDays(new Date(), offsetDays));
 }
 
-/**
- * Como todayISO(), pero en la zona horaria de Tepic/Bahía de Banderas en
- * vez de la del dispositivo. Un pedido tomado desde el link público (el
- * celular del cliente puede estar en cualquier huso) o revisado desde otro
- * estado no debe verse "de ayer" o "de mañana" solo por eso — el negocio
- * vive en un lugar fijo, así que "hoy" también debería.
- */
-export function todayISOEnTepic(offsetDays = 0): string {
-  const d = new Date(Date.now() + offsetDays * 86_400_000);
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bahia_Banderas" }).format(d);
-}
-
 export function daysSince(iso: string | null): number | null {
   if (!iso) return null;
   const then = new Date(iso).getTime();
