@@ -359,6 +359,51 @@ async function fetchFondaData(negocioId: string): Promise<FondaData> {
   };
 }
 
+/**
+ * Lectura directa de pedidos pendientes — sin depender del session.fonda
+ * ya cargado (que solo se refresca al iniciar sesión o vía update()
+ * optimista). El panel principal la usa para no perder pedidos nuevos que
+ * llegaron después de esa carga inicial. A propósito sin ningún filtro de
+ * fecha/hoy/fecha_entrega/created_at: solo negocio_id + estado.
+ */
+export async function fetchPedidosPendientes(negocioId: string): Promise<FondaOrder[]> {
+  const { data: pedidosData, error: pedidosError } = await supabase
+    .from("fonda_pedidos")
+    .select("*")
+    .eq("negocio_id", negocioId)
+    .eq("estado", "pendiente")
+    .order("created_at", { ascending: false });
+  if (pedidosError) throw pedidosError;
+
+  const pedidoIds = (pedidosData ?? []).map((p) => p.id as string);
+  let itemsData: Row[] = [];
+  if (pedidoIds.length) {
+    const { data, error } = await supabase.from("fonda_pedido_items").select("*").in("pedido_id", pedidoIds);
+    if (error) throw error;
+    itemsData = data ?? [];
+  }
+
+  return (pedidosData ?? []).map((row) => ({
+    id: row.id as string,
+    clienteNombre: row.cliente_nombre as string,
+    clienteTelefono: (row.cliente_telefono as string) ?? undefined,
+    fecha: row.fecha as string,
+    hora: (row.hora as string).slice(0, 5),
+    horaEntrega: (row.hora_entrega as string | null)?.slice(0, 5) ?? undefined,
+    estado: row.estado as FondaOrder["estado"],
+    total: Number(row.total),
+    items: itemsData
+      .filter((it) => it.pedido_id === row.id)
+      .map((it) => ({
+        id: it.id as string,
+        platilloId: (it.platillo_id as string) ?? "",
+        platilloNombre: it.platillo_nombre as string,
+        cantidad: it.cantidad as number,
+        nota: (it.nota as string) ?? undefined,
+      })),
+  }));
+}
+
 // ---------- abarrotes: mapeos ----------
 
 const productoAbarrotesToRow = (p: GroceryProduct, negocioId: string): Row => ({
