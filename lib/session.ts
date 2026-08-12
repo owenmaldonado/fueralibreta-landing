@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { supabase, isSupabaseConfigured } from "./supabase";
 import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow } from "./data";
 import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
 import { todayISO } from "./mock";
-import type { TenantData } from "./types";
+import type { Appointment, TenantData } from "./types";
 
 type Source = "supabase" | "demo" | null;
 
@@ -34,6 +33,66 @@ function limpiarCacheTenant() {
   fetchesEnVuelo.clear();
 }
 
+type EventoCita = { tipo: "insert" | "update"; cita: Appointment };
+
+/**
+ * Mismo problema de fondo que el cache de arriba, pero para el canal de
+ * realtime de citas: cada instancia de useSession() llamaba su PROPIO
+ * supabase.channel(`citas-${negocioId}`).on(...).on(...).subscribe(). Con
+ * dos o más instancias resolviendo el mismo negocio (el shell + la página
+ * actual, por ejemplo — ahora incluso más seguido gracias al cache de
+ * arriba, que hace que resuelvan casi al mismo tiempo), la SEGUNDA
+ * instancia intentaba agregar sus propios .on('postgres_changes', ...) a
+ * un canal con el mismo topic que la primera YA había mandado a
+ * subscribe() — supabase-js v2 truena ahí ("cannot add 'postgres_changes'
+ * callbacks... after 'subscribe()'"), y ese throw tumbaba resolveForUser
+ * COMPLETO (pasaba por el catch), dejando session en null para siempre:
+ * el círculo infinito real detrás del bug de barbería.
+ *
+ * Fix: un solo canal compartido por negocio, con .on() antes de un único
+ * .subscribe() — cada instancia de useSession() solo se registra como
+ * oyente (onEvento) en vez de crear su propio canal; la última en
+ * desmontarse es la que lo cierra.
+ */
+let citasChannel: ReturnType<typeof supabase.channel> | null = null;
+let citasChannelNegocioId: string | null = null;
+const citasListeners = new Set<(evento: EventoCita) => void>();
+
+function suscribirseACitasEnVivo(negocioId: string, onEvento: (evento: EventoCita) => void): () => void {
+  if (citasChannelNegocioId !== negocioId) {
+    if (citasChannel) supabase.removeChannel(citasChannel);
+    citasChannelNegocioId = negocioId;
+    citasChannel = supabase
+      .channel(`citas-${negocioId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const cita = citaFromRow(payload.new as Record<string, unknown>);
+          citasListeners.forEach((l) => l({ tipo: "insert", cita }));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const cita = citaFromRow(payload.new as Record<string, unknown>);
+          citasListeners.forEach((l) => l({ tipo: "update", cita }));
+        }
+      )
+      .subscribe();
+  }
+  citasListeners.add(onEvento);
+  return () => {
+    citasListeners.delete(onEvento);
+    if (citasListeners.size === 0 && citasChannel) {
+      supabase.removeChannel(citasChannel);
+      citasChannel = null;
+      citasChannelNegocioId = null;
+    }
+  };
+}
+
 /**
  * Sesión del negocio activo. Dos fuentes posibles:
  *
@@ -48,7 +107,7 @@ export function useSession() {
   const [ready, setReady] = useState(false);
   const sourceRef = useRef<Source>(null);
   const sessionRef = useRef<TenantData | null>(null);
-  const citasChannelRef = useRef<RealtimeChannel | null>(null);
+  const citasUnsubRef = useRef<(() => void) | null>(null);
   sessionRef.current = session;
 
   const loadFromDemoPreview = useCallback(() => {
@@ -61,10 +120,8 @@ export function useSession() {
     let cancelled = false;
 
     function detenerCitasEnVivo() {
-      if (citasChannelRef.current) {
-        supabase.removeChannel(citasChannelRef.current);
-        citasChannelRef.current = null;
-      }
+      citasUnsubRef.current?.();
+      citasUnsubRef.current = null;
     }
 
     /**
@@ -74,39 +131,27 @@ export function useSession() {
      * suscripción en tiempo real, en vez de solo el fetch inicial de arriba.
      * También escucha UPDATE: si el dueño cambia el estado de una cita (Listo,
      * Cancelar, Mover) desde otra pestaña/dispositivo suyo, esta sesión debe
-     * verlo también, no solo los inserts nuevos.
+     * verlo también, no solo los inserts nuevos. Se registra en el canal
+     * COMPARTIDO (suscribirseACitasEnVivo, arriba) en vez de crear uno propio
+     * — varias instancias de useSession() para el mismo negocio no pueden
+     * cada una llamar su propio .channel(...).subscribe() con el mismo
+     * topic, eso es justo lo que rompía la sesión completa.
      */
     function escucharCitasEnVivo(negocioId: string) {
       detenerCitasEnVivo();
-      citasChannelRef.current = supabase
-        .channel(`citas-${negocioId}`)
-        .on(
-          "postgres_changes",
-          { event: "INSERT", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
-          (payload) => {
-            const nueva = citaFromRow(payload.new as Record<string, unknown>);
-            setSessionState((prev) => {
-              if (!prev?.barberia) return prev;
-              if (prev.barberia.citas.some((c) => c.id === nueva.id)) return prev;
-              return { ...prev, barberia: { ...prev.barberia, citas: [nueva, ...prev.barberia.citas] } };
-            });
+      citasUnsubRef.current = suscribirseACitasEnVivo(negocioId, ({ tipo, cita }) => {
+        setSessionState((prev) => {
+          if (!prev?.barberia) return prev;
+          if (tipo === "insert") {
+            if (prev.barberia.citas.some((c) => c.id === cita.id)) return prev;
+            return { ...prev, barberia: { ...prev.barberia, citas: [cita, ...prev.barberia.citas] } };
           }
-        )
-        .on(
-          "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
-          (payload) => {
-            const actualizada = citaFromRow(payload.new as Record<string, unknown>);
-            setSessionState((prev) => {
-              if (!prev?.barberia) return prev;
-              return {
-                ...prev,
-                barberia: { ...prev.barberia, citas: prev.barberia.citas.map((c) => (c.id === actualizada.id ? actualizada : c)) },
-              };
-            });
-          }
-        )
-        .subscribe();
+          return {
+            ...prev,
+            barberia: { ...prev.barberia, citas: prev.barberia.citas.map((c) => (c.id === cita.id ? cita : c)) },
+          };
+        });
+      });
     }
 
     /** El fetch real (negocio + todo su contenido) — se comparte vía fetchesEnVuelo entre instancias que montan casi al mismo tiempo. */
