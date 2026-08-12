@@ -438,6 +438,7 @@ export function generateDemoBarberia(form: DemoFormBarberia): TenantData {
       fecha: todayISO(-28),
       hora: "16:00",
       estado: "listo",
+      metodo: "efectivo",
     },
   ];
 

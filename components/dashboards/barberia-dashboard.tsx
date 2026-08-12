@@ -1,16 +1,20 @@
 "use client";
 
+import * as React from "react";
+
 import { PageHeader } from "@/components/app-shell/page-header";
 import { Button } from "@/components/ui/button";
 import { ActionCard } from "./action-card";
 import { EmptyState } from "./empty-state";
+import { CobrarCitaDialog } from "./cobrar-cita-dialog";
 import { daysSince, formatMoney, statsVisitasCliente, todayISO, waLink } from "@/lib/mock";
-import type { TenantData, SessionUpdater } from "@/lib/types";
+import type { Appointment, TenantData, SessionUpdater } from "@/lib/types";
 
 export function BarberiaDashboard({ session, update }: { session: TenantData; update: SessionUpdater }) {
   const data = session.barberia!;
   const business = session.business;
   const hoy = todayISO(0);
+  const [cobrando, setCobrando] = React.useState<Appointment | null>(null);
 
   const citasHoy = data.citas
     .filter((c) => c.fecha === hoy && c.estado === "pendiente")
@@ -29,11 +33,15 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
 
   const nada = citasHoy.length === 0 && clientesAlerta.length === 0 && cumples.length === 0 && productosBajos.length === 0;
 
-  function marcarListo(citaId: string) {
+  function marcarListoConMetodo(citaId: string, metodo: "efectivo" | "transferencia") {
     update((prev) => {
       const b = prev.barberia!;
-      return { ...prev, barberia: { ...b, citas: b.citas.map((c) => (c.id === citaId ? { ...c, estado: "listo" as const } : c)) } };
+      return {
+        ...prev,
+        barberia: { ...b, citas: b.citas.map((c) => (c.id === citaId ? { ...c, estado: "listo" as const, metodo } : c)) },
+      };
     });
+    setCobrando(null);
   }
 
   return (
@@ -96,7 +104,7 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
                       {c.servicioNombre} · {formatMoney(c.precio)}
                     </p>
                   </div>
-                  <Button size="sm" variant="ledger" onClick={() => marcarListo(c.id)}>
+                  <Button size="sm" variant="ledger" onClick={() => setCobrando(c)}>
                     ✔️ Listo
                   </Button>
                 </div>
@@ -105,6 +113,8 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
           </div>
         )}
       </div>
+
+      <CobrarCitaDialog cita={cobrando} onClose={() => setCobrando(null)} onConfirmar={marcarListoConMetodo} />
     </>
   );
 }

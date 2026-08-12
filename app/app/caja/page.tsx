@@ -39,20 +39,34 @@ export default function CajaPage() {
   if (!ready || !session) return <LoadingBlock />;
 
   const data = session.barberia!;
+  // Los cortes marcados como "listo" en Agenda/Hoy también son ingresos —
+  // viven en barberia_citas, no en barberia_caja, así que hay que sumarlos
+  // aparte a Ingresos/Ganancia neta/Efectivo/Transferencia.
+  const cortes = data.citas.filter((c) => c.estado === "listo");
+  const totalCortes = cortes.reduce((acc, c) => acc + c.precio, 0);
+
   const ventas = data.caja.filter((e) => e.tipo === "venta").reduce((acc, e) => acc + e.monto, 0);
   const propinas = data.caja.filter((e) => e.tipo === "propina").reduce((acc, e) => acc + e.monto, 0);
-  const ingresos = ventas + propinas;
+  const ingresos = ventas + propinas + totalCortes;
   const gastos = data.caja.filter((e) => e.tipo === "gasto").reduce((acc, e) => acc + e.monto, 0);
   const gananciaNeta = ingresos - gastos;
-  const efectivo = data.caja.filter((e) => e.tipo !== "gasto" && e.metodo === "efectivo").reduce((acc, e) => acc + e.monto, 0);
-  const transferencia = data.caja.filter((e) => e.tipo !== "gasto" && e.metodo === "transferencia").reduce((acc, e) => acc + e.monto, 0);
+  const efectivo =
+    data.caja.filter((e) => e.tipo !== "gasto" && e.metodo === "efectivo").reduce((acc, e) => acc + e.monto, 0) +
+    cortes.filter((c) => (c.metodo ?? "efectivo") === "efectivo").reduce((acc, c) => acc + c.precio, 0);
+  const transferencia =
+    data.caja.filter((e) => e.tipo !== "gasto" && e.metodo === "transferencia").reduce((acc, e) => acc + e.monto, 0) +
+    cortes.filter((c) => c.metodo === "transferencia").reduce((acc, c) => acc + c.precio, 0);
 
   const movimientos = [...data.caja].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const movsParaGrafica: { fecha: string; a: number; b: number }[] = [
+    ...data.caja.map((m) => (m.tipo === "gasto" ? { fecha: m.fecha, a: 0, b: m.monto } : { fecha: m.fecha, a: m.monto, b: 0 })),
+    ...cortes.map((c) => ({ fecha: `${c.fecha}T${c.hora}`, a: c.precio, b: 0 })),
+  ];
   const serie = aggregateTwoByRange(
-    data.caja,
+    movsParaGrafica,
     rango,
     (m) => m.fecha,
-    (m) => (m.tipo === "gasto" ? { a: 0, b: m.monto } : { a: m.monto, b: 0 })
+    (m) => ({ a: m.a, b: m.b })
   );
 
   function eliminar() {

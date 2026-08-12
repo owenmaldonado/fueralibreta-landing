@@ -190,6 +190,7 @@ export const citaFromRow = (r: Row): Appointment => ({
   fecha: r.fecha as string,
   hora: (r.hora as string).slice(0, 5),
   estado: r.estado as Appointment["estado"],
+  metodo: (r.metodo as Appointment["metodo"]) ?? undefined,
 });
 const citaToRow = (c: Appointment, negocioId: string): Row => ({
   id: c.id,
@@ -203,6 +204,7 @@ const citaToRow = (c: Appointment, negocioId: string): Row => ({
   fecha: c.fecha,
   hora: c.hora,
   estado: c.estado,
+  metodo: c.metodo ?? null,
 });
 
 const cajaFromRow = (r: Row): CajaEntry => ({

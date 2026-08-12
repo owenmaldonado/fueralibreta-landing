@@ -21,7 +21,6 @@ const SECTIONS = [
   { value: "horario", label: "Horario" },
   { value: "excepciones", label: "Excepciones" },
   { value: "servicios", label: "Servicios" },
-  { value: "historial", label: "Historial" },
 ];
 
 export default function ConfiguracionPage() {
@@ -127,30 +126,6 @@ export default function ConfiguracionPage() {
               </button>
             </div>
           ))}
-        </div>
-      )}
-
-      {tab === "historial" && (
-        <div className="flex flex-col gap-2 px-4 pb-6">
-          <p className="px-1 text-xs text-muted-foreground">Últimos 30 cortes realizados</p>
-          {(() => {
-            const cortes = data.citas
-              .filter((c) => c.estado === "listo")
-              .sort((a, b) => `${b.fecha}${b.hora}`.localeCompare(`${a.fecha}${a.hora}`))
-              .slice(0, 30);
-            if (cortes.length === 0) return <EmptyState texto="Todavía no hay cortes marcados como listos" />;
-            return cortes.map((c) => (
-              <div key={c.id} className="flex items-center justify-between rounded-xl border border-border bg-card p-3">
-                <div>
-                  <p className="text-sm font-medium">{c.clienteNombre}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {c.fecha} {c.hora} · {c.servicioNombre}
-                  </p>
-                </div>
-                <span className="font-mono text-sm text-ledger">{formatMoney(c.precio)}</span>
-              </div>
-            ));
-          })()}
         </div>
       )}
 
