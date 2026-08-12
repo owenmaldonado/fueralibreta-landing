@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { ActionCard } from "./action-card";
 import { EmptyState } from "./empty-state";
 import { StatTile } from "./stat-tile";
-import { formatMoney, todayISO, waLink } from "@/lib/mock";
+import { formatMoney, fechaCalendarioLocal, todayISO, waLink } from "@/lib/mock";
 import type { TenantData, SessionUpdater } from "@/lib/types";
 
 export function AbarrotesDashboard({ session }: { session: TenantData; update: SessionUpdater }) {
@@ -16,7 +16,13 @@ export function AbarrotesDashboard({ session }: { session: TenantData; update: S
   const bajos = data.productos.filter((p) => !p.isVolatile && p.stock <= p.minimo);
   const fiadosConSaldo = data.fiados.filter((f) => f.saldo > 0);
   const gastosPendientes = data.gastos.filter((g) => g.recordatorio);
-  const ventasHoy = data.ventas.filter((v) => v.fecha.slice(0, 10) === hoy).reduce((acc, v) => acc + v.total, 0);
+  // abarrotes_ventas.fecha es timestamptz en UTC — fechaCalendarioLocal lo
+  // convierte al día calendario del dispositivo (no una zona hardcodeada)
+  // antes de comparar, para que una venta ya tarde en el día no cuente
+  // como "de mañana" ni "Ventas de hoy" salga en $0.
+  const ventasHoy = data.ventas
+    .filter((v) => fechaCalendarioLocal(v.fecha) === hoy)
+    .reduce((acc, v) => acc + v.total, 0);
 
   const nada = bajos.length === 0 && fiadosConSaldo.length === 0 && gastosPendientes.length === 0;
 
