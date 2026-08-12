@@ -8,7 +8,9 @@ import { Tabs } from "@/components/ui/tabs";
 import { StatTile } from "./stat-tile";
 import { EmptyState } from "./empty-state";
 import { formatMoney, formatHora12, toISODate } from "@/lib/mock";
-import type { TenantData, SessionUpdater } from "@/lib/types";
+import { supabase } from "@/lib/supabase";
+import { fetchPedidosPendientes } from "@/lib/data";
+import type { TenantData, SessionUpdater, FondaOrder } from "@/lib/types";
 
 type FiltroDia = "hoy" | "ayer" | "semana";
 
@@ -22,6 +24,29 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
   const data = session.fonda!;
   const negocio = session.business;
   const [filtro, setFiltro] = React.useState<FiltroDia>("hoy");
+
+  // Lectura directa a Supabase para "Hoy" en vez de fiarse del session.fonda
+  // ya cargado (que solo se refresca al iniciar sesión): un pedido nuevo
+  // insertado después de esa carga no aparecía hasta recargar la página.
+  // Sin ningún filtro de fecha/hoy/fecha_entrega/created_at — solo
+  // negocio_id + estado, tal como debe ser. Solo aplica a negocios reales
+  // (ownerId presente): una demo sin reclamar (/demo/[tipo], sin sesión)
+  // nunca se persiste en Supabase, así que esta consulta siempre volvería
+  // vacía ahí — la demo sigue usando session.fonda.pedidos de localStorage.
+  const esNegocioReal = Boolean(negocio.ownerId);
+  const [pendientesVivo, setPendientesVivo] = React.useState<FondaOrder[]>([]);
+  React.useEffect(() => {
+    if (filtro !== "hoy" || !esNegocioReal) return;
+    let cancelled = false;
+    fetchPedidosPendientes(negocio.id)
+      .then((pedidos) => {
+        if (!cancelled) setPendientesVivo(pedidos);
+      })
+      .catch((err) => console.error("No se pudieron cargar los pedidos pendientes:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [negocio.id, negocio.ownerId, filtro, esNegocioReal]);
 
   const hoyEnSuZona = new Date().toLocaleDateString("en-CA", { timeZone: negocio.timezone || "America/Bahia_Banderas" });
   const ayerEnSuZona = new Date(Date.now() - 86_400_000).toLocaleDateString("en-CA", {
@@ -48,18 +73,17 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
     .reduce((acc, p) => acc + p.total, 0);
   const gastos = gastosPeriodo.reduce((acc, g) => acc + g.monto, 0);
 
-  // La lista de pedidos en "Hoy" ya no filtra por fecha, solo por estado —
-  // un pendiente se muestra siempre, sin importar qué fecha tenga guardada
-  // (un pedido tomado cerca de medianoche desde el link público no debe
-  // desaparecer del panel solo por un desfase de huso horario). "Ventas"
-  // arriba sigue sumando lo entregado de hoy aparte, sin depender de esta
-  // lista. "Ayer" y "Semana" sí siguen filtrando por fecha — ahí el punto
-  // es revisar histórico, no lo pendiente de ahora.
-  const pedidosPeriodo = (
+  // "Hoy" en un negocio real muestra pendientesVivo (lectura directa,
+  // siempre al día). En demo (sin ownerId, nunca persistida) cae a
+  // session.fonda.pedidos filtrado solo por estado, igual que antes.
+  // "Ayer" y "Semana" siguen con session.fonda.pedidos filtrado por fecha
+  // — ahí el punto es revisar histórico, no lo pendiente de ahora mismo.
+  const pedidosPeriodo =
     filtro === "hoy"
-      ? data.pedidos.filter((p) => p.estado === "pendiente")
-      : data.pedidos.filter((p) => p.fecha >= desde && p.fecha <= hasta)
-  ).sort((a, b) => a.hora.localeCompare(b.hora));
+      ? esNegocioReal
+        ? pendientesVivo
+        : data.pedidos.filter((p) => p.estado === "pendiente")
+      : data.pedidos.filter((p) => p.fecha >= desde && p.fecha <= hasta).sort((a, b) => a.hora.localeCompare(b.hora));
   const pendientesPeriodo = pedidosPeriodo.filter((p) => p.estado === "pendiente");
 
   const tituloHoy = `Hoy es ${new Date(`${hoyEnSuZona}T00:00:00`).toLocaleDateString("es-MX", {
@@ -67,7 +91,12 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
     day: "numeric",
   })}`;
 
-  function marcarEntregado(id: string) {
+  async function marcarEntregado(id: string) {
+    if (esNegocioReal) {
+      setPendientesVivo((prev) => prev.filter((p) => p.id !== id));
+      const { error } = await supabase.from("fonda_pedidos").update({ estado: "entregado" }).eq("id", id);
+      if (error) console.error("No se pudo marcar el pedido como entregado:", error);
+    }
     update((prev) => {
       const f = prev.fonda!;
       return { ...prev, fonda: { ...f, pedidos: f.pedidos.map((p) => (p.id === id ? { ...p, estado: "entregado" as const } : p)) } };
