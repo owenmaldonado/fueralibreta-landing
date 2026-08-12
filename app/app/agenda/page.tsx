@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/dashboards/empty-state";
+import { CobrarCitaDialog } from "@/components/dashboards/cobrar-cita-dialog";
 import { useSession } from "@/lib/session";
 import { formatMoney, mensajeRecordatorioCita, todayISO, waLink } from "@/lib/mock";
 import type { Appointment, AppointmentStatus, BarberiaData } from "@/lib/types";
@@ -29,6 +30,7 @@ export default function AgendaPage() {
   const [modo, setModo] = React.useState<Modo>("hoy");
   const [fecha, setFecha] = React.useState(todayISO(0));
   const [moviendo, setMoviendo] = React.useState<Appointment | null>(null);
+  const [cobrando, setCobrando] = React.useState<Appointment | null>(null);
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -40,6 +42,14 @@ export default function AgendaPage() {
       const b = prev.barberia!;
       return { ...prev, barberia: { ...b, citas: b.citas.map((c) => (c.id === id ? { ...c, estado } : c)) } };
     });
+  }
+
+  function marcarListoConMetodo(id: string, metodo: "efectivo" | "transferencia") {
+    update((prev) => {
+      const b = prev.barberia!;
+      return { ...prev, barberia: { ...b, citas: b.citas.map((c) => (c.id === id ? { ...c, estado: "listo" as const, metodo } : c)) } };
+    });
+    setCobrando(null);
   }
 
   function mover(id: string, nuevaFecha: string, nuevaHora: string) {
@@ -81,18 +91,20 @@ export default function AgendaPage() {
       )}
 
       {modo === "semanal" ? (
-        <SemanaView data={data} onMarcar={marcar} onMover={setMoviendo} negocioNombre={negocioNombre} />
+        <SemanaView data={data} onMarcar={marcar} onCobrar={setCobrando} onMover={setMoviendo} negocioNombre={negocioNombre} />
       ) : (
         <DiaView
           data={data}
           fecha={modo === "hoy" ? todayISO(0) : modo === "manana" ? todayISO(1) : fecha}
           onMarcar={marcar}
+          onCobrar={setCobrando}
           onMover={setMoviendo}
           negocioNombre={negocioNombre}
         />
       )}
 
       <MoverCitaSheet cita={moviendo} onClose={() => setMoviendo(null)} onGuardar={mover} />
+      <CobrarCitaDialog cita={cobrando} onClose={() => setCobrando(null)} onConfirmar={marcarListoConMetodo} />
     </>
   );
 }
@@ -101,12 +113,14 @@ function DiaView({
   data,
   fecha,
   onMarcar,
+  onCobrar,
   onMover,
   negocioNombre,
 }: {
   data: BarberiaData;
   fecha: string;
   onMarcar: (id: string, estado: AppointmentStatus) => void;
+  onCobrar: (c: Appointment) => void;
   onMover: (c: Appointment) => void;
   negocioNombre: string;
 }) {
@@ -117,7 +131,7 @@ function DiaView({
       {citas.length === 0 ? (
         <EmptyState texto="Sin citas para este día" />
       ) : (
-        citas.map((c) => <CitaRow key={c.id} cita={c} onMarcar={onMarcar} onMover={onMover} negocioNombre={negocioNombre} />)
+        citas.map((c) => <CitaRow key={c.id} cita={c} onMarcar={onMarcar} onCobrar={onCobrar} onMover={onMover} negocioNombre={negocioNombre} />)
       )}
     </div>
   );
@@ -126,11 +140,13 @@ function DiaView({
 function SemanaView({
   data,
   onMarcar,
+  onCobrar,
   onMover,
   negocioNombre,
 }: {
   data: BarberiaData;
   onMarcar: (id: string, estado: AppointmentStatus) => void;
+  onCobrar: (c: Appointment) => void;
   onMover: (c: Appointment) => void;
   negocioNombre: string;
 }) {
@@ -164,7 +180,7 @@ function SemanaView({
               </p>
               <div className="flex flex-col gap-2">
                 {d.citas.map((c) => (
-                  <CitaRow key={c.id} cita={c} onMarcar={onMarcar} onMover={onMover} negocioNombre={negocioNombre} />
+                  <CitaRow key={c.id} cita={c} onMarcar={onMarcar} onCobrar={onCobrar} onMover={onMover} negocioNombre={negocioNombre} />
                 ))}
               </div>
             </div>
@@ -177,11 +193,13 @@ function SemanaView({
 function CitaRow({
   cita: c,
   onMarcar,
+  onCobrar,
   onMover,
   negocioNombre,
 }: {
   cita: Appointment;
   onMarcar: (id: string, estado: AppointmentStatus) => void;
+  onCobrar: (c: Appointment) => void;
   onMover: (c: Appointment) => void;
   negocioNombre: string;
 }) {
@@ -195,7 +213,7 @@ function CitaRow({
         </p>
       </div>
       {c.estado === "pendiente" ? (
-        <Button size="sm" variant="ledger" onClick={() => onMarcar(c.id, "listo")}>
+        <Button size="sm" variant="ledger" onClick={() => onCobrar(c)}>
           ✔️ Listo
         </Button>
       ) : (

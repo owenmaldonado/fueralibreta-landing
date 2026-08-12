@@ -72,6 +72,8 @@ export interface Appointment {
   fecha: string; // ISO date (day)
   hora: string; // "15:00"
   estado: AppointmentStatus;
+  /** Cómo se cobró el corte. Se pide al marcar la cita como "listo"; ausente en citas viejas o que nunca se cobraron. */
+  metodo?: "efectivo" | "transferencia";
 }
 
 export interface CajaEntry {

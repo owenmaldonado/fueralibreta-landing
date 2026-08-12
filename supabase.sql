@@ -147,6 +147,19 @@ create table if not exists barberia_citas (
   created_at timestamptz not null default now()
 );
 
+-- Cómo se cobró el corte (se pide al marcar la cita como "listo") — para que
+-- Caja pueda sumarlo a Efectivo/Transferencia igual que un movimiento manual.
+-- Nullable: citas viejas o que nunca se marcaron como listas no tienen método.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'barberia_citas' and column_name = 'metodo'
+  ) then
+    alter table barberia_citas add column metodo text check (metodo in ('efectivo', 'transferencia'));
+  end if;
+end $$;
+
 create index if not exists barberia_citas_negocio_fecha_idx on barberia_citas(negocio_id, fecha);
 
 create table if not exists barberia_caja (
