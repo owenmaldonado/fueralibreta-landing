@@ -34,6 +34,48 @@ function limpiarCacheTenant() {
 }
 
 /**
+ * /demo/[tipo] -> "Generar mi demo" navega a /app/inicio?preview=true. Sin
+ * esto, un usuario YA logueado (o un admin) que genera un demo cae en
+ * resolveForUser(userId) con userId real: eso ignora por completo el
+ * fl_demo_preview que se acaba de escribir en localStorage y va derecho a
+ * fetchNegocioByOwner(userId) — como esa cuenta real normalmente no tiene
+ * un negocio del tipo recién armado, el resultado es session=null, y
+ * AuthenticatedShell interpreta "logueado pero sin negocio" como "manda a
+ * /onboarding", que a su vez ve el fl_demo_preview ahí sentado y muestra
+ * directo la pantalla de "actívalo, 7 días gratis" — el demo nunca se
+ * llega a ver. (Sin sesión real, esto nunca pasa: resolveForUser(null) ya
+ * leía el preview directo, por eso en incógnito sí funcionaba.)
+ *
+ * El flag vive en sessionStorage (no la URL) para sobrevivir a la
+ * navegación entre pantallas de /app/* una vez adentro — cada una monta su
+ * propia instancia de useSession() y perdería el ?preview=true de la URL
+ * en cuanto el usuario le diera clic a otro tab del BottomNav.
+ */
+const PREVIEW_FLAG = "fl_demo_preview_active";
+
+function estaEnModoPreview(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (new URLSearchParams(window.location.search).get("preview") === "true") {
+      window.sessionStorage.setItem(PREVIEW_FLAG, "1");
+      return true;
+    }
+    return window.sessionStorage.getItem(PREVIEW_FLAG) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function limpiarModoPreview() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(PREVIEW_FLAG);
+  } catch {
+    // sessionStorage no disponible (modo privado estricto, etc.): no hay nada que limpiar
+  }
+}
+
+/**
  * update() (usado por el FAB/QuickAdd) actualiza de forma optimista la
  * sesión de la instancia de useSession() que lo llamó — normalmente la del
  * shell, porque el FAB recibe `session`/`update` de ahí, no de la página
@@ -233,6 +275,25 @@ export function useSession() {
         if (!cancelled) setReady(true);
         return;
       }
+
+      // Bypass de preview: ver comentario de estaEnModoPreview() arriba.
+      // Nunca toca cachedTenant/fetchesEnVuelo (esos son el negocio REAL de
+      // este userId) ni dispara fetchNegocioByOwner — así el negocio real
+      // de esta cuenta (si tiene uno) queda intacto para cuando salga del
+      // preview con un login/reload limpio.
+      if (estaEnModoPreview()) {
+        const demo = readDemoPreview();
+        if (demo) {
+          sourceRef.current = "demo";
+          setSessionState(demo);
+          if (!cancelled) setReady(true);
+          return;
+        }
+        // ?preview=true sin datos de demo que mostrar (se limpiaron o
+        // nunca existieron): no tiene caso seguir en "modo preview" fantasma.
+        limpiarModoPreview();
+      }
+
       console.log("[session] resolveForUser arrancó para", userId);
       try {
         let tenant: TenantData | null;
@@ -405,6 +466,7 @@ export function useSession() {
     };
     await persistTenant(activated, ownerId);
     clearDemoPreview();
+    limpiarModoPreview();
     sourceRef.current = "supabase";
     setSessionState(activated);
     // La siguiente pantalla que monte useSession() para este mismo usuario
@@ -418,6 +480,7 @@ export function useSession() {
 
   const clear = useCallback(async () => {
     clearDemoPreview();
+    limpiarModoPreview();
     sourceRef.current = null;
     setSessionState(null);
     limpiarCacheTenant();
