@@ -106,6 +106,8 @@ export default function GastosPage() {
 
   const hoy = todayISO(0);
   const ventasHoy = ventas.filter((v) => v.fecha === hoy).reduce((acc, v) => acc + v.monto, 0);
+  const gastosHoy = gastos.filter((g) => g.fecha === hoy).reduce((acc, g) => acc + g.monto, 0);
+  const gananciaNetaHoy = ventasHoy - gastosHoy;
 
   const gastosFiltrados = filterByRango(gastos, rango, (g) => g.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const ventasFiltradas = filterByRango(ventas, rango, (v) => v.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -177,6 +179,30 @@ export default function GastosPage() {
       <div className="px-4">
         <Tabs value={chartTab} onValueChange={(v) => setChartTab(v as ChartTab)} tabs={CHART_TABS} />
       </div>
+
+      {modulo === "abarrotes" && (
+        <div className="mx-4 mt-3 rounded-xl border border-border bg-card px-3 py-4">
+          <p className="text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Hoy</p>
+          <div className="mt-2 flex items-center justify-center gap-3 text-center">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ventas hoy</p>
+              <p className="font-display text-lg font-bold text-ledger">{formatMoney(ventasHoy)}</p>
+            </div>
+            <span className="text-muted-foreground">−</span>
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Gastos hoy</p>
+              <p className="font-display text-lg font-bold text-destructive">{formatMoney(gastosHoy)}</p>
+            </div>
+            <span className="text-muted-foreground">=</span>
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ganancia neta hoy</p>
+              <p className={cn("font-display text-lg font-bold", gananciaNetaHoy >= 0 ? "text-ledger" : "text-destructive")}>
+                {formatMoney(gananciaNetaHoy)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modulo === "abarrotes" ? (
         chartTab === "ambos" ? (
