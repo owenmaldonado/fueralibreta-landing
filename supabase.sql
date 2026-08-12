@@ -726,6 +726,50 @@ as $$
   );
 $$;
 
+-- Borrado de usuario desde /admin (DELETE /api/admin/users/[id]): antes esa
+-- ruta solo borraba auth.users y confiaba en que el ON DELETE CASCADE de
+-- cada tabla con negocio_id limpiara todo solo. En la práctica, si UNA sola
+-- tabla le faltaba el CASCADE, o de plano no existe en este proyecto de
+-- Supabase (puede haber diferencias entre el esquema real y este script si
+-- alguien corrió una versión vieja, o si el negocio es de otra app del hub),
+-- auth.admin.deleteUser() tronaba entero con un 500 genérico — bloqueando el
+-- borrado de cualquier usuario con 2+ negocios si uno solo tenía el problema.
+--
+-- Esta función busca EN VIVO (information_schema, no una lista fija en el
+-- código) todas las tablas de public con columna negocio_id y borra ahí sus
+-- filas para los negocios dados, cada tabla en su propio bloque
+-- exception — si una tabla no existe o no tiene esa columna, se ignora y
+-- sigue con las demás en vez de tronar todo. Al final borra las filas de
+-- negocios. Se llama desde el Route Handler con la service_role key (que ya
+-- salta RLS), así que no necesita ninguna policy nueva.
+create or replace function admin_delete_negocios_data(p_negocio_ids uuid[])
+returns void
+language plpgsql
+security definer
+as $$
+declare
+  tbl record;
+begin
+  for tbl in
+    select c.table_name
+    from information_schema.columns c
+    where c.table_schema = 'public'
+      and c.column_name = 'negocio_id'
+      and c.table_name <> 'negocios'
+  loop
+    begin
+      execute format('delete from public.%I where negocio_id = any($1)', tbl.table_name) using p_negocio_ids;
+    exception when others then
+      raise notice 'admin_delete_negocios_data: no se pudo limpiar % (%): %', tbl.table_name, sqlstate, sqlerrm;
+    end;
+  end loop;
+
+  delete from negocios where id = any(p_negocio_ids);
+end;
+$$;
+
+grant execute on function admin_delete_negocios_data(uuid[]) to service_role;
+
 alter table profiles enable row level security;
 
 drop policy if exists "profiles_self_select" on profiles;
