@@ -33,6 +33,27 @@ function limpiarCacheTenant() {
   fetchesEnVuelo.clear();
 }
 
+/**
+ * update() (usado por el FAB/QuickAdd) actualiza de forma optimista la
+ * sesión de la instancia de useSession() que lo llamó — normalmente la del
+ * shell, porque el FAB recibe `session`/`update` de ahí, no de la página
+ * que se esté viendo. Sin esto, agregar una cita o cobrar un servicio
+ * desde el FAB se veía al instante en el shell (el banner de demo, etc.)
+ * pero la página de Agenda o Caja — otra instancia de useSession(), con su
+ * propio estado de React — se quedaba con los datos de como estaban al
+ * montar, hasta navegar a otra pantalla y volver (eso sí dispara un
+ * useEffect nuevo, que ahora sí lee el cache ya actualizado). Este evento
+ * avisa a TODAS las instancias en la pestaña para que sincronicen su
+ * estado local al cache compartido apenas cambia, sin esperar a un
+ * remount ni depender de que el realtime de Supabase alcance a llegar.
+ */
+const TENANT_CACHE_EVENT = "fl_tenant_cache_change";
+
+function actualizarCacheTenant(userId: string, tenant: TenantData) {
+  cachedTenant = { userId, tenant };
+  window.dispatchEvent(new CustomEvent(TENANT_CACHE_EVENT, { detail: { userId } }));
+}
+
 type EventoCita = { tipo: "insert" | "update"; cita: Appointment };
 
 /**
@@ -291,6 +312,16 @@ export function useSession() {
     window.addEventListener(DEMO_PREVIEW_EVENT, onDemoChange);
     window.addEventListener("storage", onDemoChange);
 
+    // Equivalente a onDemoChange pero para negocios reales: otra instancia
+    // de useSession() (típicamente el shell, dueño del FAB) acaba de
+    // guardar un cambio optimista — se refleja aquí al instante, sin
+    // esperar a que esta pantalla se desmonte y vuelva a montar. Ver
+    // TENANT_CACHE_EVENT arriba.
+    const onTenantCacheChange = () => {
+      if (sourceRef.current === "supabase" && cachedTenant) setSessionState(cachedTenant.tenant);
+    };
+    window.addEventListener(TENANT_CACHE_EVENT, onTenantCacheChange);
+
     if (!isSupabaseConfigured) {
       loadFromDemoPreview();
       setReady(true);
@@ -298,6 +329,7 @@ export function useSession() {
         cancelled = true;
         window.removeEventListener(DEMO_PREVIEW_EVENT, onDemoChange);
         window.removeEventListener("storage", onDemoChange);
+        window.removeEventListener(TENANT_CACHE_EVENT, onTenantCacheChange);
       };
     }
 
@@ -338,6 +370,7 @@ export function useSession() {
       clearTimeout(fallbackTimer);
       window.removeEventListener(DEMO_PREVIEW_EVENT, onDemoChange);
       window.removeEventListener("storage", onDemoChange);
+      window.removeEventListener(TENANT_CACHE_EVENT, onTenantCacheChange);
       authSub.unsubscribe();
       detenerCitasEnVivo();
     };
@@ -352,8 +385,11 @@ export function useSession() {
     if (sourceRef.current === "demo") {
       writeDemoPreview(next);
     } else if (sourceRef.current === "supabase") {
-      if (next.business.ownerId && cachedTenant?.userId === next.business.ownerId) {
-        cachedTenant = { userId: next.business.ownerId, tenant: next };
+      // Avisa a todas las demás instancias de useSession() en la pestaña
+      // (otra página ya montada, el shell) para que se pongan al día sin
+      // esperar un remount ni depender del realtime — ver TENANT_CACHE_EVENT.
+      if (next.business.ownerId) {
+        actualizarCacheTenant(next.business.ownerId, next);
       }
       syncTenantDiff(prev, next).catch((err) => {
         console.error("No se pudo guardar el cambio en Supabase:", err);
@@ -376,7 +412,7 @@ export function useSession() {
     // resultado en vez de volver a pegarle a Supabase — evita depender de
     // que el negocio recién insertado ya esté 100% consistente para lectura
     // en ese mismo instante.
-    cachedTenant = { userId: ownerId, tenant: activated };
+    actualizarCacheTenant(ownerId, activated);
     return activated;
   }, []);
 
