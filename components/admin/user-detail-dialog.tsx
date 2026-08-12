@@ -7,6 +7,7 @@ import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { fetchUserDetail, type AdminProfile, type UserDetailNegocio } from "@/lib/admin-data";
+import { formatMoney } from "@/lib/mock";
 
 export function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose: () => void }) {
   const [loading, setLoading] = React.useState(false);
@@ -51,6 +52,10 @@ export function UserDetailDialog({ userId, onClose }: { userId: string | null; o
             <Avatar src={profile.avatarUrl} label={profile.email ?? "?"} className="h-12 w-12 text-base" />
             <div>
               <p className="font-medium">{profile.email ?? "Sin email"}</p>
+              <p className="text-xs text-muted-foreground">
+                Registrado el{" "}
+                {new Date(profile.createdAt).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}
+              </p>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 <Badge variant={profile.role === "admin" ? "default" : "outline"}>{profile.role}</Badge>
                 <Badge variant={profile.plan === "pro" ? "ledger" : "outline"}>{profile.plan}</Badge>
@@ -60,6 +65,19 @@ export function UserDetailDialog({ userId, onClose }: { userId: string | null; o
                   </Badge>
                 )}
               </div>
+            </div>
+          </div>
+
+          <div className="flex gap-4 rounded-xl border border-border bg-surface p-3">
+            <div>
+              <p className="font-display text-lg font-bold">{negocios.length}</p>
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Negocios</p>
+            </div>
+            <div>
+              <p className="font-display text-lg font-bold text-ledger">
+                {formatMoney(negocios.reduce((sum, n) => sum + n.ingresosTotales, 0))}
+              </p>
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Ingresos totales</p>
             </div>
           </div>
 
@@ -85,6 +103,10 @@ export function UserDetailDialog({ userId, onClose }: { userId: string | null; o
                           <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{s.label}</p>
                         </div>
                       ))}
+                      <div>
+                        <p className="font-display text-lg font-bold text-ledger">{formatMoney(n.ingresosTotales)}</p>
+                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Ingresos</p>
+                      </div>
                     </div>
                   </div>
                 ))}

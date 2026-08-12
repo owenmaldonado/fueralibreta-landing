@@ -55,7 +55,24 @@ export async function middleware(req: NextRequest) {
         },
       },
     });
-    await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    // Bloquea el acceso a /app y /admin de raíz para cualquier cuenta
+    // baneada (profiles.is_banned) — antes esto solo se checaba client-side
+    // dentro de AuthenticatedShell, así que una cuenta baneada podía seguir
+    // pegándole a /admin (si de casualidad seguía siendo admin) o ver un
+    // parpadeo de contenido real antes de que el chequeo del cliente
+    // reaccionara. profiles_self_select ya deja a cualquier usuario leer su
+    // propia fila, así que no hace falta service_role aquí.
+    const enRutaProtegida = url.pathname === "/app" || url.pathname.startsWith("/app/") || url.pathname === "/admin";
+    if (user && enRutaProtegida && url.pathname !== "/cuenta-suspendida") {
+      const { data: profile } = await supabase.from("profiles").select("is_banned").eq("id", user.id).maybeSingle();
+      if (profile?.is_banned) {
+        return NextResponse.redirect(new URL("/cuenta-suspendida", url.origin));
+      }
+    }
   }
 
   const host = req.headers.get("host") ?? "";

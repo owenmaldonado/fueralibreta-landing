@@ -3,7 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Loader2, Lock } from "lucide-react";
+import { Loader2, Lock, UserCog } from "lucide-react";
+import { toast } from "sonner";
 
 import { useSession } from "@/lib/session";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
@@ -13,7 +14,7 @@ import { Fab } from "./fab";
 import { Button } from "@/components/ui/button";
 import { waLink, NUMERO_CONTACTO } from "@/lib/mock";
 import { writePlanElegido } from "@/lib/demoPreview";
-import { ADMIN_EMAIL } from "@/lib/admin-data";
+import { ADMIN_EMAIL, exitImpersonation } from "@/lib/admin-data";
 import { BarberiaQuickAdd, BARBERIA_ACTIONS } from "@/components/quick-add/barberia-quick-add";
 import { FondaQuickAdd, FONDA_ACTIONS } from "@/components/quick-add/fonda-quick-add";
 import { AbarrotesQuickAdd, ABARROTES_ACTIONS } from "@/components/quick-add/abarrotes-quick-add";
@@ -62,8 +63,32 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   const [quickAdd, setQuickAdd] = React.useState<string | null>(null);
   const [banned, setBanned] = React.useState(false);
   const [isAdmin, setIsAdmin] = React.useState(false);
+  const [impersonating, setImpersonating] = React.useState<{ adminEmail: string; targetEmail: string } | null>(null);
+  const [exiting, setExiting] = React.useState(false);
 
   const esRutaSuperAdmin = !esRutaDeNegocio(pathname ?? "");
+
+  // Le pregunta al servidor si la cookie admin_impersonating (httpOnly) está
+  // activa — el cliente no puede leerla directo. Solo importa mientras hay
+  // sesión de negocio cargada, así que va después del gate de ready/session.
+  React.useEffect(() => {
+    if (!session) return;
+    fetch("/api/admin/impersonate/status")
+      .then((res) => res.json())
+      .then((data) => setImpersonating(data.impersonating ? { adminEmail: data.adminEmail, targetEmail: data.targetEmail } : null))
+      .catch(() => setImpersonating(null));
+  }, [session]);
+
+  async function handleExitImpersonation() {
+    setExiting(true);
+    try {
+      await exitImpersonation();
+      window.location.href = "/admin";
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo salir de la vista de usuario.");
+      setExiting(false);
+    }
+  }
 
   React.useEffect(() => {
     if (esRutaSuperAdmin) return;
@@ -159,6 +184,18 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-screen bg-background pb-24">
       <TopBar data={session} isAdmin={isAdmin} />
+
+      {impersonating && (
+        <div className="sticky top-14 z-20 flex items-center justify-between gap-3 border-b border-purple-500/40 bg-purple-950/90 px-4 py-2.5 text-white">
+          <p className="flex items-center gap-1.5 text-xs leading-tight">
+            <UserCog className="h-4 w-4 shrink-0" />
+            Viendo como <span className="font-medium">{impersonating.targetEmail}</span>
+          </p>
+          <Button size="sm" variant="outline" className="shrink-0 border-white/40 text-white hover:bg-white/10" onClick={handleExitImpersonation} disabled={exiting}>
+            {exiting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salir de vista de usuario"}
+          </Button>
+        </div>
+      )}
 
       {business.demo && (
         <div className="sticky top-14 z-20 flex items-center justify-between gap-3 border-b border-primary/30 bg-primary/10 px-4 py-2.5">
