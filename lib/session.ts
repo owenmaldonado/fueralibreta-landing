@@ -12,6 +12,29 @@ import type { TenantData } from "./types";
 type Source = "supabase" | "demo" | null;
 
 /**
+ * useSession() se llama desde MUCHOS componentes a la vez (el shell, cada
+ * página, cada widget del FAB) y cada llamada es un hook independiente —
+ * sin este cache, cada uno dispara su PROPIO fetchNegocioByOwner +
+ * fetchTenantData (7+ queries para barbería) al montar, todos casi
+ * simultáneos. Si Supabase responde lento o falla justo una de esas
+ * ráfagas (típico recién creada la cuenta, con la sesión de Google todavía
+ * asentándose), esa instancia en particular se queda con session=null para
+ * siempre — el shell (que montó primero y sí le pegó) se ve bien, pero esa
+ * pantalla en particular nunca carga nada, aunque ready ya esté en true.
+ * Este cache module-level (compartido por TODAS las instancias del hook en
+ * la pestaña del navegador) hace que solo la PRIMERA instancia dispare el
+ * fetch real; el resto lo reusa al instante o espera el mismo fetch en
+ * vuelo en vez de duplicarlo.
+ */
+let cachedTenant: { userId: string; tenant: TenantData } | null = null;
+const fetchesEnVuelo = new Map<string, Promise<TenantData | null>>();
+
+function limpiarCacheTenant() {
+  cachedTenant = null;
+  fetchesEnVuelo.clear();
+}
+
+/**
  * Sesión del negocio activo. Dos fuentes posibles:
  *
  * - "supabase": el usuario está logueado y ya tiene un negocio real en la
@@ -86,6 +109,13 @@ export function useSession() {
         .subscribe();
     }
 
+    /** El fetch real (negocio + todo su contenido) — se comparte vía fetchesEnVuelo entre instancias que montan casi al mismo tiempo. */
+    async function fetchTenantFresco(userId: string): Promise<TenantData | null> {
+      const business = await fetchNegocioByOwner(userId);
+      if (!business) return null;
+      return fetchTenantData(business);
+    }
+
     async function resolveForUser(userId: string | null) {
       if (!userId) {
         loadFromDemoPreview();
@@ -93,14 +123,27 @@ export function useSession() {
         return;
       }
       try {
-        const business = await fetchNegocioByOwner(userId);
+        let tenant: TenantData | null;
+        if (cachedTenant?.userId === userId) {
+          // Otra instancia de useSession() (el shell, otra pestaña de esta
+          // misma pantalla) ya resolvió a este mismo usuario — se reusa al
+          // instante en vez de disparar 7+ queries de nuevo.
+          tenant = cachedTenant.tenant;
+        } else {
+          let fetch = fetchesEnVuelo.get(userId);
+          if (!fetch) {
+            fetch = fetchTenantFresco(userId);
+            fetchesEnVuelo.set(userId, fetch);
+            fetch.finally(() => fetchesEnVuelo.delete(userId));
+          }
+          tenant = await fetch;
+        }
         if (cancelled) return;
-        if (business) {
-          const tenant = await fetchTenantData(business);
-          if (cancelled) return;
+        if (tenant) {
           sourceRef.current = "supabase";
           setSessionState(tenant);
-          if (tenant.business.tipo === "barberia") escucharCitasEnVivo(business.id);
+          cachedTenant = { userId, tenant };
+          if (tenant.business.tipo === "barberia") escucharCitasEnVivo(tenant.business.id);
         } else {
           // Logueado pero sin negocio todavía: se deja session en null y es
           // /onboarding quien lo crea de forma EXPLÍCITA (un solo botón, un
@@ -162,6 +205,7 @@ export function useSession() {
         setSessionState(null);
         setReady(true);
         detenerCitasEnVivo();
+        limpiarCacheTenant();
         return;
       }
       if (event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
@@ -196,6 +240,9 @@ export function useSession() {
     if (sourceRef.current === "demo") {
       writeDemoPreview(next);
     } else if (sourceRef.current === "supabase") {
+      if (next.business.ownerId && cachedTenant?.userId === next.business.ownerId) {
+        cachedTenant = { userId: next.business.ownerId, tenant: next };
+      }
       syncTenantDiff(prev, next).catch((err) => {
         console.error("No se pudo guardar el cambio en Supabase:", err);
       });
@@ -212,6 +259,12 @@ export function useSession() {
     clearDemoPreview();
     sourceRef.current = "supabase";
     setSessionState(activated);
+    // La siguiente pantalla que monte useSession() para este mismo usuario
+    // (p. ej. al navegar a /app/inicio justo después de esto) reusa este
+    // resultado en vez de volver a pegarle a Supabase — evita depender de
+    // que el negocio recién insertado ya esté 100% consistente para lectura
+    // en ese mismo instante.
+    cachedTenant = { userId: ownerId, tenant: activated };
     return activated;
   }, []);
 
@@ -219,6 +272,7 @@ export function useSession() {
     clearDemoPreview();
     sourceRef.current = null;
     setSessionState(null);
+    limpiarCacheTenant();
     if (isSupabaseConfigured) {
       await supabase.auth.signOut();
     }
