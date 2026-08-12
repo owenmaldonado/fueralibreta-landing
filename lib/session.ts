@@ -111,9 +111,44 @@ export function useSession() {
 
     /** El fetch real (negocio + todo su contenido) — se comparte vía fetchesEnVuelo entre instancias que montan casi al mismo tiempo. */
     async function fetchTenantFresco(userId: string): Promise<TenantData | null> {
+      console.log("[session] paso 1: buscando negocio para userId", userId);
       const business = await fetchNegocioByOwner(userId);
-      if (!business) return null;
-      return fetchTenantData(business);
+      if (!business) {
+        console.log("[session] paso 2: no se encontró negocio para userId", userId);
+        return null;
+      }
+      console.log("[session] paso 2: negocio encontrado", { negocioId: business.id, tipo: business.tipo, ownerId: business.ownerId });
+      const tenant = await fetchTenantData(business);
+      console.log("[session] paso 3: datos del negocio cargados", {
+        negocioId: business.id,
+        tipo: business.tipo,
+        servicios: tenant.barberia?.servicios.length,
+        productos: tenant.barberia?.productos.length ?? tenant.abarrotes?.productos.length,
+        platillos: tenant.fonda?.platillos.length,
+      });
+      return tenant;
+    }
+
+    // TEMPORAL — quitar estos console.log en cuanto se diagnostique el bug
+    // del círculo infinito en cuentas nuevas de barbería. Sin timeout, un
+    // fetch que se cuelga (no truena, solo nunca resuelve) deja ready=false
+    // para siempre y el spinner de "cargando" nunca se distingue de un
+    // cuelgue real — con el timeout, a los 15s se trata como error (mismo
+    // camino que un throw normal) en vez de spinner infinito silencioso.
+    function conTimeout<T>(promise: Promise<T>, ms: number, etiqueta: string): Promise<T> {
+      return new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`[session] timeout de ${ms}ms esperando: ${etiqueta}`)), ms);
+        promise.then(
+          (v) => {
+            clearTimeout(timer);
+            resolve(v);
+          },
+          (err) => {
+            clearTimeout(timer);
+            reject(err);
+          }
+        );
+      });
     }
 
     async function resolveForUser(userId: string | null) {
@@ -122,12 +157,14 @@ export function useSession() {
         if (!cancelled) setReady(true);
         return;
       }
+      console.log("[session] resolveForUser arrancó para", userId);
       try {
         let tenant: TenantData | null;
         if (cachedTenant?.userId === userId) {
           // Otra instancia de useSession() (el shell, otra pestaña de esta
           // misma pantalla) ya resolvió a este mismo usuario — se reusa al
           // instante en vez de disparar 7+ queries de nuevo.
+          console.log("[session] reusando cache para", userId);
           tenant = cachedTenant.tenant;
         } else {
           let fetch = fetchesEnVuelo.get(userId);
@@ -135,11 +172,14 @@ export function useSession() {
             fetch = fetchTenantFresco(userId);
             fetchesEnVuelo.set(userId, fetch);
             fetch.finally(() => fetchesEnVuelo.delete(userId));
+          } else {
+            console.log("[session] esperando fetch ya en vuelo para", userId);
           }
-          tenant = await fetch;
+          tenant = await conTimeout(fetch, 15000, `fetchTenantFresco(${userId})`);
         }
         if (cancelled) return;
         if (tenant) {
+          console.log("[session] paso 4: sesión lista, negocio_id =", tenant.business.id);
           sourceRef.current = "supabase";
           setSessionState(tenant);
           cachedTenant = { userId, tenant };
@@ -160,7 +200,7 @@ export function useSession() {
           setSessionState(null);
         }
       } catch (err) {
-        console.error("No se pudo cargar el negocio desde Supabase:", err);
+        console.error("[session] ERROR — no se pudo cargar el negocio desde Supabase:", err);
         loadFromDemoPreview();
       } finally {
         if (!cancelled) setReady(true);

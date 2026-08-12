@@ -247,8 +247,23 @@ async function fetchBarberiaData(negocioId: string): Promise<BarberiaData> {
     supabase.from("barberia_caja").select("*").eq("negocio_id", negocioId).order("fecha", { ascending: false }),
     supabase.from("barberia_productos").select("*").eq("negocio_id", negocioId),
   ]);
-  for (const r of [servicios, horario, excepciones, clientes, citas, caja, productos]) {
-    if (r.error) throw r.error;
+  // TEMPORAL: logueado por tabla (no solo el primer error genérico) para
+  // diagnosticar el círculo infinito en cuentas nuevas de barbería.
+  const tablas = [
+    ["barberia_servicios", servicios],
+    ["barberia_horario", horario],
+    ["barberia_excepciones", excepciones],
+    ["barberia_clientes", clientes],
+    ["barberia_citas", citas],
+    ["barberia_caja", caja],
+    ["barberia_productos", productos],
+  ] as const;
+  for (const [tabla, r] of tablas) {
+    if (r.error) {
+      console.error(`[session] fetchBarberiaData: "${tabla}" falló`, r.error);
+      throw r.error;
+    }
+    console.log(`[session] fetchBarberiaData: "${tabla}" ok, ${r.data?.length ?? 0} filas`);
   }
   return {
     servicios: (servicios.data ?? []).map(servicioFromRow),
