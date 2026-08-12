@@ -49,7 +49,12 @@ export async function POST(req: Request) {
     .eq("is_active", true)
     .maybeSingle();
 
-  if (negocioError || !negocio || negocio.tipo !== "barberia") {
+  if (negocioError) {
+    console.error("[citas] no se pudo resolver el negocio por slug:", input.slug, negocioError);
+    return NextResponse.json({ error: "Negocio no encontrado o inactivo." }, { status: 404 });
+  }
+  if (!negocio || negocio.tipo !== "barberia") {
+    console.error("[citas] slug no corresponde a una barbería activa:", input.slug, { negocio });
     return NextResponse.json({ error: "Negocio no encontrado o inactivo." }, { status: 404 });
   }
 
@@ -61,6 +66,7 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (servicioError || !servicio) {
+    console.error("[citas] servicio no encontrado:", { negocioId: negocio.id, servicioId: input.servicioId, servicioError });
     return NextResponse.json({ error: "Servicio no encontrado." }, { status: 404 });
   }
 
@@ -70,6 +76,15 @@ export async function POST(req: Request) {
     p_telefono: input.telefono,
   });
   if (clienteError) {
+    console.error("[citas] find_or_create_barberia_cliente falló:", {
+      negocioId: negocio.id,
+      nombre: input.nombre,
+      telefono: input.telefono,
+      message: clienteError.message,
+      code: clienteError.code,
+      details: clienteError.details,
+      hint: clienteError.hint,
+    });
     return NextResponse.json({ error: "No se pudo agendar tu cita." }, { status: 500 });
   }
 
@@ -87,6 +102,15 @@ export async function POST(req: Request) {
   });
 
   if (insertError) {
+    console.error("[citas] insert en barberia_citas falló:", {
+      negocioId: negocio.id,
+      fecha: input.fecha,
+      hora: input.hora,
+      message: insertError.message,
+      code: insertError.code,
+      details: insertError.details,
+      hint: insertError.hint,
+    });
     return NextResponse.json({ error: "No se pudo agendar tu cita." }, { status: 500 });
   }
 
