@@ -61,8 +61,16 @@ const citasListeners = new Set<(evento: EventoCita) => void>();
 function suscribirseACitasEnVivo(negocioId: string, onEvento: (evento: EventoCita) => void): () => void {
   if (citasChannelNegocioId !== negocioId) {
     if (citasChannel) supabase.removeChannel(citasChannel);
-    citasChannelNegocioId = negocioId;
-    citasChannel = supabase
+    // citasChannelNegocioId solo se marca DESPUÉS de armar el canal con
+    // éxito — si .channel(...).on(...).on(...).subscribe() truena a la
+    // mitad, un intento anterior fallido no debe dejar el módulo
+    // pensando que ya hay un canal listo para este negocio (eso
+    // envenenaría TODOS los intentos futuros: citasChannelNegocioId ya
+    // "coincidiría" así que este if nunca se volvería a ejecutar, sin
+    // canal real detrás).
+    citasChannel = null;
+    citasChannelNegocioId = null;
+    const nuevoCanal = supabase
       .channel(`citas-${negocioId}`)
       .on(
         "postgres_changes",
@@ -81,6 +89,8 @@ function suscribirseACitasEnVivo(negocioId: string, onEvento: (evento: EventoCit
         }
       )
       .subscribe();
+    citasChannel = nuevoCanal;
+    citasChannelNegocioId = negocioId;
   }
   citasListeners.add(onEvento);
   return () => {
@@ -225,10 +235,27 @@ export function useSession() {
         if (cancelled) return;
         if (tenant) {
           console.log("[session] paso 4: sesión lista, negocio_id =", tenant.business.id);
+          // A partir de aquí la sesión YA está resuelta con datos reales —
+          // nada de lo que pase después (en particular, armar la
+          // suscripción de realtime) debe poder tirar session de vuelta a
+          // null. Antes escucharCitasEnVivo() vivía DENTRO de este mismo
+          // try/catch: si tronaba (el bug de "cannot add postgres_changes
+          // callbacks... after subscribe()", o cualquier otro problema de
+          // realtime), el catch de abajo lo trataba igual que un fallo real
+          // de carga de datos y mandaba todo a loadFromDemoPreview() — la
+          // sesión que YA se había cargado bien se pisaba con null. Un
+          // fallo de "citas en vivo" (una mejora, no algo indispensable
+          // para ver el panel) nunca debe poder tumbar la sesión completa.
           sourceRef.current = "supabase";
           setSessionState(tenant);
           cachedTenant = { userId, tenant };
-          if (tenant.business.tipo === "barberia") escucharCitasEnVivo(tenant.business.id);
+          if (tenant.business.tipo === "barberia") {
+            try {
+              escucharCitasEnVivo(tenant.business.id);
+            } catch (err) {
+              console.error("[session] no se pudo suscribir a citas en vivo (la sesión sigue cargada bien):", err);
+            }
+          }
         } else {
           // Logueado pero sin negocio todavía: se deja session en null y es
           // /onboarding quien lo crea de forma EXPLÍCITA (un solo botón, un
