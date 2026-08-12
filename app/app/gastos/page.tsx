@@ -18,7 +18,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useSession } from "@/lib/session";
-import { formatMoney, todayISO, uid } from "@/lib/mock";
+import { formatMoney, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
 import { aggregateByRange, aggregateTwoByRange, filterByRango, type RangoTiempo } from "@/lib/chart-buckets";
 import { cn } from "@/lib/utils";
 import type { Expense, TenantData, FondaOrder } from "@/lib/types";
@@ -72,13 +72,20 @@ export default function GastosPage() {
   // servicio: el precio completo del platillo cuenta, no hay costo de
   // insumo por separado que restar (a diferencia de Abarrotes, que sí tiene
   // costo/precio por producto en Inventario).
+  //
+  // abarrotes_ventas.fecha es timestamptz en UTC (fonda_pedidos.fecha ya es
+  // solo-día) — fechaCalendarioLocal la convierte al día calendario del
+  // dispositivo aquí mismo, una sola vez, así todo lo que consume `ventas`
+  // de aquí en adelante (el stat de hoy, el selector de año, los filtros de
+  // rango y las gráficas) ya trabaja con el día correcto sin tener que
+  // repetir la conversión en cada sitio.
   const pedidosEntregados = (session.fonda?.pedidos ?? []).filter((p) => p.estado === "entregado");
   const ventas: Movimiento[] =
     modulo === "fonda"
       ? pedidosEntregados.map((p) => ({ id: p.id, fecha: p.fecha, monto: p.total, label: p.clienteNombre || "Pedido" }))
       : (session.abarrotes?.ventas ?? []).map((v) => ({
           id: v.id,
-          fecha: v.fecha,
+          fecha: fechaCalendarioLocal(v.fecha),
           monto: v.total,
           label: v.items.length === 1 ? `${v.items[0].cantidad} ${v.items[0].productoNombre}` : `${v.items.length} productos`,
         }));
@@ -98,7 +105,7 @@ export default function GastosPage() {
   const now = rango === "anual" && anioSeleccionado !== anioActual ? new Date(anioSeleccionado, 11, 31) : new Date();
 
   const hoy = todayISO(0);
-  const ventasHoy = ventas.filter((v) => v.fecha.slice(0, 10) === hoy).reduce((acc, v) => acc + v.monto, 0);
+  const ventasHoy = ventas.filter((v) => v.fecha === hoy).reduce((acc, v) => acc + v.monto, 0);
 
   const gastosFiltrados = filterByRango(gastos, rango, (g) => g.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const ventasFiltradas = filterByRango(ventas, rango, (v) => v.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));

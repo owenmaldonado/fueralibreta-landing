@@ -21,7 +21,7 @@ import { EmptyState } from "@/components/dashboards/empty-state";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import { VentaCart } from "@/components/abarrotes/venta-cart";
 import { useSession } from "@/lib/session";
-import { formatMoney, todayISO, uid } from "@/lib/mock";
+import { formatMoney, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
 import { aggregateByRange, type RangoTiempo } from "@/lib/chart-buckets";
 import { cn } from "@/lib/utils";
 import type { GroceryProduct, GrocerySale, GrocerySaleItem } from "@/lib/types";
@@ -44,7 +44,10 @@ const RANGO_TABS = [
 function calcularGanancia(ventas: GrocerySale[], productos: GroceryProduct[]): { fecha: string; monto: number }[] {
   const costoPorProducto = new Map(productos.map((p) => [p.id, p.costo]));
   return ventas.map((v) => ({
-    fecha: v.fecha,
+    // v.fecha es timestamptz en UTC — al día calendario local antes de que
+    // aggregateByRange la agrupe, mismo motivo que en /app/gastos: una
+    // venta tarde en el día no debe caer en el bucket de "mañana".
+    fecha: fechaCalendarioLocal(v.fecha),
     monto: v.items.reduce((acc, it) => {
       const costo = it.productoId ? costoPorProducto.get(it.productoId) ?? 0 : 0;
       return acc + (it.precioUnitario - costo) * it.cantidad;

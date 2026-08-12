@@ -86,6 +86,25 @@ export function todayISO(offsetDays = 0): string {
   return toISODate(addDays(new Date(), offsetDays));
 }
 
+const FECHA_SOLO_DIA = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Día calendario LOCAL (el del navegador/celular que esté viendo la
+ * pantalla — sin hardcodear ninguna zona) de un campo `fecha` que puede
+ * venir como solo-fecha (ej. fonda_pedidos.fecha, *_gastos.fecha —
+ * columnas `date`, ya sin hora, se regresan tal cual) o como timestamp
+ * completo (ej. abarrotes_ventas.fecha — columna `timestamptz`, Supabase
+ * la entrega en UTC). Para el segundo caso usa toISODate(), que ya lee
+ * año/mes/día con los getters LOCALES de Date en vez de los UTC — una
+ * venta de las 10pm en Tepic son las 4/5am UTC del día siguiente, y sin
+ * esto contaba como "de mañana" (o "Ventas de hoy" salía en $0 al
+ * comparar el día de UTC contra el día local).
+ */
+export function fechaCalendarioLocal(fecha: string): string {
+  if (FECHA_SOLO_DIA.test(fecha)) return fecha;
+  return toISODate(new Date(fecha));
+}
+
 export function daysSince(iso: string | null): number | null {
   if (!iso) return null;
   const then = new Date(iso).getTime();
