@@ -1,13 +1,14 @@
 "use client";
 
-import { Eye, UserCog, Ban, CheckCircle2, Trash2, MessageCircle, Crown } from "lucide-react";
+import * as React from "react";
+import { MessageCircle } from "lucide-react";
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { DropdownMenu, type DropdownItem } from "@/components/ui/dropdown-menu";
+import { AdminActionsMenu } from "./admin-actions-menu";
 import { waLink } from "@/lib/mock";
-import type { AdminNegocio } from "@/lib/admin-data";
-import { PLAN_ORDEN, PLAN_LABELS, type PlanId } from "@/lib/planes";
+import type { AdminNegocio, AdminProfile } from "@/lib/admin-data";
+import { PLAN_LABELS, type PlanId } from "@/lib/planes";
 
 const TIPO_LABEL: Record<AdminNegocio["tipo"], string> = {
   barberia: "Barbería",
@@ -23,14 +24,33 @@ const PLAN_BADGE_VARIANT: Record<PlanId, "outline" | "default" | "ledger"> = {
 
 interface OrgsTableProps {
   negocios: AdminNegocio[];
+  profiles: AdminProfile[];
+  currentUserId: string;
   onViewDetail: (negocio: AdminNegocio) => void;
-  onChangeOwner: (negocio: AdminNegocio) => void;
-  onToggleActive: (negocio: AdminNegocio) => void;
+  onImpersonate: (profile: AdminProfile) => void;
   onSetPlan: (negocio: AdminNegocio, plan: PlanId) => void;
+  onSetTrial: (negocio: AdminNegocio, dias: 7 | 14) => void;
+  onSetPrecioCustom: (negocio: AdminNegocio) => void;
+  onToggleFundador: (negocio: AdminNegocio) => void;
+  onToggleBanned: (profile: AdminProfile) => void;
   onDeleteRequest: (negocio: AdminNegocio) => void;
 }
 
-export function OrgsTable({ negocios, onViewDetail, onChangeOwner, onToggleActive, onSetPlan, onDeleteRequest }: OrgsTableProps) {
+export function OrgsTable({
+  negocios,
+  profiles,
+  currentUserId,
+  onViewDetail,
+  onImpersonate,
+  onSetPlan,
+  onSetTrial,
+  onSetPrecioCustom,
+  onToggleFundador,
+  onToggleBanned,
+  onDeleteRequest,
+}: OrgsTableProps) {
+  const profilePorId = React.useMemo(() => new Map(profiles.map((p) => [p.id, p])), [profiles]);
+
   if (negocios.length === 0) {
     return <p className="py-10 text-center text-sm text-muted-foreground">Sin negocios que coincidan con el filtro.</p>;
   }
@@ -51,21 +71,8 @@ export function OrgsTable({ negocios, onViewDetail, onChangeOwner, onToggleActiv
       </TableHeader>
       <TableBody>
         {negocios.map((n) => {
-          const items: DropdownItem[] = [
-            { label: "Ver datos del negocio", icon: <Eye className="h-4 w-4" />, onClick: () => onViewDetail(n) },
-            { label: "Cambiar owner", icon: <UserCog className="h-4 w-4" />, onClick: () => onChangeOwner(n) },
-            {
-              label: n.isActive ? "Pausar" : "Activar",
-              icon: n.isActive ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />,
-              onClick: () => onToggleActive(n),
-            },
-            ...PLAN_ORDEN.filter((plan) => plan !== n.plan).map((plan) => ({
-              label: `Cambiar plan: ${PLAN_LABELS[plan]}`,
-              icon: <Crown className="h-4 w-4" />,
-              onClick: () => onSetPlan(n, plan),
-            })),
-            { label: "Eliminar negocio", icon: <Trash2 className="h-4 w-4" />, danger: true, onClick: () => onDeleteRequest(n) },
-          ];
+          const profile = n.ownerId ? (profilePorId.get(n.ownerId) ?? null) : null;
+          const isSelf = n.ownerId === currentUserId;
 
           return (
             <TableRow key={n.id}>
@@ -73,7 +80,10 @@ export function OrgsTable({ negocios, onViewDetail, onChangeOwner, onToggleActiv
                 <p className="max-w-[220px] truncate text-sm font-medium">{n.nombre}</p>
                 <p className="font-mono text-xs text-muted-foreground">{TIPO_LABEL[n.tipo]}</p>
               </TableCell>
-              <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">{n.ownerEmail ?? "—"}</TableCell>
+              <TableCell className="max-w-[200px] text-sm text-muted-foreground">
+                <span className="truncate">{n.ownerEmail ?? "—"}</span>
+                {isSelf && <span className="ml-1.5 font-mono text-[10px] uppercase tracking-widest text-primary">Tú</span>}
+              </TableCell>
               <TableCell>
                 {n.ownerPhone ? (
                   <a
@@ -93,13 +103,33 @@ export function OrgsTable({ negocios, onViewDetail, onChangeOwner, onToggleActiv
                 {new Date(n.createdAt).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}
               </TableCell>
               <TableCell>
-                <Badge variant={PLAN_BADGE_VARIANT[n.plan]}>{PLAN_LABELS[n.plan]}</Badge>
+                <div className="flex flex-wrap gap-1">
+                  <Badge variant={PLAN_BADGE_VARIANT[n.plan]}>{PLAN_LABELS[n.plan]}</Badge>
+                  {n.esFundador && (
+                    <Badge variant="outline" className="border-primary/40 text-primary">
+                      Fundador
+                    </Badge>
+                  )}
+                </div>
               </TableCell>
               <TableCell>
                 <Badge variant={n.isActive ? "ledger" : "outline"}>{n.isActive ? "Activo" : "Pausado"}</Badge>
               </TableCell>
               <TableCell className="text-right">
-                <DropdownMenu items={items} className="ml-auto" />
+                <AdminActionsMenu
+                  profile={profile}
+                  negocio={n}
+                  isSelf={isSelf}
+                  onViewDetail={() => onViewDetail(n)}
+                  onImpersonate={() => profile && onImpersonate(profile)}
+                  onSetPlan={(plan) => onSetPlan(n, plan)}
+                  onSetTrial={(dias) => onSetTrial(n, dias)}
+                  onSetPrecioCustom={() => onSetPrecioCustom(n)}
+                  onToggleFundador={() => onToggleFundador(n)}
+                  onToggleBanned={() => profile && onToggleBanned(profile)}
+                  onDelete={() => onDeleteRequest(n)}
+                  className="ml-auto"
+                />
               </TableCell>
             </TableRow>
           );

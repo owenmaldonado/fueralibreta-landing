@@ -34,6 +34,10 @@ export interface Business {
    * trigger, por si acaso).
    */
   plan: PlanId;
+  /** Precio mensual negociado a mano en vez del de lista; null = precio normal del plan. Admin-only, mismo trato que `plan`. */
+  precioCustom: number | null;
+  /** Insignia de "Fundador" (marketing/trato especial) — admin-only, mismo trato que `plan`. */
+  esFundador: boolean;
 }
 
 // ---------- Barbería ----------

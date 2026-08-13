@@ -74,31 +74,66 @@ begin
   end if;
 end $$;
 
--- Que el dueño nunca vea negocios.plan en el objeto Business que le llega
--- desde /app y no lo mande de vuelta ya evita que lo cambie DESDE LA APP —
+-- Precio negociado a mano para este negocio (ej. un trato especial), en vez
+-- del precio de lista de su plan. NULL = usa el precio de lista normal.
+-- Igual que `plan`, es admin-only: mismo trigger de abajo lo protege.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'negocios' and column_name = 'precio_custom'
+  ) then
+    alter table negocios add column precio_custom numeric(10, 2);
+  end if;
+end $$;
+
+-- Insignia de "Fundador" (primeros negocios, trato especial de por vida) —
+-- puramente informativa/de marketing, no cambia límites por sí sola.
+-- Admin-only, mismo trigger de abajo.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'negocios' and column_name = 'es_fundador'
+  ) then
+    alter table negocios add column es_fundador boolean not null default false;
+  end if;
+end $$;
+
+-- Que el dueño nunca vea estos campos en el objeto Business que le llega
+-- desde /app y no los mande de vuelta ya evita que los cambie DESDE LA APP —
 -- pero RLS es por fila, no por columna: negocios_update de abajo (using
 -- owner_id = auth.uid()) por sí sola dejaría a cualquier dueño subirse a
--- 'pro_plus' con una llamada directa a Supabase desde la consola del
--- navegador, sin pasar por /app para nada. Este trigger es el guard real:
--- solo permite tocar plan cuando la sesión corre con la service_role key
--- (que es como pega /api/admin/negocios/[id]), sin importar qué mande el
--- cliente.
-create or replace function prevent_owner_plan_change()
+-- 'pro_plus', regalarse un trial eterno o marcarse Fundador con una llamada
+-- directa a Supabase desde la consola del navegador, sin pasar por /app
+-- para nada. Este trigger es el guard real: solo permite tocar plan/
+-- trial_fin/precio_custom/es_fundador cuando la sesión corre con la
+-- service_role key (que es como pega /api/admin/negocios/[id]), sin
+-- importar qué mande el cliente.
+drop trigger if exists negocios_plan_owner_guard on negocios;
+drop function if exists prevent_owner_plan_change();
+
+create or replace function prevent_owner_admin_field_change()
 returns trigger
 language plpgsql
 as $$
 begin
-  if new.plan is distinct from old.plan and auth.role() <> 'service_role' then
-    raise exception 'Solo un administrador puede cambiar el plan de un negocio';
+  if (
+    new.plan is distinct from old.plan
+    or new.trial_fin is distinct from old.trial_fin
+    or new.precio_custom is distinct from old.precio_custom
+    or new.es_fundador is distinct from old.es_fundador
+  ) and auth.role() <> 'service_role' then
+    raise exception 'Solo un administrador puede cambiar el plan, trial, precio o estatus de fundador de un negocio';
   end if;
   return new;
 end;
 $$;
 
-drop trigger if exists negocios_plan_owner_guard on negocios;
-create trigger negocios_plan_owner_guard
+drop trigger if exists negocios_admin_fields_guard on negocios;
+create trigger negocios_admin_fields_guard
   before update on negocios
-  for each row execute function prevent_owner_plan_change();
+  for each row execute function prevent_owner_admin_field_change();
 
 create index if not exists negocios_owner_id_idx on negocios(owner_id);
 create index if not exists negocios_slug_idx on negocios(slug);

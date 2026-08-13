@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Copy, Check, MessageCircle, Mail, LogIn, Ban, CheckCircle2, Trash2 } from "lucide-react";
+import { Loader2, Copy, Check, MessageCircle, Mail, LogIn, Ban, CheckCircle2, Trash2, UserCog } from "lucide-react";
 import { toast } from "sonner";
 
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { waLink, formatMoney, formatRelativeTime } from "@/lib/mock";
 import { fetchNegocioDetail, prepareArcoRequest, type AdminNegocio, type NegocioDetail } from "@/lib/admin-data";
+import { PLAN_LABELS } from "@/lib/planes";
 
 const TIPO_LABEL: Record<AdminNegocio["tipo"], string> = {
   barberia: "Barbería",
@@ -26,11 +27,13 @@ export function NegocioDetailDialog({
   negocio,
   onClose,
   onToggleActive,
+  onChangeOwner,
   onDeleteRequest,
 }: {
   negocio: AdminNegocio | null;
   onClose: () => void;
   onToggleActive: (negocio: AdminNegocio) => void;
+  onChangeOwner: (negocio: AdminNegocio) => void;
   onDeleteRequest: (negocio: AdminNegocio) => void;
 }) {
   const router = useRouter();
@@ -104,6 +107,26 @@ export function NegocioDetailDialog({
               {TIPO_LABEL[detail.tipo]}
             </Badge>
             <Badge variant={detail.isActive ? "ledger" : "outline"}>{detail.isActive ? "Activo" : "Pausado"}</Badge>
+            <Badge variant="default">{PLAN_LABELS[detail.plan]}</Badge>
+            {detail.esFundador && (
+              <Badge variant="outline" className="border-primary/40 text-primary">
+                Fundador
+              </Badge>
+            )}
+          </div>
+
+          {/* Plan / trial / pagos */}
+          <div className="flex flex-wrap gap-4 rounded-xl border border-border bg-surface p-3 text-sm">
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Trial hasta</p>
+              <p className="font-medium">{fechaLarga(detail.trialFin)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Precio</p>
+              <p className="font-medium">
+                {detail.precioCustom != null ? `${formatMoney(detail.precioCustom)}/mes (custom)` : "Precio de lista de su plan"}
+              </p>
+            </div>
           </div>
 
           {/* Sección 2: métricas en grid 2x2 */}
@@ -166,6 +189,9 @@ export function NegocioDetailDialog({
               <Button variant="outline" size="sm" onClick={() => onToggleActive(detail)}>
                 {detail.isActive ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
                 {detail.isActive ? "Suspender" : "Reactivar"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => onChangeOwner(detail)}>
+                <UserCog className="h-4 w-4" /> Cambiar owner
               </Button>
               <Button
                 variant="outline"

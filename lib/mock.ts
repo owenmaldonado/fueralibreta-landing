@@ -251,6 +251,8 @@ export function createBusiness(input: NuevoNegocioInput): Business {
     // Demo y negocios recién creados arrancan en básico — igual que el
     // default de la columna negocios.plan; un admin lo sube desde /admin.
     plan: "basico",
+    precioCustom: null,
+    esFundador: false,
   };
 }
 
