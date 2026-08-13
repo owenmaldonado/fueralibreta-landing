@@ -464,6 +464,14 @@ create table if not exists abarrotes_sale_items (
 -- Cantidad admite decimales para ventas por peso (kg/granel).
 alter table abarrotes_sale_items alter column cantidad type numeric(10, 3);
 
+-- Costo del producto AL MOMENTO de la venta (snapshot que hace cobrar() en
+-- VentaCart), para calcular la ganancia real (precio_unitario - costo_unitario)
+-- * cantidad sin que se mueva el histórico si el costo del producto cambia
+-- después. Nullable: filas de ventas de antes de esta columna se quedan sin
+-- snapshot — la ganancia de esas se cae al costo ACTUAL del producto (ver
+-- calcularGananciaPorVenta en app/app/gastos/page.tsx).
+alter table abarrotes_sale_items add column if not exists costo_unitario numeric(10, 2);
+
 -- Migración: abarrotes_ventas pasó de "1 fila = 1 producto" a un ticket con
 -- varios renglones en abarrotes_sale_items. Si la tabla ya existía con las
 -- columnas viejas (producto_id/producto_nombre/cantidad), primero se migran
