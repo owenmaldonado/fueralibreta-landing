@@ -11,14 +11,17 @@ const AXIS = "hsl(220 8% 63%)";
 const TOOLTIP_BG = "hsl(220 14% 12%)";
 const COLOR_VENTAS = "hsl(142 71% 45%)";
 const COLOR_GASTOS = "hsl(4 78% 58%)";
+const COLOR_GANANCIA = "hsl(217 91% 60%)";
 
 interface TrendLineChartProps {
-  data: Array<{ label: string; ventas: number; gastos: number }>;
+  data: Array<{ label: string; ventas: number; gastos: number; ganancia?: number }>;
+  /** Nombre a mostrar para la tercera línea (ej. "Ganancia real") — omite la línea/leyenda si no se pasa. */
+  gananciaLabel?: string;
   emptyText?: string;
 }
 
-/** Gráfica de líneas dobles (ventas vs gastos), para comparar las dos series en un mismo periodo. */
-export function TrendLineChart({ data, emptyText = "Sin datos en este periodo" }: TrendLineChartProps) {
+/** Gráfica de líneas (ventas vs gastos, y opcionalmente ganancia), para comparar varias series en un mismo periodo. */
+export function TrendLineChart({ data, gananciaLabel, emptyText = "Sin datos en este periodo" }: TrendLineChartProps) {
   const consent = useConsent();
   const total = data.reduce((acc, row) => acc + row.ventas + row.gastos, 0);
 
@@ -50,6 +53,12 @@ export function TrendLineChart({ data, emptyText = "Sin datos en este periodo" }
           <span className="h-2 w-2 rounded-full" style={{ background: COLOR_GASTOS }} />
           Gastos
         </div>
+        {gananciaLabel && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="h-2 w-2 rounded-full" style={{ background: COLOR_GANANCIA }} />
+            {gananciaLabel}
+          </div>
+        )}
       </div>
       <ResponsiveContainer width="100%" height={180}>
         <LineChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
@@ -75,6 +84,9 @@ export function TrendLineChart({ data, emptyText = "Sin datos en este periodo" }
           />
           <Line type="monotone" dataKey="ventas" name="Ventas" stroke={COLOR_VENTAS} strokeWidth={2.5} dot={false} />
           <Line type="monotone" dataKey="gastos" name="Gastos" stroke={COLOR_GASTOS} strokeWidth={2.5} dot={false} />
+          {gananciaLabel && (
+            <Line type="monotone" dataKey="ganancia" name={gananciaLabel} stroke={COLOR_GANANCIA} strokeWidth={2.5} dot={false} />
+          )}
         </LineChart>
       </ResponsiveContainer>
     </div>
