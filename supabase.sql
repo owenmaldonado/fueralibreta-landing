@@ -487,6 +487,19 @@ begin
   end if;
 end $$;
 
+-- Para que el panel de Abarrotes (Inicio, Inventario > Ventas) vea una
+-- venta nueva cobrada desde OTRO dispositivo/caja de la misma tienda al
+-- instante, sin recargar — mismo motivo que barberia_citas más arriba.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'abarrotes_ventas'
+  ) then
+    alter publication supabase_realtime add table abarrotes_ventas;
+  end if;
+end $$;
+
 create table if not exists abarrotes_fiados (
   id uuid primary key default gen_random_uuid(),
   negocio_id uuid not null references negocios(id) on delete cascade,

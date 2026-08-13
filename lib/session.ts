@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { supabase, isSupabaseConfigured } from "./supabase";
-import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow } from "./data";
+import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow, fetchVentaConItems } from "./data";
 import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
 import { todayISO } from "./mock";
-import type { Appointment, TenantData } from "./types";
+import type { Appointment, GrocerySale, TenantData } from "./types";
 
 type Source = "supabase" | "demo" | null;
 
@@ -167,6 +167,58 @@ function suscribirseACitasEnVivo(negocioId: string, onEvento: (evento: EventoCit
 }
 
 /**
+ * Mismo patrón que suscribirseACitasEnVivo, para abarrotes_ventas: sin
+ * esto, una venta nueva cobrada en ESTA pestaña (vía update(), optimista)
+ * se ve al instante gracias a TENANT_CACHE_EVENT, pero una venta cobrada
+ * desde OTRO dispositivo/caja de la misma tienda nunca llegaba a esta
+ * sesión sin recargar. Un solo canal compartido por negocio — igual que
+ * arriba, dos instancias de useSession() no pueden cada una llamar su
+ * propio .channel(...).subscribe() con el mismo topic.
+ *
+ * El payload de INSERT solo trae la fila de abarrotes_ventas, sin sus
+ * items (tabla abarrotes_sale_items aparte) — por eso el handler hace una
+ * consulta extra (fetchVentaConItems) antes de avisar a los listeners, a
+ * diferencia de citaFromRow que arma la cita completa solo con el payload.
+ */
+let ventasChannel: ReturnType<typeof supabase.channel> | null = null;
+let ventasChannelNegocioId: string | null = null;
+const ventasListeners = new Set<(venta: GrocerySale) => void>();
+
+function suscribirseAVentasEnVivo(negocioId: string, onEvento: (venta: GrocerySale) => void): () => void {
+  if (ventasChannelNegocioId !== negocioId) {
+    if (ventasChannel) supabase.removeChannel(ventasChannel);
+    ventasChannel = null;
+    ventasChannelNegocioId = null;
+    const nuevoCanal = supabase
+      .channel(`abarrotes-ventas-${negocioId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "abarrotes_ventas", filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const ventaId = (payload.new as Record<string, unknown>).id as string;
+          fetchVentaConItems(ventaId)
+            .then((venta) => {
+              if (venta) ventasListeners.forEach((l) => l(venta));
+            })
+            .catch((err) => console.error("[session] no se pudo cargar la venta nueva del realtime:", err));
+        }
+      )
+      .subscribe();
+    ventasChannel = nuevoCanal;
+    ventasChannelNegocioId = negocioId;
+  }
+  ventasListeners.add(onEvento);
+  return () => {
+    ventasListeners.delete(onEvento);
+    if (ventasListeners.size === 0 && ventasChannel) {
+      supabase.removeChannel(ventasChannel);
+      ventasChannel = null;
+      ventasChannelNegocioId = null;
+    }
+  };
+}
+
+/**
  * Sesión del negocio activo. Dos fuentes posibles:
  *
  * - "supabase": el usuario está logueado y ya tiene un negocio real en la
@@ -181,6 +233,7 @@ export function useSession() {
   const sourceRef = useRef<Source>(null);
   const sessionRef = useRef<TenantData | null>(null);
   const citasUnsubRef = useRef<(() => void) | null>(null);
+  const ventasUnsubRef = useRef<(() => void) | null>(null);
   sessionRef.current = session;
 
   const loadFromDemoPreview = useCallback(() => {
@@ -195,6 +248,11 @@ export function useSession() {
     function detenerCitasEnVivo() {
       citasUnsubRef.current?.();
       citasUnsubRef.current = null;
+    }
+
+    function detenerVentasEnVivo() {
+      ventasUnsubRef.current?.();
+      ventasUnsubRef.current = null;
     }
 
     /**
@@ -223,6 +281,21 @@ export function useSession() {
             ...prev,
             barberia: { ...prev.barberia, citas: prev.barberia.citas.map((c) => (c.id === cita.id ? cita : c)) },
           };
+        });
+      });
+    }
+
+    /** Ver comentario de suscribirseAVentasEnVivo arriba. */
+    function escucharVentasEnVivo(negocioId: string) {
+      detenerVentasEnVivo();
+      ventasUnsubRef.current = suscribirseAVentasEnVivo(negocioId, (venta) => {
+        setSessionState((prev) => {
+          if (!prev?.abarrotes) return prev;
+          // Esta misma pestaña, si fue la que cobró la venta, ya la agregó
+          // al instante vía update() — el eco del realtime llega después;
+          // sin este chequeo saldría duplicada en la lista.
+          if (prev.abarrotes.ventas.some((v) => v.id === venta.id)) return prev;
+          return { ...prev, abarrotes: { ...prev.abarrotes, ventas: [venta, ...prev.abarrotes.ventas] } };
         });
       });
     }
@@ -337,6 +410,12 @@ export function useSession() {
             } catch (err) {
               console.error("[session] no se pudo suscribir a citas en vivo (la sesión sigue cargada bien):", err);
             }
+          } else if (tenant.business.tipo === "abarrotes") {
+            try {
+              escucharVentasEnVivo(tenant.business.id);
+            } catch (err) {
+              console.error("[session] no se pudo suscribir a ventas en vivo (la sesión sigue cargada bien):", err);
+            }
           }
         } else {
           // Logueado pero sin negocio todavía: se deja session en null y es
@@ -410,6 +489,7 @@ export function useSession() {
         setSessionState(null);
         setReady(true);
         detenerCitasEnVivo();
+        detenerVentasEnVivo();
         limpiarCacheTenant();
         return;
       }
@@ -434,6 +514,7 @@ export function useSession() {
       window.removeEventListener(TENANT_CACHE_EVENT, onTenantCacheChange);
       authSub.unsubscribe();
       detenerCitasEnVivo();
+      detenerVentasEnVivo();
     };
   }, [loadFromDemoPreview]);
 
