@@ -1,15 +1,29 @@
 "use client";
 
 import * as React from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, ShieldCheck, ShieldOff } from "lucide-react";
 
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { fetchUserDetail, type AdminProfile, type UserDetailNegocio } from "@/lib/admin-data";
 import { formatMoney } from "@/lib/mock";
+import { PLAN_LABELS } from "@/lib/planes";
 
-export function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose: () => void }) {
+function fechaCorta(iso: string) {
+  return new Date(iso).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+export function UserDetailDialog({
+  userId,
+  onClose,
+  onToggleRole,
+}: {
+  userId: string | null;
+  onClose: () => void;
+  onToggleRole: (profile: AdminProfile) => void;
+}) {
   const [loading, setLoading] = React.useState(false);
   const [profile, setProfile] = React.useState<AdminProfile | null>(null);
   const [negocios, setNegocios] = React.useState<UserDetailNegocio[]>([]);
@@ -96,6 +110,14 @@ export function UserDetailDialog({ userId, onClose }: { userId: string | null; o
                       <Badge variant={n.isActive ? "ledger" : "outline"}>{n.isActive ? "Activo" : "Pausado"}</Badge>
                     </div>
                     <p className="mt-0.5 text-xs capitalize text-muted-foreground">{n.tipo}</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <Badge variant="default">{PLAN_LABELS[n.plan]}</Badge>
+                      {n.esFundador && (
+                        <Badge variant="outline" className="border-primary/40 text-primary">
+                          Fundador
+                        </Badge>
+                      )}
+                    </div>
                     <div className="mt-2 flex gap-4">
                       {n.stats.map((s) => (
                         <div key={s.label}>
@@ -108,10 +130,22 @@ export function UserDetailDialog({ userId, onClose }: { userId: string | null; o
                         <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Ingresos</p>
                       </div>
                     </div>
+                    {/* Pagos: no hay integración de facturación real todavía — esto es lo único que sí existe (trial y precio negociado a mano). */}
+                    <div className="mt-2 flex gap-4 border-t border-border pt-2 text-xs text-muted-foreground">
+                      <span>Trial hasta {fechaCorta(n.trialFin)}</span>
+                      <span>{n.precioCustom != null ? `${formatMoney(n.precioCustom)}/mes (custom)` : "Precio de lista"}</span>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
+          </div>
+
+          <div className="border-t border-border pt-4">
+            <Button variant="outline" size="sm" onClick={() => onToggleRole(profile)}>
+              {profile.role === "admin" ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+              {profile.role === "admin" ? "Quitar admin" : "Hacer admin"}
+            </Button>
           </div>
         </div>
       ) : null}

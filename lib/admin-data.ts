@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { normalizarPlan, type PlanId } from "./planes";
+import { todayISO } from "./mock";
 import type { BusinessType } from "./types";
 import type { LeadTipoNegocio } from "./validation";
 
@@ -48,6 +49,9 @@ export interface AdminNegocio {
   isActive: boolean;
   createdAt: string;
   plan: PlanId;
+  trialFin: string;
+  precioCustom: number | null;
+  esFundador: boolean;
 }
 
 export interface AdminMetrics {
@@ -111,25 +115,38 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
     isActive: n.is_active,
     createdAt: n.created_at,
     plan: normalizarPlan(n.plan),
+    trialFin: n.trial_fin,
+    precioCustom: n.precio_custom != null ? Number(n.precio_custom) : null,
+    esFundador: (n.es_fundador as boolean) ?? false,
   }));
 
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  const usuariosNuevosHoy = profiles.filter((p) => new Date(p.createdAt) >= hoy).length;
+  const totalMovimientos = (citasRes.count ?? 0) + (pedidosRes.count ?? 0) + (ventasRes.count ?? 0);
 
   return {
     profiles,
     negocios,
     leads,
-    metrics: {
-      totalUsuarios: profiles.length,
-      totalNegocios: negocios.length,
-      totalMovimientos: (citasRes.count ?? 0) + (pedidosRes.count ?? 0) + (ventasRes.count ?? 0),
-      usuariosNuevosHoy,
-      totalBarberias: negocios.filter((n) => n.tipo === "barberia").length,
-      totalFondas: negocios.filter((n) => n.tipo === "fonda").length,
-      totalAbarrotes: negocios.filter((n) => n.tipo === "abarrotes").length,
-    },
+    metrics: computeAdminMetrics(profiles, negocios, totalMovimientos),
+  };
+}
+
+/**
+ * Separado de fetchAdminOverview() para que /admin pueda recalcular las
+ * mismas métricas excluyendo al admin actual (filtro "Excluirme") sin pegarle
+ * otra vez a Supabase — solo vuelve a agregar los mismos arreglos ya
+ * cargados.
+ */
+export function computeAdminMetrics(profiles: AdminProfile[], negocios: AdminNegocio[], totalMovimientos: number): AdminMetrics {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  return {
+    totalUsuarios: profiles.length,
+    totalNegocios: negocios.length,
+    totalMovimientos,
+    usuariosNuevosHoy: profiles.filter((p) => new Date(p.createdAt) >= hoy).length,
+    totalBarberias: negocios.filter((n) => n.tipo === "barberia").length,
+    totalFondas: negocios.filter((n) => n.tipo === "fonda").length,
+    totalAbarrotes: negocios.filter((n) => n.tipo === "abarrotes").length,
   };
 }
 
@@ -163,6 +180,10 @@ export interface UserDetailNegocio {
   createdAt: string;
   stats: { label: string; value: number }[];
   ingresosTotales: number;
+  plan: PlanId;
+  trialFin: string;
+  precioCustom: number | null;
+  esFundador: boolean;
 }
 
 interface NegocioExtra {
@@ -272,6 +293,10 @@ export async function fetchUserDetail(
       createdAt: n.created_at,
       stats: extra.stats,
       ingresosTotales: extra.ingresosTotales,
+      plan: normalizarPlan(n.plan),
+      trialFin: n.trial_fin,
+      precioCustom: n.precio_custom != null ? Number(n.precio_custom) : null,
+      esFundador: (n.es_fundador as boolean) ?? false,
     });
   }
 
@@ -313,19 +338,41 @@ export async function toggleNegocioActive(negocioId: string, isActive: boolean):
 }
 
 /**
- * negocios.plan solo se puede tocar con service_role (ver el trigger
- * negocios_plan_owner_guard en supabase.sql) — un update directo desde
- * aquí con la sesión normal del admin tronaría, así que pasa por la ruta
+ * negocios.plan / trial_fin / precio_custom / es_fundador solo se pueden
+ * tocar con service_role (ver el trigger negocios_admin_fields_guard en
+ * supabase.sql) — un update directo desde aquí con la sesión normal del
+ * admin tronaría, así que las cuatro pasan por la ruta
  * /api/admin/negocios/[id] en vez de supabase.from("negocios").update(...).
  */
 export async function updateNegocioPlan(negocioId: string, plan: PlanId): Promise<void> {
+  await patchNegocioAdminFields(negocioId, { plan });
+}
+
+/** Extiende el trial de un negocio `dias` días a partir de hoy. */
+export async function updateNegocioTrial(negocioId: string, dias: 7 | 14): Promise<void> {
+  await patchNegocioAdminFields(negocioId, { trial_fin: todayISO(dias) });
+}
+
+/** `precio` en `null` regresa al negocio al precio de lista de su plan. */
+export async function updateNegocioPrecioCustom(negocioId: string, precio: number | null): Promise<void> {
+  await patchNegocioAdminFields(negocioId, { precio_custom: precio });
+}
+
+export async function updateNegocioFundador(negocioId: string, esFundador: boolean): Promise<void> {
+  await patchNegocioAdminFields(negocioId, { es_fundador: esFundador });
+}
+
+async function patchNegocioAdminFields(
+  negocioId: string,
+  cambios: { plan?: PlanId; trial_fin?: string; precio_custom?: number | null; es_fundador?: boolean }
+): Promise<void> {
   const res = await fetch(`/api/admin/negocios/${negocioId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ plan }),
+    body: JSON.stringify(cambios),
   });
   const body = await parseJsonResponse(res);
-  if (!res.ok) throw new Error(body.error ?? "No se pudo actualizar el plan.");
+  if (!res.ok) throw new Error(body.error ?? "No se pudo actualizar el negocio.");
 }
 
 export async function changeNegocioOwner(negocioId: string, newOwnerId: string): Promise<void> {

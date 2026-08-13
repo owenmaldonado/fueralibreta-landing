@@ -18,14 +18,19 @@ import { LeadsTable } from "./leads-table";
 import { UserDetailDialog } from "./user-detail-dialog";
 import { NegocioDetailDialog } from "./negocio-detail-dialog";
 import { ChangeOwnerDialog } from "./change-owner-dialog";
+import { PrecioCustomDialog } from "./precio-custom-dialog";
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
 import {
   fetchAdminOverview,
+  computeAdminMetrics,
   updateUserRole,
   setUserBanned,
   deleteNegocio,
   toggleNegocioActive,
   updateNegocioPlan,
+  updateNegocioTrial,
+  updateNegocioPrecioCustom,
+  updateNegocioFundador,
   changeNegocioOwner,
   deleteUserCompletely,
   impersonateUser,
@@ -35,6 +40,7 @@ import {
   type AdminNegocio,
   type AdminLead,
 } from "@/lib/admin-data";
+import { formatMoney } from "@/lib/mock";
 import { PLAN_LABELS, type PlanId } from "@/lib/planes";
 
 type RoleFilter = "todos" | "admin" | "user";
@@ -55,11 +61,17 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   const [orgQuery, setOrgQuery] = React.useState("");
   const [leadQuery, setLeadQuery] = React.useState("");
   const [leadEstadoFilter, setLeadEstadoFilter] = React.useState<LeadEstadoFilter>("todos");
+  // Las cards de arriba (Total usuarios, Negocios activos...) cuentan al
+  // admin actual junto con todos los demás — este filtro las recalcula sin
+  // él (ver el cálculo de `metrics` más abajo), para que un admin que
+  // también trae su propio negocio de prueba no infle sus propios números.
+  const [excludeSelf, setExcludeSelf] = React.useState(false);
 
   const [detailUserId, setDetailUserId] = React.useState<string | null>(null);
   const [deleteUserTarget, setDeleteUserTarget] = React.useState<AdminProfile | null>(null);
   const [detailNegocio, setDetailNegocio] = React.useState<AdminNegocio | null>(null);
   const [changeOwnerNegocio, setChangeOwnerNegocio] = React.useState<AdminNegocio | null>(null);
+  const [precioCustomNegocio, setPrecioCustomNegocio] = React.useState<AdminNegocio | null>(null);
   const [deleteNegocioTarget, setDeleteNegocioTarget] = React.useState<AdminNegocio | null>(null);
 
   const load = React.useCallback(async () => {
@@ -145,17 +157,78 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     }
   }
 
+  async function handleSetNegocioTrial(negocioId: string, dias: 7 | 14, nombre: string) {
+    try {
+      await updateNegocioTrial(negocioId, dias);
+      toast.success(`${nombre}: trial extendido ${dias} días.`);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo actualizar el trial.");
+    }
+  }
+
+  async function handleToggleFundador(n: AdminNegocio) {
+    try {
+      await updateNegocioFundador(n.id, !n.esFundador);
+      toast.success(n.esFundador ? `${n.nombre} ya no es Fundador.` : `${n.nombre} ahora es Fundador.`);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo actualizar el estatus de fundador.");
+    }
+  }
+
+  async function handleSavePrecioCustom(negocioId: string, precio: number | null) {
+    try {
+      await updateNegocioPrecioCustom(negocioId, precio);
+      toast.success(precio == null ? "Precio custom quitado." : `Precio custom: ${formatMoney(precio)}/mes.`);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo actualizar el precio.");
+    }
+  }
+
   // La tabla de Usuarios no tiene negocio_id a la mano (es un dato de
   // negocios, no de profiles) — se resuelve aquí contra overview.negocios,
   // que ya está cargado. Si el usuario todavía no tiene negocio (a medio
-  // onboarding), no hay nada que cambiar de plan todavía.
+  // onboarding), no hay nada que cambiar todavía.
+  function resolveNegocioDeUsuario(p: AdminProfile): AdminNegocio | undefined {
+    return overview?.negocios.find((n) => n.ownerId === p.id);
+  }
+
   function handleSetPlanDeUsuario(p: AdminProfile, plan: PlanId) {
-    const negocio = overview?.negocios.find((n) => n.ownerId === p.id);
+    const negocio = resolveNegocioDeUsuario(p);
     if (!negocio) {
       toast.error(`${p.email ?? "Este usuario"} todavía no tiene un negocio.`);
       return;
     }
     handleSetNegocioPlan(negocio.id, plan, negocio.nombre);
+  }
+
+  function handleSetTrialDeUsuario(p: AdminProfile, dias: 7 | 14) {
+    const negocio = resolveNegocioDeUsuario(p);
+    if (!negocio) {
+      toast.error(`${p.email ?? "Este usuario"} todavía no tiene un negocio.`);
+      return;
+    }
+    handleSetNegocioTrial(negocio.id, dias, negocio.nombre);
+  }
+
+  function handleSetPrecioCustomDeUsuario(p: AdminProfile) {
+    const negocio = resolveNegocioDeUsuario(p);
+    if (!negocio) {
+      toast.error(`${p.email ?? "Este usuario"} todavía no tiene un negocio.`);
+      return;
+    }
+    setPrecioCustomNegocio(negocio);
+  }
+
+  function handleToggleFundadorDeUsuario(p: AdminProfile) {
+    const negocio = resolveNegocioDeUsuario(p);
+    if (!negocio) {
+      toast.error(`${p.email ?? "Este usuario"} todavía no tiene un negocio.`);
+      return;
+    }
+    handleToggleFundador(negocio);
   }
 
   async function handleToggleBanned(p: AdminProfile) {
@@ -249,6 +322,18 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
 
   if (loading || !overview) return <LoadingBlock />;
 
+  // "Excluirme": recalcula usuarios/negocios/por-tipo sin el profile ni el
+  // negocio del admin actual, sin volver a pegarle a Supabase. Libretas
+  // digitalizadas (totalMovimientos) queda igual: es un conteo agregado que
+  // ya vino sin desglose por dueño desde fetchAdminOverview.
+  const metrics = excludeSelf
+    ? computeAdminMetrics(
+        overview.profiles.filter((p) => p.id !== currentUserId),
+        overview.negocios.filter((n) => n.ownerId !== currentUserId),
+        overview.metrics.totalMovimientos
+      )
+    : overview.metrics;
+
   return (
     <main className="min-h-screen bg-background px-4 py-8 sm:px-8">
       <div className="mx-auto max-w-6xl">
@@ -262,13 +347,18 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
               <p className="text-xs text-muted-foreground">Control total de usuarios y negocios</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={load}>
-            <RefreshCcw className="h-4 w-4" /> Actualizar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Chip selected={excludeSelf} onClick={() => setExcludeSelf((v) => !v)}>
+              Excluirme
+            </Chip>
+            <Button variant="outline" size="sm" onClick={load}>
+              <RefreshCcw className="h-4 w-4" /> Actualizar
+            </Button>
+          </div>
         </div>
 
         <div className="mt-6">
-          <MetricsCards metrics={overview.metrics} />
+          <MetricsCards metrics={metrics} />
         </div>
 
         <div className="mt-8">
@@ -322,10 +412,13 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
             <div className="mt-4 overflow-hidden rounded-2xl border border-border">
               <UsersTable
                 profiles={filteredProfiles}
+                negocios={overview.negocios}
                 currentUserId={currentUserId}
                 onViewDetail={setDetailUserId}
-                onToggleRole={handleToggleRole}
                 onSetPlan={handleSetPlanDeUsuario}
+                onSetTrial={handleSetTrialDeUsuario}
+                onSetPrecioCustom={handleSetPrecioCustomDeUsuario}
+                onToggleFundador={handleToggleFundadorDeUsuario}
                 onToggleBanned={handleToggleBanned}
                 onImpersonate={handleImpersonate}
                 onDeleteRequest={setDeleteUserTarget}
@@ -346,10 +439,15 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
             <div className="mt-4 overflow-hidden rounded-2xl border border-border">
               <OrgsTable
                 negocios={filteredNegocios}
+                profiles={overview.profiles}
+                currentUserId={currentUserId}
                 onViewDetail={setDetailNegocio}
-                onChangeOwner={setChangeOwnerNegocio}
-                onToggleActive={handleToggleNegocioActive}
+                onImpersonate={handleImpersonate}
                 onSetPlan={(n, plan) => handleSetNegocioPlan(n.id, plan, n.nombre)}
+                onSetTrial={(n, dias) => handleSetNegocioTrial(n.id, dias, n.nombre)}
+                onSetPrecioCustom={setPrecioCustomNegocio}
+                onToggleFundador={handleToggleFundador}
+                onToggleBanned={handleToggleBanned}
                 onDeleteRequest={setDeleteNegocioTarget}
               />
             </div>
@@ -388,17 +486,26 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
         )}
       </div>
 
-      <UserDetailDialog userId={detailUserId} onClose={() => setDetailUserId(null)} />
+      <UserDetailDialog userId={detailUserId} onClose={() => setDetailUserId(null)} onToggleRole={handleToggleRole} />
       <NegocioDetailDialog
         negocio={detailNegocio}
         onClose={() => setDetailNegocio(null)}
         onToggleActive={handleToggleNegocioActive}
+        onChangeOwner={(n) => {
+          setDetailNegocio(null);
+          setChangeOwnerNegocio(n);
+        }}
         onDeleteRequest={(n) => {
           setDetailNegocio(null);
           setDeleteNegocioTarget(n);
         }}
       />
       <ChangeOwnerDialog negocio={changeOwnerNegocio} onClose={() => setChangeOwnerNegocio(null)} onSelect={handleChangeOwner} />
+      <PrecioCustomDialog
+        negocio={precioCustomNegocio}
+        onClose={() => setPrecioCustomNegocio(null)}
+        onSave={handleSavePrecioCustom}
+      />
 
       <ConfirmDeleteDialog
         open={!!deleteUserTarget}

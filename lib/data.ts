@@ -56,6 +56,8 @@ export function businessFromRow(row: Row): Business {
     demo: (row.demo as boolean) ?? false,
     appSlug: (row.app_slug as string) ?? "fuera-libreta",
     plan: normalizarPlan(row.plan as string | null | undefined),
+    precioCustom: row.precio_custom != null ? Number(row.precio_custom) : null,
+    esFundador: (row.es_fundador as boolean) ?? false,
   };
 }
 
