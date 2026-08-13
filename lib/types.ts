@@ -185,6 +185,8 @@ export interface GrocerySaleItem {
   cantidad: number;
   precioUnitario: number;
   subtotal: number;
+  /** Costo del producto AL MOMENTO de la venta (snapshot en cobrar()), para que la ganancia histórica no cambie si el costo del producto se edita después. Ausente en ventas de antes de este campo — ahí se cae al costo actual del producto. */
+  costoUnitario?: number;
 }
 
 export interface GrocerySale {

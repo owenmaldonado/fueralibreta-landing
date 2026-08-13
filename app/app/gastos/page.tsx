@@ -19,7 +19,7 @@ import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useSession } from "@/lib/session";
 import { formatMoney, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
-import { aggregateByRange, aggregateTwoByRange, filterByRango, type RangoTiempo } from "@/lib/chart-buckets";
+import { aggregateByRange, filterByRango, type RangoTiempo } from "@/lib/chart-buckets";
 import { cn } from "@/lib/utils";
 import type { Expense, TenantData, FondaOrder } from "@/lib/types";
 
@@ -32,10 +32,15 @@ const RANGO_TABS = [
 const CHART_TABS = [
   { value: "gastos", label: "Solo Gastos" },
   { value: "ventas", label: "Solo Ventas" },
-  { value: "ambos", label: "Ambos" },
+  { value: "ganancias", label: "Ganancias" },
+  { value: "todos", label: "Todos" },
 ];
 
-type ChartTab = "gastos" | "ventas" | "ambos";
+const COLOR_VENTAS = "hsl(142 71% 45%)";
+const COLOR_GASTOS = "hsl(4 78% 58%)";
+const COLOR_GANANCIA = "hsl(217 91% 60%)";
+
+type ChartTab = "gastos" | "ventas" | "ganancias" | "todos";
 
 interface Movimiento {
   id: string;
@@ -58,7 +63,7 @@ export default function GastosPage() {
   const [editandoVenta, setEditandoVenta] = React.useState<FondaOrder | null>(null);
   const [borrandoVenta, setBorrandoVenta] = React.useState<FondaOrder | null>(null);
   const [rango, setRango] = React.useState<RangoTiempo>("semanal");
-  const [chartTab, setChartTab] = React.useState<ChartTab>("ambos");
+  const [chartTab, setChartTab] = React.useState<ChartTab>("todos");
   const anioActual = new Date().getFullYear();
   const [anioSeleccionado, setAnioSeleccionado] = React.useState(anioActual);
 
@@ -90,6 +95,29 @@ export default function GastosPage() {
           label: v.items.length === 1 ? `${v.items[0].cantidad} ${v.items[0].productoNombre}` : `${v.items.length} productos`,
         }));
 
+  // Ganancia = margen (precio_venta - costo) por línea vendida, NO ventas
+  // brutas — antes "ganancia" era literalmente ventas - gastos, así que en
+  // cuanto gastos_hoy = 0 la línea de ganancia quedaba idéntica a la de
+  // ventas (se superponían en la gráfica). costoUnitario es el costo del
+  // producto AL MOMENTO de la venta (snapshot que hace cobrar() en
+  // VentaCart) — las ventas de antes de ese campo caen al costo ACTUAL del
+  // producto. Fondita vende servicio sin costo de insumo por separado
+  // (Abarrotes sí lo tiene en Inventario): su "ganancia" es su venta
+  // completa, igual que antes.
+  const costoPorProducto = new Map((session.abarrotes?.productos ?? []).map((p) => [p.id, p.costo]));
+  const gananciaPorVenta: Movimiento[] =
+    modulo === "fonda"
+      ? ventas
+      : (session.abarrotes?.ventas ?? []).map((v) => ({
+          id: v.id,
+          fecha: fechaCalendarioLocal(v.fecha),
+          monto: v.items.reduce((acc, it) => {
+            const costo = it.costoUnitario ?? (it.productoId ? costoPorProducto.get(it.productoId) ?? 0 : 0);
+            return acc + (it.precioUnitario - costo) * it.cantidad;
+          }, 0),
+          label: v.items.length === 1 ? `${v.items[0].cantidad} ${v.items[0].productoNombre}` : `${v.items.length} productos`,
+        }));
+
   // Años con al menos un movimiento (para el selector de histórico), más el
   // año en curso aunque todavía no tenga nada — se lee el año directo del
   // string ISO (sin pasar por Date) para no arrastrar corrimientos de UTC.
@@ -107,28 +135,31 @@ export default function GastosPage() {
   const hoy = todayISO(0);
   const ventasHoy = ventas.filter((v) => v.fecha === hoy).reduce((acc, v) => acc + v.monto, 0);
   const gastosHoy = gastos.filter((g) => g.fecha === hoy).reduce((acc, g) => acc + g.monto, 0);
-  const gananciaNetaHoy = ventasHoy - gastosHoy;
+  const gananciaBrutaHoy = gananciaPorVenta.filter((g) => g.fecha === hoy).reduce((acc, g) => acc + g.monto, 0);
+  const gananciaRealHoy = gananciaBrutaHoy - gastosHoy;
 
   const gastosFiltrados = filterByRango(gastos, rango, (g) => g.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const ventasFiltradas = filterByRango(ventas, rango, (v) => v.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const gananciaPorVentaFiltrada = filterByRango(gananciaPorVenta, rango, (g) => g.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const totalGastos = gastosFiltrados.reduce((acc, g) => acc + g.monto, 0);
   const totalVentas = ventasFiltradas.reduce((acc, v) => acc + v.monto, 0);
-  const ganancia = totalVentas - totalGastos;
+  const totalGananciaBruta = gananciaPorVentaFiltrada.reduce((acc, g) => acc + g.monto, 0);
+  const totalGananciaNeta = totalGananciaBruta - totalGastos;
 
   const combinados = [
     ...ventasFiltradas.map((v) => ({ ...v, tipo: "venta" as const })),
     ...gastosFiltrados.map((g) => ({ id: g.id, fecha: g.fecha, monto: g.monto, label: g.categoria, tipo: "gasto" as const })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
+  // Tres pasadas independientes de aggregateByRange (mismo rango + now, así
+  // que producen exactamente los mismos buckets en el mismo orden) en vez
+  // de una sola con dos series — ganancia ya no es "a - b" del mismo par de
+  // datos, así que necesita su propia lista (gananciaPorVenta) agregada
+  // aparte.
   const serieGastos = aggregateByRange(gastos, rango, (g) => g.fecha, (g) => g.monto, now);
   const serieVentas = aggregateByRange(ventas, rango, (v) => v.fecha, (v) => v.monto, now);
-  const serieDoble = aggregateTwoByRange(
-    [...ventas.map((v) => ({ fecha: v.fecha, a: v.monto, b: 0 })), ...gastos.map((g) => ({ fecha: g.fecha, a: 0, b: g.monto }))],
-    rango,
-    (x) => x.fecha,
-    (x) => ({ a: x.a, b: x.b }),
-    now
-  );
+  const serieGananciaBruta = aggregateByRange(gananciaPorVenta, rango, (g) => g.fecha, (g) => g.monto, now);
+  const serieGananciaNeta = serieGananciaBruta.map((g, i) => ({ label: g.label, value: g.value - (serieGastos[i]?.value ?? 0) }));
 
   function withGastos(prev: TenantData, next: (gastos: Expense[]) => Expense[]): TenantData {
     if (prev.fonda) return { ...prev, fonda: { ...prev.fonda, gastos: next(prev.fonda.gastos) } };
@@ -196,33 +227,37 @@ export default function GastosPage() {
             <span className="text-muted-foreground">=</span>
             <div>
               <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ganancia real hoy</p>
-              <p className={cn("font-display text-lg font-bold", gananciaNetaHoy >= 0 ? "text-ledger" : "text-destructive")}>
-                {formatMoney(gananciaNetaHoy)}
+              <p className={cn("font-display text-lg font-bold", gananciaRealHoy >= 0 ? "text-ledger" : "text-destructive")}>
+                {formatMoney(gananciaRealHoy)}
               </p>
             </div>
           </div>
         </div>
       )}
 
-      {modulo === "abarrotes" ? (
-        chartTab === "ambos" ? null : (
-          <div className="px-4 pt-3">
-            <StatTile label={chartTab === "gastos" ? "Total gastos" : "Total ventas"} value={formatMoney(chartTab === "gastos" ? totalGastos : totalVentas)} />
-          </div>
-        )
-      ) : chartTab === "gastos" ? (
+      {chartTab === "gastos" ? (
         <div className="px-4 pt-3">
           <StatTile label="Total gastos" value={formatMoney(totalGastos)} />
         </div>
-      ) : chartTab === "ventas" ? (
-        // Fondita vende servicio: el precio completo del platillo cuenta,
-        // sin costo de insumo que restar — por eso aquí son totales de
-        // venta, no una "ganancia" con margen.
-        <div className="grid grid-cols-2 gap-3 px-4 pt-3">
-          <StatTile label="Vendido hoy" value={formatMoney(ventasHoy)} />
-          <StatTile label="Vendido en el periodo" value={formatMoney(totalVentas)} />
+      ) : chartTab === "ganancias" ? (
+        <div className="px-4 pt-3">
+          <StatTile label="Total ganancia" value={formatMoney(totalGananciaBruta)} />
         </div>
-      ) : (
+      ) : chartTab === "ventas" ? (
+        modulo === "fonda" ? (
+          // Fondita vende servicio: el precio completo del platillo cuenta,
+          // sin costo de insumo que restar — por eso aquí son totales de
+          // venta, no una "ganancia" con margen.
+          <div className="grid grid-cols-2 gap-3 px-4 pt-3">
+            <StatTile label="Vendido hoy" value={formatMoney(ventasHoy)} />
+            <StatTile label="Vendido en el periodo" value={formatMoney(totalVentas)} />
+          </div>
+        ) : (
+          <div className="px-4 pt-3">
+            <StatTile label="Total ventas" value={formatMoney(totalVentas)} />
+          </div>
+        )
+      ) : modulo === "abarrotes" ? null : (
         <div className="px-4 pt-3">
           <div className="grid grid-cols-2 gap-3">
             <StatTile label="Total ventas" value={formatMoney(totalVentas)} />
@@ -230,8 +265,8 @@ export default function GastosPage() {
           </div>
           <div className="mt-3 rounded-xl border border-border bg-card px-3 py-3 text-center">
             <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">En caja (informativo)</p>
-            <p className={cn("font-display text-lg font-bold", ganancia >= 0 ? "text-ledger" : "text-destructive")}>
-              {formatMoney(ganancia)}
+            <p className={cn("font-display text-lg font-bold", totalGananciaNeta >= 0 ? "text-ledger" : "text-destructive")}>
+              {formatMoney(totalGananciaNeta)}
             </p>
           </div>
         </div>
@@ -249,14 +284,26 @@ export default function GastosPage() {
           </ChipGroup>
         )}
         {chartTab === "gastos" && (
-          <TrendBarChart data={serieGastos} bars={[{ key: "value", name: "Gastado", color: "hsl(4 78% 58%)" }]} emptyText="Sin gastos en este periodo" />
+          <TrendBarChart data={serieGastos} bars={[{ key: "value", name: "Gastado", color: COLOR_GASTOS }]} emptyText="Sin gastos en este periodo" />
         )}
         {chartTab === "ventas" && (
-          <TrendBarChart data={serieVentas} bars={[{ key: "value", name: "Ventas", color: "hsl(142 71% 45%)" }]} emptyText="Sin ventas en este periodo" />
+          <TrendBarChart data={serieVentas} bars={[{ key: "value", name: "Ventas", color: COLOR_VENTAS }]} emptyText="Sin ventas en este periodo" />
         )}
-        {chartTab === "ambos" && (
+        {chartTab === "ganancias" && (
+          <TrendBarChart
+            data={serieGananciaBruta}
+            bars={[{ key: "value", name: "Ganancia", color: COLOR_GANANCIA }]}
+            emptyText="Sin ganancia en este periodo"
+          />
+        )}
+        {chartTab === "todos" && (
           <TrendLineChart
-            data={serieDoble.map((s) => ({ label: s.label, ventas: s.a, gastos: s.b, ganancia: s.a - s.b }))}
+            data={serieVentas.map((v, i) => ({
+              label: v.label,
+              ventas: v.value,
+              gastos: serieGastos[i]?.value ?? 0,
+              ganancia: serieGananciaNeta[i]?.value ?? 0,
+            }))}
             gananciaLabel="Ganancia real"
             emptyText="Sin ventas ni gastos en este periodo"
           />
@@ -331,7 +378,24 @@ export default function GastosPage() {
             ))
           ))}
 
-        {chartTab === "ambos" &&
+        {chartTab === "ganancias" &&
+          (gananciaPorVentaFiltrada.length === 0 ? (
+            <EmptyState texto="Sin ganancia en este periodo" />
+          ) : (
+            gananciaPorVentaFiltrada.map((g) => (
+              <div key={g.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{g.label}</p>
+                  <p className="text-xs text-muted-foreground">{formatFechaCorta(g.fecha)}</p>
+                </div>
+                <span className={cn("shrink-0 font-mono text-sm", g.monto >= 0 ? "text-ledger" : "text-destructive")}>
+                  {formatMoney(g.monto)}
+                </span>
+              </div>
+            ))
+          ))}
+
+        {chartTab === "todos" &&
           (combinados.length === 0 ? (
             <EmptyState texto="Sin movimientos en este periodo" />
           ) : (

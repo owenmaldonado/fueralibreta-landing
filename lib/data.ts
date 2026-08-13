@@ -456,6 +456,7 @@ const ventaItemToRow = (it: GrocerySaleItem, ventaId: string): Row => ({
   cantidad: it.cantidad,
   precio_unitario: it.precioUnitario,
   subtotal: it.subtotal,
+  costo_unitario: it.costoUnitario ?? null,
 });
 
 const fiadoToRow = (f: Fiado, negocioId: string): Row => ({
@@ -501,6 +502,7 @@ const saleItemFromRow = (it: Row): GrocerySaleItem => ({
   cantidad: it.cantidad as number,
   precioUnitario: Number(it.precio_unitario),
   subtotal: Number(it.subtotal),
+  costoUnitario: it.costo_unitario != null ? Number(it.costo_unitario) : undefined,
 });
 
 const ventaFromRow = (row: Row, itemsRows: Row[]): GrocerySale => ({

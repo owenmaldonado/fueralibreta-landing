@@ -192,6 +192,11 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
           cantidad: l.cantidad,
           precioUnitario: l.precioUnitario,
           subtotal: l.cantidad * l.precioUnitario,
+          // Snapshot del costo AL COBRAR — la ganancia de esta venta no debe
+          // moverse si el costo del producto se edita después. "Venta
+          // rápida" (sin productoId, no está en el inventario) no tiene
+          // costo conocido: 0, se cuenta el precio completo como ganancia.
+          costoUnitario: (l.productoId && a.productos.find((p) => p.id === l.productoId)?.costo) || 0,
         })),
         total,
         fecha: new Date().toISOString(),
