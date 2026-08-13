@@ -195,7 +195,7 @@ export default function GastosPage() {
             </div>
             <span className="text-muted-foreground">=</span>
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ganancia neta hoy</p>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ganancia real hoy</p>
               <p className={cn("font-display text-lg font-bold", gananciaNetaHoy >= 0 ? "text-ledger" : "text-destructive")}>
                 {formatMoney(gananciaNetaHoy)}
               </p>
@@ -205,26 +205,7 @@ export default function GastosPage() {
       )}
 
       {modulo === "abarrotes" ? (
-        chartTab === "ambos" ? (
-          <div className="mx-4 mt-3 flex items-center justify-center gap-3 rounded-xl border border-border bg-card px-3 py-4 text-center">
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ventas</p>
-              <p className="font-display text-lg font-bold text-ledger">{formatMoney(totalVentas)}</p>
-            </div>
-            <span className="text-muted-foreground">−</span>
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Gastos</p>
-              <p className="font-display text-lg font-bold text-destructive">{formatMoney(totalGastos)}</p>
-            </div>
-            <span className="text-muted-foreground">=</span>
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ganancia</p>
-              <p className={cn("font-display text-lg font-bold", ganancia >= 0 ? "text-ledger" : "text-destructive")}>
-                {formatMoney(ganancia)}
-              </p>
-            </div>
-          </div>
-        ) : (
+        chartTab === "ambos" ? null : (
           <div className="px-4 pt-3">
             <StatTile label={chartTab === "gastos" ? "Total gastos" : "Total ventas"} value={formatMoney(chartTab === "gastos" ? totalGastos : totalVentas)} />
           </div>
@@ -275,7 +256,8 @@ export default function GastosPage() {
         )}
         {chartTab === "ambos" && (
           <TrendLineChart
-            data={serieDoble.map((s) => ({ label: s.label, ventas: s.a, gastos: s.b }))}
+            data={serieDoble.map((s) => ({ label: s.label, ventas: s.a, gastos: s.b, ganancia: s.a - s.b }))}
+            gananciaLabel="Ganancia real"
             emptyText="Sin ventas ni gastos en este periodo"
           />
         )}
