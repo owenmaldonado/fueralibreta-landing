@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { normalizarPlan, type PlanId } from "./planes";
 import type { BusinessType } from "./types";
 import type { LeadTipoNegocio } from "./validation";
 
@@ -46,6 +47,7 @@ export interface AdminNegocio {
   ownerPhone: string;
   isActive: boolean;
   createdAt: string;
+  plan: PlanId;
 }
 
 export interface AdminMetrics {
@@ -108,6 +110,7 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
     ownerPhone: n.telefono ?? "",
     isActive: n.is_active,
     createdAt: n.created_at,
+    plan: normalizarPlan(n.plan),
   }));
 
   const hoy = new Date();
@@ -307,6 +310,22 @@ export async function deleteNegocio(negocioId: string): Promise<void> {
 export async function toggleNegocioActive(negocioId: string, isActive: boolean): Promise<void> {
   const { error } = await supabase.from("negocios").update({ is_active: isActive }).eq("id", negocioId);
   if (error) throw error;
+}
+
+/**
+ * negocios.plan solo se puede tocar con service_role (ver el trigger
+ * negocios_plan_owner_guard en supabase.sql) — un update directo desde
+ * aquí con la sesión normal del admin tronaría, así que pasa por la ruta
+ * /api/admin/negocios/[id] en vez de supabase.from("negocios").update(...).
+ */
+export async function updateNegocioPlan(negocioId: string, plan: PlanId): Promise<void> {
+  const res = await fetch(`/api/admin/negocios/${negocioId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plan }),
+  });
+  const body = await parseJsonResponse(res);
+  if (!res.ok) throw new Error(body.error ?? "No se pudo actualizar el plan.");
 }
 
 export async function changeNegocioOwner(negocioId: string, newOwnerId: string): Promise<void> {

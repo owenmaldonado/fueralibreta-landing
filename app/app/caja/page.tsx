@@ -8,6 +8,7 @@ import { LoadingBlock } from "@/components/app-shell/loading";
 import { StatTile } from "@/components/dashboards/stat-tile";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { TrendBarChart } from "@/components/dashboards/trend-bar-chart";
+import { PlanGate } from "@/components/dashboards/plan-gate";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -101,14 +102,16 @@ export default function CajaPage() {
 
       <div className="flex flex-col gap-3 px-4 pt-4">
         <Tabs value={rango} onValueChange={(v) => setRango(v as RangoTiempo)} tabs={RANGO_TABS} />
-        <TrendBarChart
-          data={serie.map((s) => ({ label: s.label, ingreso: s.a, gasto: s.b }))}
-          bars={[
-            { key: "ingreso", name: "Ingresos", color: "hsl(168 55% 45%)" },
-            { key: "gasto", name: "Gastos", color: "hsl(4 78% 58%)" },
-          ]}
-          emptyText="Sin movimientos en este periodo"
-        />
+        <PlanGate feature="graficas">
+          <TrendBarChart
+            data={serie.map((s) => ({ label: s.label, ingreso: s.a, gasto: s.b }))}
+            bars={[
+              { key: "ingreso", name: "Ingresos", color: "hsl(168 55% 45%)" },
+              { key: "gasto", name: "Gastos", color: "hsl(4 78% 58%)" },
+            ]}
+            emptyText="Sin movimientos en este periodo"
+          />
+        </PlanGate>
       </div>
 
       <div className="flex flex-col gap-2 px-4 py-6">

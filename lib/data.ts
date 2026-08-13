@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { normalizarPlan } from "./planes";
 import type {
   Business,
   TenantData,
@@ -38,7 +39,7 @@ type Row = Record<string, unknown>;
 
 // ---------- negocios ----------
 
-function businessFromRow(row: Row): Business {
+export function businessFromRow(row: Row): Business {
   return {
     id: row.id as string,
     ownerId: (row.owner_id as string) ?? undefined,
@@ -54,6 +55,7 @@ function businessFromRow(row: Row): Business {
     created_at: row.created_at as string,
     demo: (row.demo as boolean) ?? false,
     appSlug: (row.app_slug as string) ?? "fuera-libreta",
+    plan: normalizarPlan(row.plan as string | null | undefined),
   };
 }
 

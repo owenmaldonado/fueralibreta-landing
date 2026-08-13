@@ -248,6 +248,9 @@ export function createBusiness(input: NuevoNegocioInput): Business {
     created_at: todayISO(0),
     demo: input.demo ?? false,
     appSlug: "fuera-libreta",
+    // Demo y negocios recién creados arrancan en básico — igual que el
+    // default de la columna negocios.plan; un admin lo sube desde /admin.
+    plan: "basico",
   };
 }
 

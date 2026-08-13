@@ -2,6 +2,8 @@
 // (ver lib/mock.ts); estos tipos describen la forma de esos datos y son
 // el contrato que usarán las pantallas reales cuando se conecten a Supabase.
 
+import type { PlanId } from "./planes";
+
 export type BusinessType = "barberia" | "fonda" | "abarrotes";
 
 export interface Business {
@@ -23,6 +25,15 @@ export interface Business {
   appSlug: string;
   /** IANA (ej. "America/Bahia_Banderas"). Opcional: sin columna en Supabase todavía, los paneles caen a un default fijo si no viene. */
   timezone?: string;
+  /**
+   * Plan de features (ver lib/planes.ts) — SOLO lectura desde /app: lo
+   * cambia /admin vía service_role. syncTenantDiff (lib/data.ts) no lo
+   * incluye en los campos que sincroniza desde la sesión del dueño, así
+   * que aunque esté aquí en memoria nunca se manda de vuelta a Supabase
+   * desde su propia cuenta (y la base de datos lo bloquea igual con un
+   * trigger, por si acaso).
+   */
+  plan: PlanId;
 }
 
 // ---------- Barbería ----------

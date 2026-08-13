@@ -1,12 +1,13 @@
 "use client";
 
-import { Eye, UserCog, Ban, CheckCircle2, Trash2, MessageCircle } from "lucide-react";
+import { Eye, UserCog, Ban, CheckCircle2, Trash2, MessageCircle, Crown } from "lucide-react";
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, type DropdownItem } from "@/components/ui/dropdown-menu";
 import { waLink } from "@/lib/mock";
 import type { AdminNegocio } from "@/lib/admin-data";
+import { PLAN_ORDEN, PLAN_LABELS, type PlanId } from "@/lib/planes";
 
 const TIPO_LABEL: Record<AdminNegocio["tipo"], string> = {
   barberia: "Barbería",
@@ -14,15 +15,22 @@ const TIPO_LABEL: Record<AdminNegocio["tipo"], string> = {
   abarrotes: "Abarrotes",
 };
 
+const PLAN_BADGE_VARIANT: Record<PlanId, "outline" | "default" | "ledger"> = {
+  basico: "outline",
+  pro: "default",
+  pro_plus: "ledger",
+};
+
 interface OrgsTableProps {
   negocios: AdminNegocio[];
   onViewDetail: (negocio: AdminNegocio) => void;
   onChangeOwner: (negocio: AdminNegocio) => void;
   onToggleActive: (negocio: AdminNegocio) => void;
+  onSetPlan: (negocio: AdminNegocio, plan: PlanId) => void;
   onDeleteRequest: (negocio: AdminNegocio) => void;
 }
 
-export function OrgsTable({ negocios, onViewDetail, onChangeOwner, onToggleActive, onDeleteRequest }: OrgsTableProps) {
+export function OrgsTable({ negocios, onViewDetail, onChangeOwner, onToggleActive, onSetPlan, onDeleteRequest }: OrgsTableProps) {
   if (negocios.length === 0) {
     return <p className="py-10 text-center text-sm text-muted-foreground">Sin negocios que coincidan con el filtro.</p>;
   }
@@ -36,6 +44,7 @@ export function OrgsTable({ negocios, onViewDetail, onChangeOwner, onToggleActiv
           <TableHead>WhatsApp</TableHead>
           <TableHead>Miembros</TableHead>
           <TableHead>Creado</TableHead>
+          <TableHead>Plan</TableHead>
           <TableHead>Estado</TableHead>
           <TableHead className="text-right">Acciones</TableHead>
         </TableRow>
@@ -50,6 +59,11 @@ export function OrgsTable({ negocios, onViewDetail, onChangeOwner, onToggleActiv
               icon: n.isActive ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />,
               onClick: () => onToggleActive(n),
             },
+            ...PLAN_ORDEN.filter((plan) => plan !== n.plan).map((plan) => ({
+              label: `Cambiar plan: ${PLAN_LABELS[plan]}`,
+              icon: <Crown className="h-4 w-4" />,
+              onClick: () => onSetPlan(n, plan),
+            })),
             { label: "Eliminar negocio", icon: <Trash2 className="h-4 w-4" />, danger: true, onClick: () => onDeleteRequest(n) },
           ];
 
@@ -77,6 +91,9 @@ export function OrgsTable({ negocios, onViewDetail, onChangeOwner, onToggleActiv
               <TableCell className="text-sm text-muted-foreground">1</TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {new Date(n.createdAt).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}
+              </TableCell>
+              <TableCell>
+                <Badge variant={PLAN_BADGE_VARIANT[n.plan]}>{PLAN_LABELS[n.plan]}</Badge>
               </TableCell>
               <TableCell>
                 <Badge variant={n.isActive ? "ledger" : "outline"}>{n.isActive ? "Activo" : "Pausado"}</Badge>
