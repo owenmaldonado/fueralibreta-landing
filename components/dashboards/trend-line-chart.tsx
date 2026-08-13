@@ -82,31 +82,11 @@ export function TrendLineChart({ data, gananciaLabel, emptyText = "Sin datos en 
             labelStyle={{ color: AXIS, marginBottom: 4 }}
             formatter={(value, name) => [formatMoney(Number(value)), String(name)]}
           />
+          <Line type="monotone" dataKey="ventas" name="Ventas" stroke={COLOR_VENTAS} strokeWidth={2.5} dot={false} />
           <Line type="monotone" dataKey="gastos" name="Gastos" stroke={COLOR_GASTOS} strokeWidth={2.5} dot={false} />
-          {/*
-            Cuando Gastos = 0, Ganancia = Ventas: las tres coordenadas caen
-            exactamente en el mismo trazo y la línea de Ventas (verde) tapaba
-            por completo a la de Ganancia (azul) por debajo — se veía como si
-            solo se estuviera graficando una serie. Ganancia se dibuja PRIMERO
-            (atrás) más ancha (5px) que Ventas, punteada y semitransparente:
-            cuando el trazo coincide pixel a pixel, sus bordes sobresalen por
-            los costados del trazo verde más angosto, formando un halo
-            punteado visible en vez de desaparecer detrás. Ventas se dibuja AL
-            FINAL (adelante) para quedar siempre nítida encima.
-          */}
           {gananciaLabel && (
-            <Line
-              type="monotone"
-              dataKey="ganancia"
-              name={gananciaLabel}
-              stroke={COLOR_GANANCIA}
-              strokeWidth={5}
-              strokeDasharray="6 4"
-              strokeOpacity={0.6}
-              dot={false}
-            />
+            <Line type="monotone" dataKey="ganancia" name={gananciaLabel} stroke={COLOR_GANANCIA} strokeWidth={2.5} dot={false} />
           )}
-          <Line type="monotone" dataKey="ventas" name="Ventas" stroke={COLOR_VENTAS} strokeWidth={3} dot={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
