@@ -487,6 +487,19 @@ begin
   end if;
 end $$;
 
+-- Para que el panel de Abarrotes (Inicio, Inventario > Ventas) vea una
+-- venta nueva cobrada desde OTRO dispositivo/caja de la misma tienda al
+-- instante, sin recargar — mismo motivo que barberia_citas más arriba.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'abarrotes_ventas'
+  ) then
+    alter publication supabase_realtime add table abarrotes_ventas;
+  end if;
+end $$;
+
 create table if not exists abarrotes_fiados (
   id uuid primary key default gen_random_uuid(),
   negocio_id uuid not null references negocios(id) on delete cascade,
@@ -749,12 +762,26 @@ $$;
 -- borrado de cualquier usuario con 2+ negocios si uno solo tenía el problema.
 --
 -- Esta función busca EN VIVO (information_schema, no una lista fija en el
--- código) todas las tablas de public con columna negocio_id y borra ahí sus
--- filas para los negocios dados, cada tabla en su propio bloque
--- exception — si una tabla no existe o no tiene esa columna, se ignora y
--- sigue con las demás en vez de tronar todo. Al final borra las filas de
--- negocios. Se llama desde el Route Handler con la service_role key (que ya
--- salta RLS), así que no necesita ninguna policy nueva.
+-- código) todas las tablas afectadas y borra ahí sus filas para los
+-- negocios dados, cada tabla en su propio bloque exception — si una tabla
+-- no existe, se ignora y sigue con las demás en vez de tronar todo. Dos
+-- pasadas, no una:
+--   1) cualquier tabla de public con una FOREIGN KEY que apunte a
+--      negocios(id), sin importar cómo se llame la columna. Necesaria
+--      porque una tabla vieja/renombrada de una versión anterior del
+--      esquema (p. ej. barberia_config, barberia_ventas, barberia_cortes —
+--      hoy barberia_caja/barberia_citas cubren eso) puede seguir viva en
+--      un proyecto real de Supabase con una FK a negocios por una columna
+--      que NO se llama negocio_id; antes esa tabla se colaba entera y el
+--      DELETE FROM negocios de más abajo tronaba con
+--      "violates foreign key constraint" (el bug real detrás del 500).
+--   2) cualquier tabla con columna literal negocio_id, por si alguna
+--      guarda ese dato sin tener la FK declarada como constraint.
+-- Al final borra las filas de negocios. Se llama desde el Route Handler
+-- con la service_role key (que ya salta RLS), así que no necesita ninguna
+-- policy nueva.
+drop function if exists admin_delete_negocios_data(uuid[]);
+
 create or replace function admin_delete_negocios_data(p_negocio_ids uuid[])
 returns void
 language plpgsql
@@ -763,6 +790,29 @@ as $$
 declare
   tbl record;
 begin
+  for tbl in
+    select distinct
+      tc.table_name,
+      kcu.column_name
+    from information_schema.table_constraints tc
+    join information_schema.key_column_usage kcu
+      on kcu.constraint_name = tc.constraint_name and kcu.table_schema = tc.table_schema
+    join information_schema.constraint_column_usage ccu
+      on ccu.constraint_name = tc.constraint_name and ccu.table_schema = tc.table_schema
+    where tc.constraint_type = 'FOREIGN KEY'
+      and tc.table_schema = 'public'
+      and tc.table_name <> 'negocios'
+      and ccu.table_name = 'negocios'
+      and ccu.column_name = 'id'
+  loop
+    begin
+      execute format('delete from public.%I where %I = any($1)', tbl.table_name, tbl.column_name) using p_negocio_ids;
+    exception when others then
+      raise notice 'admin_delete_negocios_data: no se pudo limpiar % por FK (%.%) (%): %',
+        tbl.table_name, tbl.table_name, tbl.column_name, sqlstate, sqlerrm;
+    end;
+  end loop;
+
   for tbl in
     select c.table_name
     from information_schema.columns c

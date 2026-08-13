@@ -3,10 +3,13 @@ import type { BusinessType } from "./types";
 import type { LeadTipoNegocio } from "./validation";
 
 // ============================================================================
-// Datos del panel /admin. Todo esto corre con la sesión normal del admin
-// (cliente en el navegador) apoyándose en las policies "*_admin_all" del
-// esquema — no necesita la service_role key. Solo eliminar un usuario por
-// completo e "impersonar" pegan a las rutas /api/admin/* que sí la usan.
+// Datos del panel /admin. Las LECTURAS (overview, detalle de usuario/negocio)
+// corren con la sesión normal del admin en el navegador, apoyándose en las
+// policies "*_admin_all" del esquema — no necesitan la service_role key.
+// Las ESCRITURAS sobre profiles (rol/plan/baneo), eliminar un usuario por
+// completo e "impersonar" pegan a rutas /api/admin/* que verifican is_admin
+// y ejecutan con la service_role key, sin depender de que RLS esté bien
+// puesta — ver lib/admin-auth.ts.
 // ============================================================================
 
 export type Role = "admin" | "user";
@@ -127,19 +130,26 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
   };
 }
 
+async function patchUserProfile(userId: string, cambios: { role?: Role; plan?: Plan; is_banned?: boolean }): Promise<void> {
+  const res = await fetch(`/api/admin/users/${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cambios),
+  });
+  const body = await parseJsonResponse(res);
+  if (!res.ok) throw new Error(body.error ?? "No se pudo actualizar el usuario.");
+}
+
 export async function updateUserRole(userId: string, role: Role): Promise<void> {
-  const { error } = await supabase.from("profiles").update({ role }).eq("id", userId);
-  if (error) throw error;
+  await patchUserProfile(userId, { role });
 }
 
 export async function updateUserPlan(userId: string, plan: Plan): Promise<void> {
-  const { error } = await supabase.from("profiles").update({ plan }).eq("id", userId);
-  if (error) throw error;
+  await patchUserProfile(userId, { plan });
 }
 
 export async function setUserBanned(userId: string, isBanned: boolean): Promise<void> {
-  const { error } = await supabase.from("profiles").update({ is_banned: isBanned }).eq("id", userId);
-  if (error) throw error;
+  await patchUserProfile(userId, { is_banned: isBanned });
 }
 
 export interface UserDetailNegocio {
@@ -149,6 +159,7 @@ export interface UserDetailNegocio {
   isActive: boolean;
   createdAt: string;
   stats: { label: string; value: number }[];
+  ingresosTotales: number;
 }
 
 interface NegocioExtra {
@@ -257,6 +268,7 @@ export async function fetchUserDetail(
       isActive: n.is_active,
       createdAt: n.created_at,
       stats: extra.stats,
+      ingresosTotales: extra.ingresosTotales,
     });
   }
 
@@ -310,7 +322,7 @@ export async function searchUsersByEmail(query: string): Promise<{ id: string; e
   return data ?? [];
 }
 
-async function parseJsonResponse(res: Response): Promise<{ error?: string; url?: string }> {
+async function parseJsonResponse(res: Response): Promise<{ error?: string }> {
   try {
     return await res.json();
   } catch {
@@ -325,12 +337,29 @@ export async function deleteUserCompletely(userId: string): Promise<void> {
   if (!res.ok) throw new Error(body.error ?? "No se pudo eliminar el usuario.");
 }
 
-/** Genera un magic link para entrar como este usuario. Requiere service_role en el servidor. */
-export async function impersonateUser(userId: string): Promise<string> {
-  const res = await fetch(`/api/admin/users/${userId}/impersonate`, { method: "POST" });
+/**
+ * Cambia la sesión del navegador a la de este usuario ("ver como este
+ * usuario"), server-side vía service_role — no manda a abrir un magic link
+ * en una pestaña nueva (dos sesiones de Supabase no conviven en el mismo
+ * navegador). Quien llama debe recargar por completo a /app después de que
+ * esto resuelva (un router.push no basta: hay caches en memoria por
+ * usuario en lib/session.ts que solo se limpian con una carga fresca).
+ */
+export async function impersonateUser(userId: string): Promise<void> {
+  const res = await fetch("/api/admin/impersonate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId }),
+  });
   const body = await parseJsonResponse(res);
-  if (!res.ok || !body.url) throw new Error(body.error ?? "No se pudo generar el acceso.");
-  return body.url;
+  if (!res.ok) throw new Error(body.error ?? "No se pudo generar el acceso.");
+}
+
+/** Sale de "ver como este usuario" y regresa la sesión del admin original. */
+export async function exitImpersonation(): Promise<void> {
+  const res = await fetch("/api/admin/impersonate/exit", { method: "POST" });
+  const body = await parseJsonResponse(res);
+  if (!res.ok) throw new Error(body.error ?? "No se pudo restaurar tu sesión.");
 }
 
 // ============================================================================

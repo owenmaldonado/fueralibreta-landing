@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SiteFooter } from "@/components/site-footer";
-import { writeDemoPreview } from "@/lib/demoPreview";
+import { writeDemoPreview, clearDemoPreview } from "@/lib/demoPreview";
 import {
   generateDemoAbarrotes,
   generateDemoBarberia,
@@ -120,19 +120,41 @@ export default function DemoIntakePage() {
     }
   }
 
-  function generate() {
+  async function generate() {
     setLoading(true);
-    setTimeout(() => {
-      const base = { dueno: form.dueno, negocio: form.negocio, telefono: form.telefono };
-      const tenant =
-        tipo === "barberia"
-          ? generateDemoBarberia({ ...base, cliente1: form.extra1, cliente2: form.extra2 })
-          : tipo === "fonda"
-            ? generateDemoFonda({ ...base, platillo1: form.extra1, platillo2: form.extra2 })
-            : generateDemoAbarrotes({ ...base, producto1: form.extra1, producto2: form.extra2 });
-      writeDemoPreview(tenant);
-      router.push("/app/inicio");
-    }, 900);
+
+    // Borra cualquier preview de demo anterior (de otro tipo de negocio, o
+    // de hace rato) antes de armar la nueva — writeDemoPreview ya
+    // sobreescribe la clave completa, pero un clear explícito evita
+    // arrastrar cualquier resto de un intento previo a medio terminar.
+    clearDemoPreview();
+
+    // Si esta pestaña viene de una impersonación de admin ("ver como este
+    // usuario" desde /admin), su sesión real ahora mismo es la del usuario
+    // impersonado, no la del admin — generar un demo aquí no debe quedar
+    // atado a esa sesión ambigua. Best effort: si no hay impersonación
+    // activa, el endpoint solo responde 400 y se ignora.
+    try {
+      await fetch("/api/admin/impersonate/exit", { method: "POST" });
+    } catch {
+      // sin red o sin impersonación activa: no bloquea el demo
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 900));
+
+    const base = { dueno: form.dueno, negocio: form.negocio, telefono: form.telefono };
+    const tenant =
+      tipo === "barberia"
+        ? generateDemoBarberia({ ...base, cliente1: form.extra1, cliente2: form.extra2 })
+        : tipo === "fonda"
+          ? generateDemoFonda({ ...base, platillo1: form.extra1, platillo2: form.extra2 })
+          : generateDemoAbarrotes({ ...base, producto1: form.extra1, producto2: form.extra2 });
+    writeDemoPreview(tenant);
+    // ?preview=true: si quien genera el demo YA tiene sesión (logueado o
+    // admin), useSession() debe mostrar este preview tal cual en vez de ir
+    // a buscar un negocio real de esa cuenta — ver estaEnModoPreview() en
+    // lib/session.ts.
+    router.push("/app/inicio?preview=true");
   }
 
   return (

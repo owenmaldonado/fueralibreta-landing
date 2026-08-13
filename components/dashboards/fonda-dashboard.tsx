@@ -48,6 +48,28 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
     };
   }, [negocio.id, negocio.ownerId, filtro, esNegocioReal]);
 
+  // El fetch de arriba solo corre al montar/cambiar de tab — un "Nuevo
+  // Pedido" agregado después desde el FAB (mismo tab del navegador) no lo
+  // vuelve a disparar, así que no aparecía en Hoy hasta recargar. update()
+  // SÍ actualiza session.fonda.pedidos al instante en toda pantalla abierta
+  // (ver TENANT_CACHE_EVENT en lib/session.ts) — este efecto reconcilia
+  // pendientesVivo contra eso en cada cambio: agrega los pedidos nuevos que
+  // este tab acaba de crear y no estaban en el fetch original, y quita los
+  // que este tab sepa que ya se marcaron entregados (desde aquí mismo o
+  // desde /app/pedidos). Los pedidos de OTRO dispositivo que este tab
+  // nunca sincronizó (sin realtime para fonda_pedidos) se conservan tal
+  // cual — ausentes de session.fonda no es lo mismo que "ya entregados".
+  React.useEffect(() => {
+    if (filtro !== "hoy" || !esNegocioReal) return;
+    setPendientesVivo((prev) => {
+      const yaNoPendientes = new Set(data.pedidos.filter((p) => p.estado !== "pendiente").map((p) => p.id));
+      const conservados = prev.filter((p) => !yaNoPendientes.has(p.id));
+      const idsConservados = new Set(conservados.map((p) => p.id));
+      const nuevosLocales = data.pedidos.filter((p) => p.estado === "pendiente" && !idsConservados.has(p.id));
+      return nuevosLocales.length === 0 && conservados.length === prev.length ? prev : [...nuevosLocales, ...conservados];
+    });
+  }, [data.pedidos, filtro, esNegocioReal]);
+
   const hoyEnSuZona = new Date().toLocaleDateString("en-CA", { timeZone: negocio.timezone || "America/Bahia_Banderas" });
   const ayerEnSuZona = new Date(Date.now() - 86_400_000).toLocaleDateString("en-CA", {
     timeZone: negocio.timezone || "America/Bahia_Banderas",

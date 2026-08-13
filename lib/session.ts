@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { supabase, isSupabaseConfigured } from "./supabase";
-import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow } from "./data";
+import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow, fetchVentaConItems } from "./data";
 import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
 import { todayISO } from "./mock";
-import type { Appointment, TenantData } from "./types";
+import type { Appointment, GrocerySale, TenantData } from "./types";
 
 type Source = "supabase" | "demo" | null;
 
@@ -31,6 +31,48 @@ const fetchesEnVuelo = new Map<string, Promise<TenantData | null>>();
 function limpiarCacheTenant() {
   cachedTenant = null;
   fetchesEnVuelo.clear();
+}
+
+/**
+ * /demo/[tipo] -> "Generar mi demo" navega a /app/inicio?preview=true. Sin
+ * esto, un usuario YA logueado (o un admin) que genera un demo cae en
+ * resolveForUser(userId) con userId real: eso ignora por completo el
+ * fl_demo_preview que se acaba de escribir en localStorage y va derecho a
+ * fetchNegocioByOwner(userId) — como esa cuenta real normalmente no tiene
+ * un negocio del tipo recién armado, el resultado es session=null, y
+ * AuthenticatedShell interpreta "logueado pero sin negocio" como "manda a
+ * /onboarding", que a su vez ve el fl_demo_preview ahí sentado y muestra
+ * directo la pantalla de "actívalo, 7 días gratis" — el demo nunca se
+ * llega a ver. (Sin sesión real, esto nunca pasa: resolveForUser(null) ya
+ * leía el preview directo, por eso en incógnito sí funcionaba.)
+ *
+ * El flag vive en sessionStorage (no la URL) para sobrevivir a la
+ * navegación entre pantallas de /app/* una vez adentro — cada una monta su
+ * propia instancia de useSession() y perdería el ?preview=true de la URL
+ * en cuanto el usuario le diera clic a otro tab del BottomNav.
+ */
+const PREVIEW_FLAG = "fl_demo_preview_active";
+
+function estaEnModoPreview(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (new URLSearchParams(window.location.search).get("preview") === "true") {
+      window.sessionStorage.setItem(PREVIEW_FLAG, "1");
+      return true;
+    }
+    return window.sessionStorage.getItem(PREVIEW_FLAG) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function limpiarModoPreview() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(PREVIEW_FLAG);
+  } catch {
+    // sessionStorage no disponible (modo privado estricto, etc.): no hay nada que limpiar
+  }
 }
 
 /**
@@ -125,6 +167,58 @@ function suscribirseACitasEnVivo(negocioId: string, onEvento: (evento: EventoCit
 }
 
 /**
+ * Mismo patrón que suscribirseACitasEnVivo, para abarrotes_ventas: sin
+ * esto, una venta nueva cobrada en ESTA pestaña (vía update(), optimista)
+ * se ve al instante gracias a TENANT_CACHE_EVENT, pero una venta cobrada
+ * desde OTRO dispositivo/caja de la misma tienda nunca llegaba a esta
+ * sesión sin recargar. Un solo canal compartido por negocio — igual que
+ * arriba, dos instancias de useSession() no pueden cada una llamar su
+ * propio .channel(...).subscribe() con el mismo topic.
+ *
+ * El payload de INSERT solo trae la fila de abarrotes_ventas, sin sus
+ * items (tabla abarrotes_sale_items aparte) — por eso el handler hace una
+ * consulta extra (fetchVentaConItems) antes de avisar a los listeners, a
+ * diferencia de citaFromRow que arma la cita completa solo con el payload.
+ */
+let ventasChannel: ReturnType<typeof supabase.channel> | null = null;
+let ventasChannelNegocioId: string | null = null;
+const ventasListeners = new Set<(venta: GrocerySale) => void>();
+
+function suscribirseAVentasEnVivo(negocioId: string, onEvento: (venta: GrocerySale) => void): () => void {
+  if (ventasChannelNegocioId !== negocioId) {
+    if (ventasChannel) supabase.removeChannel(ventasChannel);
+    ventasChannel = null;
+    ventasChannelNegocioId = null;
+    const nuevoCanal = supabase
+      .channel(`abarrotes-ventas-${negocioId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "abarrotes_ventas", filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const ventaId = (payload.new as Record<string, unknown>).id as string;
+          fetchVentaConItems(ventaId)
+            .then((venta) => {
+              if (venta) ventasListeners.forEach((l) => l(venta));
+            })
+            .catch((err) => console.error("[session] no se pudo cargar la venta nueva del realtime:", err));
+        }
+      )
+      .subscribe();
+    ventasChannel = nuevoCanal;
+    ventasChannelNegocioId = negocioId;
+  }
+  ventasListeners.add(onEvento);
+  return () => {
+    ventasListeners.delete(onEvento);
+    if (ventasListeners.size === 0 && ventasChannel) {
+      supabase.removeChannel(ventasChannel);
+      ventasChannel = null;
+      ventasChannelNegocioId = null;
+    }
+  };
+}
+
+/**
  * Sesión del negocio activo. Dos fuentes posibles:
  *
  * - "supabase": el usuario está logueado y ya tiene un negocio real en la
@@ -139,6 +233,7 @@ export function useSession() {
   const sourceRef = useRef<Source>(null);
   const sessionRef = useRef<TenantData | null>(null);
   const citasUnsubRef = useRef<(() => void) | null>(null);
+  const ventasUnsubRef = useRef<(() => void) | null>(null);
   sessionRef.current = session;
 
   const loadFromDemoPreview = useCallback(() => {
@@ -153,6 +248,11 @@ export function useSession() {
     function detenerCitasEnVivo() {
       citasUnsubRef.current?.();
       citasUnsubRef.current = null;
+    }
+
+    function detenerVentasEnVivo() {
+      ventasUnsubRef.current?.();
+      ventasUnsubRef.current = null;
     }
 
     /**
@@ -181,6 +281,21 @@ export function useSession() {
             ...prev,
             barberia: { ...prev.barberia, citas: prev.barberia.citas.map((c) => (c.id === cita.id ? cita : c)) },
           };
+        });
+      });
+    }
+
+    /** Ver comentario de suscribirseAVentasEnVivo arriba. */
+    function escucharVentasEnVivo(negocioId: string) {
+      detenerVentasEnVivo();
+      ventasUnsubRef.current = suscribirseAVentasEnVivo(negocioId, (venta) => {
+        setSessionState((prev) => {
+          if (!prev?.abarrotes) return prev;
+          // Esta misma pestaña, si fue la que cobró la venta, ya la agregó
+          // al instante vía update() — el eco del realtime llega después;
+          // sin este chequeo saldría duplicada en la lista.
+          if (prev.abarrotes.ventas.some((v) => v.id === venta.id)) return prev;
+          return { ...prev, abarrotes: { ...prev.abarrotes, ventas: [venta, ...prev.abarrotes.ventas] } };
         });
       });
     }
@@ -233,6 +348,25 @@ export function useSession() {
         if (!cancelled) setReady(true);
         return;
       }
+
+      // Bypass de preview: ver comentario de estaEnModoPreview() arriba.
+      // Nunca toca cachedTenant/fetchesEnVuelo (esos son el negocio REAL de
+      // este userId) ni dispara fetchNegocioByOwner — así el negocio real
+      // de esta cuenta (si tiene uno) queda intacto para cuando salga del
+      // preview con un login/reload limpio.
+      if (estaEnModoPreview()) {
+        const demo = readDemoPreview();
+        if (demo) {
+          sourceRef.current = "demo";
+          setSessionState(demo);
+          if (!cancelled) setReady(true);
+          return;
+        }
+        // ?preview=true sin datos de demo que mostrar (se limpiaron o
+        // nunca existieron): no tiene caso seguir en "modo preview" fantasma.
+        limpiarModoPreview();
+      }
+
       console.log("[session] resolveForUser arrancó para", userId);
       try {
         let tenant: TenantData | null;
@@ -275,6 +409,12 @@ export function useSession() {
               escucharCitasEnVivo(tenant.business.id);
             } catch (err) {
               console.error("[session] no se pudo suscribir a citas en vivo (la sesión sigue cargada bien):", err);
+            }
+          } else if (tenant.business.tipo === "abarrotes") {
+            try {
+              escucharVentasEnVivo(tenant.business.id);
+            } catch (err) {
+              console.error("[session] no se pudo suscribir a ventas en vivo (la sesión sigue cargada bien):", err);
             }
           }
         } else {
@@ -349,6 +489,7 @@ export function useSession() {
         setSessionState(null);
         setReady(true);
         detenerCitasEnVivo();
+        detenerVentasEnVivo();
         limpiarCacheTenant();
         return;
       }
@@ -373,6 +514,7 @@ export function useSession() {
       window.removeEventListener(TENANT_CACHE_EVENT, onTenantCacheChange);
       authSub.unsubscribe();
       detenerCitasEnVivo();
+      detenerVentasEnVivo();
     };
   }, [loadFromDemoPreview]);
 
@@ -405,6 +547,7 @@ export function useSession() {
     };
     await persistTenant(activated, ownerId);
     clearDemoPreview();
+    limpiarModoPreview();
     sourceRef.current = "supabase";
     setSessionState(activated);
     // La siguiente pantalla que monte useSession() para este mismo usuario
@@ -418,6 +561,7 @@ export function useSession() {
 
   const clear = useCallback(async () => {
     clearDemoPreview();
+    limpiarModoPreview();
     sourceRef.current = null;
     setSessionState(null);
     limpiarCacheTenant();

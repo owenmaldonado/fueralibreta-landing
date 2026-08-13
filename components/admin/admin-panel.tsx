@@ -156,17 +156,15 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   }
 
   async function handleImpersonate(p: AdminProfile) {
-    const promise = impersonateUser(p.id);
-    toast.promise(promise, {
-      loading: "Generando acceso...",
-      success: "Listo, ábrelo en la pestaña nueva para entrar como este usuario.",
-      error: (err) => (err instanceof Error ? err.message : "No se pudo generar el acceso."),
-    });
     try {
-      const url = await promise;
-      window.open(url, "_blank");
-    } catch {
-      // el toast de arriba ya mostró el error
+      await impersonateUser(p.id);
+      // Recarga completa (no router.push): useSession() cachea el negocio
+      // resuelto por usuario en un módulo compartido — solo una carga
+      // fresca garantiza que arranque de cero con la sesión ya cambiada al
+      // usuario objetivo en las cookies.
+      window.location.href = "/app";
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo generar el acceso.");
     }
   }
 

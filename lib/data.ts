@@ -494,6 +494,46 @@ const apartadoToRow = (a: Apartado, negocioId: string): Row => ({
   entregado: a.entregado,
 });
 
+const saleItemFromRow = (it: Row): GrocerySaleItem => ({
+  id: it.id as string,
+  productoId: (it.producto_id as string) ?? "",
+  productoNombre: it.producto_nombre as string,
+  cantidad: it.cantidad as number,
+  precioUnitario: Number(it.precio_unitario),
+  subtotal: Number(it.subtotal),
+});
+
+const ventaFromRow = (row: Row, itemsRows: Row[]): GrocerySale => ({
+  id: row.id as string,
+  total: Number(row.total),
+  fecha: row.fecha as string,
+  items: itemsRows.filter((it) => it.venta_id === row.id).map(saleItemFromRow),
+});
+
+/**
+ * Trae una sola venta + sus items — la usa el canal de realtime de
+ * abarrotes_ventas (suscribirseAVentasEnVivo en lib/session.ts): el payload
+ * de un INSERT solo trae la fila de abarrotes_ventas, sin sus
+ * abarrotes_sale_items (tabla aparte), así que hay que pedirlos por separado.
+ */
+export async function fetchVentaConItems(ventaId: string): Promise<GrocerySale | null> {
+  const { data: ventaRow, error: ventaError } = await supabase
+    .from("abarrotes_ventas")
+    .select("*")
+    .eq("id", ventaId)
+    .maybeSingle();
+  if (ventaError) throw ventaError;
+  if (!ventaRow) return null;
+
+  const { data: itemsRows, error: itemsError } = await supabase
+    .from("abarrotes_sale_items")
+    .select("*")
+    .eq("venta_id", ventaId);
+  if (itemsError) throw itemsError;
+
+  return ventaFromRow(ventaRow, itemsRows ?? []);
+}
+
 async function fetchAbarrotesData(negocioId: string): Promise<AbarrotesData> {
   const [productosRes, ventasRes, fiadosRes, apartadosRes, gastosRes] = await Promise.all([
     supabase.from("abarrotes_productos").select("*").eq("negocio_id", negocioId),
@@ -557,21 +597,7 @@ async function fetchAbarrotesData(negocioId: string): Promise<AbarrotesData> {
       .map((m) => ({ fecha: m.fecha as string, monto: Number(m.monto), tipo: m.tipo as "cargo" | "abono" })),
   }));
 
-  const ventas: GrocerySale[] = (ventasRes.data ?? []).map((row) => ({
-    id: row.id as string,
-    total: Number(row.total),
-    fecha: row.fecha as string,
-    items: saleItemsData
-      .filter((it) => it.venta_id === row.id)
-      .map((it) => ({
-        id: it.id as string,
-        productoId: (it.producto_id as string) ?? "",
-        productoNombre: it.producto_nombre as string,
-        cantidad: it.cantidad as number,
-        precioUnitario: Number(it.precio_unitario),
-        subtotal: Number(it.subtotal),
-      })),
-  }));
+  const ventas: GrocerySale[] = (ventasRes.data ?? []).map((row) => ventaFromRow(row, saleItemsData));
 
   return {
     productos,
