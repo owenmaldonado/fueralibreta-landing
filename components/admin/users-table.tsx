@@ -7,6 +7,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, type DropdownItem } from "@/components/ui/dropdown-menu";
 import type { AdminProfile } from "@/lib/admin-data";
+import { PLAN_ORDEN, PLAN_LABELS, type PlanId } from "@/lib/planes";
 import { cn } from "@/lib/utils";
 
 interface UsersTableProps {
@@ -14,7 +15,8 @@ interface UsersTableProps {
   currentUserId: string;
   onViewDetail: (userId: string) => void;
   onToggleRole: (profile: AdminProfile) => void;
-  onTogglePlan: (profile: AdminProfile) => void;
+  /** Cambia el plan (básico/pro/pro_plus) del negocio de este usuario — no profiles.plan, ver lib/planes.ts. */
+  onSetPlan: (profile: AdminProfile, plan: PlanId) => void;
   onToggleBanned: (profile: AdminProfile) => void;
   onImpersonate: (profile: AdminProfile) => void;
   onDeleteRequest: (profile: AdminProfile) => void;
@@ -25,7 +27,7 @@ export function UsersTable({
   currentUserId,
   onViewDetail,
   onToggleRole,
-  onTogglePlan,
+  onSetPlan,
   onToggleBanned,
   onImpersonate,
   onDeleteRequest,
@@ -57,11 +59,13 @@ export function UsersTable({
               icon: p.role === "admin" ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />,
               onClick: () => onToggleRole(p),
             },
-            {
-              label: p.plan === "pro" ? "Bajar a plan free" : "Subir a plan pro",
-              icon: <Crown className="h-4 w-4" />,
-              onClick: () => onTogglePlan(p),
-            },
+            ...(p.negociosCount > 0
+              ? PLAN_ORDEN.map((plan) => ({
+                  label: `Cambiar plan: ${PLAN_LABELS[plan]}`,
+                  icon: <Crown className="h-4 w-4" />,
+                  onClick: () => onSetPlan(p, plan),
+                }))
+              : []),
             {
               label: p.isBanned ? "Desbanear" : "Banear",
               icon: p.isBanned ? <CheckCircle2 className="h-4 w-4" /> : <Ban className="h-4 w-4" />,

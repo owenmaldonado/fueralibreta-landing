@@ -55,9 +55,66 @@ alter table negocios add column if not exists app_slug text not null default 'fu
 -- en vez de un link roto mientras tanto.
 alter table negocios add column if not exists whatsapp text;
 
+-- Plan de features (ver lib/planes.ts) — un negocio, no un usuario:
+-- profiles.plan (más abajo) sigue siendo la marca de "convirtió su prueba
+-- gratis" que usa /admin para reportes, un concepto totalmente distinto de
+-- este. Solo /admin lo escribe (vía service_role, PATCH
+-- /api/admin/negocios/[id]) — el dueño del negocio nunca lo edita desde su
+-- propia sesión: syncTenantDiff (lib/data.ts) no lo incluye en los campos
+-- que sincroniza desde /app, así que aunque esta columna viaje en el
+-- objeto Business en memoria, nunca se manda de vuelta a Supabase desde
+-- ahí.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'negocios' and column_name = 'plan'
+  ) then
+    alter table negocios add column plan text not null default 'basico' check (plan in ('basico', 'pro', 'pro_plus'));
+  end if;
+end $$;
+
+-- Que el dueño nunca vea negocios.plan en el objeto Business que le llega
+-- desde /app y no lo mande de vuelta ya evita que lo cambie DESDE LA APP —
+-- pero RLS es por fila, no por columna: negocios_update de abajo (using
+-- owner_id = auth.uid()) por sí sola dejaría a cualquier dueño subirse a
+-- 'pro_plus' con una llamada directa a Supabase desde la consola del
+-- navegador, sin pasar por /app para nada. Este trigger es el guard real:
+-- solo permite tocar plan cuando la sesión corre con la service_role key
+-- (que es como pega /api/admin/negocios/[id]), sin importar qué mande el
+-- cliente.
+create or replace function prevent_owner_plan_change()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.plan is distinct from old.plan and auth.role() <> 'service_role' then
+    raise exception 'Solo un administrador puede cambiar el plan de un negocio';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists negocios_plan_owner_guard on negocios;
+create trigger negocios_plan_owner_guard
+  before update on negocios
+  for each row execute function prevent_owner_plan_change();
+
 create index if not exists negocios_owner_id_idx on negocios(owner_id);
 create index if not exists negocios_slug_idx on negocios(slug);
 create index if not exists negocios_app_slug_idx on negocios(app_slug);
+
+-- Para que el cliente vea un cambio de plan (hecho desde /admin) reflejado
+-- al instante sin recargar — mismo patrón que barberia_citas/abarrotes_ventas.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'negocios'
+  ) then
+    alter publication supabase_realtime add table negocios;
+  end if;
+end $$;
 
 -- Función helper: ¿el usuario autenticado es dueño de este negocio?
 create or replace function is_negocio_owner(p_negocio_id uuid)

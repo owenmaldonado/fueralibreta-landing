@@ -22,10 +22,10 @@ import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
 import {
   fetchAdminOverview,
   updateUserRole,
-  updateUserPlan,
   setUserBanned,
   deleteNegocio,
   toggleNegocioActive,
+  updateNegocioPlan,
   changeNegocioOwner,
   deleteUserCompletely,
   impersonateUser,
@@ -35,6 +35,7 @@ import {
   type AdminNegocio,
   type AdminLead,
 } from "@/lib/admin-data";
+import { PLAN_LABELS, type PlanId } from "@/lib/planes";
 
 type RoleFilter = "todos" | "admin" | "user";
 type PlanFilter = "todos" | "free" | "pro";
@@ -134,15 +135,27 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     }
   }
 
-  async function handleTogglePlan(p: AdminProfile) {
-    const nextPlan = p.plan === "pro" ? "free" : "pro";
+  async function handleSetNegocioPlan(negocioId: string, plan: PlanId, nombre: string) {
     try {
-      await updateUserPlan(p.id, nextPlan);
-      toast.success(`${p.email ?? "Usuario"} ahora está en plan ${nextPlan}.`);
+      await updateNegocioPlan(negocioId, plan);
+      toast.success(`${nombre} ahora está en plan ${PLAN_LABELS[plan]}.`);
       load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo cambiar el plan.");
     }
+  }
+
+  // La tabla de Usuarios no tiene negocio_id a la mano (es un dato de
+  // negocios, no de profiles) — se resuelve aquí contra overview.negocios,
+  // que ya está cargado. Si el usuario todavía no tiene negocio (a medio
+  // onboarding), no hay nada que cambiar de plan todavía.
+  function handleSetPlanDeUsuario(p: AdminProfile, plan: PlanId) {
+    const negocio = overview?.negocios.find((n) => n.ownerId === p.id);
+    if (!negocio) {
+      toast.error(`${p.email ?? "Este usuario"} todavía no tiene un negocio.`);
+      return;
+    }
+    handleSetNegocioPlan(negocio.id, plan, negocio.nombre);
   }
 
   async function handleToggleBanned(p: AdminProfile) {
@@ -312,7 +325,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 currentUserId={currentUserId}
                 onViewDetail={setDetailUserId}
                 onToggleRole={handleToggleRole}
-                onTogglePlan={handleTogglePlan}
+                onSetPlan={handleSetPlanDeUsuario}
                 onToggleBanned={handleToggleBanned}
                 onImpersonate={handleImpersonate}
                 onDeleteRequest={setDeleteUserTarget}
@@ -336,6 +349,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 onViewDetail={setDetailNegocio}
                 onChangeOwner={setChangeOwnerNegocio}
                 onToggleActive={handleToggleNegocioActive}
+                onSetPlan={(n, plan) => handleSetNegocioPlan(n.id, plan, n.nombre)}
                 onDeleteRequest={setDeleteNegocioTarget}
               />
             </div>

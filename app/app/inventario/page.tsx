@@ -19,12 +19,14 @@ import { EmptyState } from "@/components/dashboards/empty-state";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import { VentaCart } from "@/components/abarrotes/venta-cart";
 import { useSession } from "@/lib/session";
+import { usePlan } from "@/lib/planes";
 import { formatMoney, todayISO, uid } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 import type { GroceryProduct, GrocerySale, GrocerySaleItem } from "@/lib/types";
 
 export default function InventarioPage() {
   const { session, ready, update } = useSession();
+  const plan = usePlan();
   const [tab, setTab] = React.useState("productos");
   const [q, setQ] = React.useState("");
   const [scanning, setScanning] = React.useState(false);
@@ -46,6 +48,7 @@ export default function InventarioPage() {
   const filtrados = productosInventario.filter(
     (p) => p.nombre.toLowerCase().includes(q.toLowerCase()) || p.codigo.includes(q)
   );
+  const tocoLimiteProductos = plan.limiteAlcanzado("max_productos", productosInventario.length);
   const ventas = [...data.ventas].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   function handleScan(codigo: string) {
@@ -117,10 +120,23 @@ export default function InventarioPage() {
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto o código..." className="pl-9" />
             </div>
-            <Button size="icon" variant="outline" onClick={() => setAddOpen(true)} aria-label="Agregar producto">
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => setAddOpen(true)}
+              disabled={tocoLimiteProductos}
+              aria-label="Agregar producto"
+            >
               <Plus className="h-4 w-4" />
             </Button>
           </div>
+
+          {tocoLimiteProductos && (
+            <div className="mx-4 mb-3 rounded-xl border border-dashed border-border bg-card px-4 py-3 text-center">
+              <p className="text-sm font-medium">Llegaste al límite de {plan.limites.max_productos} productos de tu plan {plan.label}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Sube de plan desde /admin para agregar más.</p>
+            </div>
+          )}
 
           <div className="flex flex-col gap-2 px-4 pb-6">
             {filtrados.length === 0 ? (
@@ -214,7 +230,9 @@ export default function InventarioPage() {
       </Sheet>
 
       <Sheet open={!!nuevoCodigo} onOpenChange={(o) => !o && setNuevoCodigo(null)}>
-        {nuevoCodigo && <ProductoForm codigo={nuevoCodigo} onClose={() => setNuevoCodigo(null)} update={update} />}
+        {nuevoCodigo && (
+          <ProductoForm codigo={nuevoCodigo} onClose={() => setNuevoCodigo(null)} update={update} limiteAlcanzado={tocoLimiteProductos} />
+        )}
       </Sheet>
 
       <Sheet open={addOpen} onOpenChange={setAddOpen}>
@@ -288,11 +306,14 @@ function ProductoForm({
   codigo,
   onClose,
   update,
+  limiteAlcanzado = false,
 }: {
   producto?: GroceryProduct;
   codigo: string | null;
   onClose: () => void;
   update: ReturnType<typeof useSession>["update"];
+  /** Solo aplica al crear (no a editar un producto que ya existe) — ver plan.limiteAlcanzado("max_productos", ...) en el padre. */
+  limiteAlcanzado?: boolean;
 }) {
   const [nombre, setNombre] = React.useState(producto?.nombre ?? "");
   const [codigoInput, setCodigoInput] = React.useState(producto?.codigo ?? codigo ?? "");
@@ -307,7 +328,8 @@ function ProductoForm({
   const [fechaCaducidad, setFechaCaducidad] = React.useState(producto?.lotes?.[0]?.fecha ?? todayISO(30));
 
   const utilidad = Number(precio || 0) - Number(costo || 0);
-  const puedeGuardar = nombre.trim().length > 1 && Number(precio) > 0;
+  const bloqueadoPorLimite = !producto && limiteAlcanzado;
+  const puedeGuardar = nombre.trim().length > 1 && Number(precio) > 0 && !bloqueadoPorLimite;
 
   function guardar() {
     if (!puedeGuardar) return;
@@ -421,6 +443,9 @@ function ProductoForm({
           </div>
         )}
       </div>
+      {bloqueadoPorLimite && (
+        <p className="text-xs text-destructive">Llegaste al límite de productos de tu plan — sube de plan desde /admin para agregar más.</p>
+      )}
       <SheetFooter>
         <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>
           {producto ? "Guardar cambios" : "Guardar producto"}

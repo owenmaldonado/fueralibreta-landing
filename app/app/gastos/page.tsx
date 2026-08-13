@@ -9,6 +9,7 @@ import { StatTile } from "@/components/dashboards/stat-tile";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { TrendBarChart } from "@/components/dashboards/trend-bar-chart";
 import { TrendLineChart } from "@/components/dashboards/trend-line-chart";
+import { PlanGate } from "@/components/dashboards/plan-gate";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -283,31 +284,33 @@ export default function GastosPage() {
             ))}
           </ChipGroup>
         )}
-        {chartTab === "gastos" && (
-          <TrendBarChart data={serieGastos} bars={[{ key: "value", name: "Gastado", color: COLOR_GASTOS }]} emptyText="Sin gastos en este periodo" />
-        )}
-        {chartTab === "ventas" && (
-          <TrendBarChart data={serieVentas} bars={[{ key: "value", name: "Ventas", color: COLOR_VENTAS }]} emptyText="Sin ventas en este periodo" />
-        )}
-        {chartTab === "ganancias" && (
-          <TrendBarChart
-            data={serieGananciaBruta}
-            bars={[{ key: "value", name: "Ganancia", color: COLOR_GANANCIA }]}
-            emptyText="Sin ganancia en este periodo"
-          />
-        )}
-        {chartTab === "todos" && (
-          <TrendLineChart
-            data={serieVentas.map((v, i) => ({
-              label: v.label,
-              ventas: v.value,
-              gastos: serieGastos[i]?.value ?? 0,
-              ganancia: serieGananciaNeta[i]?.value ?? 0,
-            }))}
-            gananciaLabel="Ganancia real"
-            emptyText="Sin ventas ni gastos en este periodo"
-          />
-        )}
+        <PlanGate feature="graficas">
+          {chartTab === "gastos" && (
+            <TrendBarChart data={serieGastos} bars={[{ key: "value", name: "Gastado", color: COLOR_GASTOS }]} emptyText="Sin gastos en este periodo" />
+          )}
+          {chartTab === "ventas" && (
+            <TrendBarChart data={serieVentas} bars={[{ key: "value", name: "Ventas", color: COLOR_VENTAS }]} emptyText="Sin ventas en este periodo" />
+          )}
+          {chartTab === "ganancias" && (
+            <TrendBarChart
+              data={serieGananciaBruta}
+              bars={[{ key: "value", name: "Ganancia", color: COLOR_GANANCIA }]}
+              emptyText="Sin ganancia en este periodo"
+            />
+          )}
+          {chartTab === "todos" && (
+            <TrendLineChart
+              data={serieVentas.map((v, i) => ({
+                label: v.label,
+                ventas: v.value,
+                gastos: serieGastos[i]?.value ?? 0,
+                ganancia: serieGananciaNeta[i]?.value ?? 0,
+              }))}
+              gananciaLabel="Ganancia real"
+              emptyText="Sin ventas ni gastos en este periodo"
+            />
+          )}
+        </PlanGate>
       </div>
 
       <div className="flex flex-col gap-2 px-4 py-6">

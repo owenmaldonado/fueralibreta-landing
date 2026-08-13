@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { supabase, isSupabaseConfigured } from "./supabase";
-import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow, fetchVentaConItems } from "./data";
+import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow, fetchVentaConItems, businessFromRow } from "./data";
 import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
 import { todayISO } from "./mock";
-import type { Appointment, GrocerySale, TenantData } from "./types";
+import type { Appointment, Business, GrocerySale, TenantData } from "./types";
 
 type Source = "supabase" | "demo" | null;
 
@@ -219,6 +219,48 @@ function suscribirseAVentasEnVivo(negocioId: string, onEvento: (venta: GrocerySa
 }
 
 /**
+ * Mismo patrón otra vez, para UPDATE en negocios — sobre todo para
+ * negocios.plan: /admin lo cambia con service_role desde OTRA sesión (la
+ * del admin, no la de este dueño), así que sin esto un upgrade/downgrade
+ * de plan solo se reflejaba hasta que el dueño recargara la página. A
+ * diferencia de ventas, aquí el payload del UPDATE ya trae la fila
+ * completa — no hace falta ninguna consulta extra.
+ */
+let negocioChannel: ReturnType<typeof supabase.channel> | null = null;
+let negocioChannelId: string | null = null;
+const negocioListeners = new Set<(business: Business) => void>();
+
+function suscribirseANegocioEnVivo(negocioId: string, onEvento: (business: Business) => void): () => void {
+  if (negocioChannelId !== negocioId) {
+    if (negocioChannel) supabase.removeChannel(negocioChannel);
+    negocioChannel = null;
+    negocioChannelId = null;
+    const nuevoCanal = supabase
+      .channel(`negocio-${negocioId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "negocios", filter: `id=eq.${negocioId}` },
+        (payload) => {
+          const business = businessFromRow(payload.new as Record<string, unknown>);
+          negocioListeners.forEach((l) => l(business));
+        }
+      )
+      .subscribe();
+    negocioChannel = nuevoCanal;
+    negocioChannelId = negocioId;
+  }
+  negocioListeners.add(onEvento);
+  return () => {
+    negocioListeners.delete(onEvento);
+    if (negocioListeners.size === 0 && negocioChannel) {
+      supabase.removeChannel(negocioChannel);
+      negocioChannel = null;
+      negocioChannelId = null;
+    }
+  };
+}
+
+/**
  * Sesión del negocio activo. Dos fuentes posibles:
  *
  * - "supabase": el usuario está logueado y ya tiene un negocio real en la
@@ -234,6 +276,7 @@ export function useSession() {
   const sessionRef = useRef<TenantData | null>(null);
   const citasUnsubRef = useRef<(() => void) | null>(null);
   const ventasUnsubRef = useRef<(() => void) | null>(null);
+  const negocioUnsubRef = useRef<(() => void) | null>(null);
   sessionRef.current = session;
 
   const loadFromDemoPreview = useCallback(() => {
@@ -253,6 +296,11 @@ export function useSession() {
     function detenerVentasEnVivo() {
       ventasUnsubRef.current?.();
       ventasUnsubRef.current = null;
+    }
+
+    function detenerNegocioEnVivo() {
+      negocioUnsubRef.current?.();
+      negocioUnsubRef.current = null;
     }
 
     /**
@@ -297,6 +345,14 @@ export function useSession() {
           if (prev.abarrotes.ventas.some((v) => v.id === venta.id)) return prev;
           return { ...prev, abarrotes: { ...prev.abarrotes, ventas: [venta, ...prev.abarrotes.ventas] } };
         });
+      });
+    }
+
+    /** Ver comentario de suscribirseANegocioEnVivo arriba — aplica a los 3 verticales, no solo a uno. */
+    function escucharNegocioEnVivo(negocioId: string) {
+      detenerNegocioEnVivo();
+      negocioUnsubRef.current = suscribirseANegocioEnVivo(negocioId, (business) => {
+        setSessionState((prev) => (prev ? { ...prev, business } : prev));
       });
     }
 
@@ -417,6 +473,13 @@ export function useSession() {
               console.error("[session] no se pudo suscribir a ventas en vivo (la sesión sigue cargada bien):", err);
             }
           }
+          // Aplica a los 3 verticales — un cambio de plan desde /admin debe
+          // reflejarse sin recargar sin importar el tipo de negocio.
+          try {
+            escucharNegocioEnVivo(tenant.business.id);
+          } catch (err) {
+            console.error("[session] no se pudo suscribir a cambios del negocio en vivo (la sesión sigue cargada bien):", err);
+          }
         } else {
           // Logueado pero sin negocio todavía: se deja session en null y es
           // /onboarding quien lo crea de forma EXPLÍCITA (un solo botón, un
@@ -490,6 +553,7 @@ export function useSession() {
         setReady(true);
         detenerCitasEnVivo();
         detenerVentasEnVivo();
+        detenerNegocioEnVivo();
         limpiarCacheTenant();
         return;
       }
@@ -515,6 +579,7 @@ export function useSession() {
       authSub.unsubscribe();
       detenerCitasEnVivo();
       detenerVentasEnVivo();
+      detenerNegocioEnVivo();
     };
   }, [loadFromDemoPreview]);
 

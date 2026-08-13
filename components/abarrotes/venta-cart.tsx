@@ -13,6 +13,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Dialog, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import { uid, formatMoney } from "@/lib/mock";
+import { usePlan } from "@/lib/planes";
 import type { TenantData, GroceryProduct, GrocerySale } from "@/lib/types";
 
 const EMOJI_POR_CATEGORIA: Record<string, string> = {
@@ -70,6 +71,7 @@ interface VentaCartProps {
  * /app/inventario.
  */
 export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
+  const plan = usePlan();
   const [mounted, setMounted] = React.useState(false);
   const [paso, setPaso] = React.useState<"grid" | "carrito">("grid");
   const [categoria, setCategoria] = React.useState<string>("Todas");
@@ -177,7 +179,15 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
 
   const total = cart.reduce((acc, l) => acc + l.cantidad * l.precioUnitario, 0);
   const cantidadTotal = cart.reduce((acc, l) => acc + l.cantidad, 0);
-  const puedeCobrar = cart.length > 0 && cart.every((l) => l.cantidad > 0);
+  const ventasEsteMes = React.useMemo(() => {
+    const ahora = new Date();
+    return data.ventas.filter((v) => {
+      const f = new Date(v.fecha);
+      return f.getFullYear() === ahora.getFullYear() && f.getMonth() === ahora.getMonth();
+    }).length;
+  }, [data.ventas]);
+  const tocoLimiteVentas = plan.limiteAlcanzado("max_ventas_mes", ventasEsteMes);
+  const puedeCobrar = cart.length > 0 && cart.every((l) => l.cantidad > 0) && !tocoLimiteVentas;
 
   function cobrar() {
     if (!puedeCobrar) return;
@@ -382,6 +392,14 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
           </div>
 
           <div className="border-t border-border p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+            {tocoLimiteVentas && (
+              <div className="mb-3 rounded-xl border border-dashed border-border bg-card px-4 py-3 text-center">
+                <p className="text-sm font-medium">
+                  Llegaste al límite de {plan.limites.max_ventas_mes} ventas este mes de tu plan {plan.label}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Sube de plan desde /admin para vender sin límite.</p>
+              </div>
+            )}
             <div className="mb-3 flex items-center justify-between rounded-lg bg-secondary px-4 py-3">
               <span className="text-sm font-medium text-muted-foreground">Total</span>
               <span className="font-display text-xl font-bold">{formatMoney(total)}</span>
