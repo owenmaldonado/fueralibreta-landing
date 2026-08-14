@@ -671,6 +671,12 @@ alter table abarrotes_productos alter column stock type numeric(10, 3);
 -- sin valor, el frontend usa un default por categoría.
 alter table abarrotes_productos add column if not exists emoji text;
 
+-- Marcado en Cerrar Día > Caducados como "por caducar mañana" (ver
+-- abarrotera_mermas y CerrarDiaSheet en
+-- components/dashboards/abarrotes-cerrar-dia.tsx) — deja un badge amarillo
+-- en Hoy hasta que un próximo cierre lo resuelva (se vendió todo o caducó).
+alter table abarrotes_productos add column if not exists por_caducar boolean not null default false;
+
 create table if not exists abarrotes_lotes (
   id uuid primary key default gen_random_uuid(),
   producto_id uuid not null references abarrotes_productos(id) on delete cascade,
@@ -781,11 +787,51 @@ create table if not exists abarrotes_gastos (
   recordatorio boolean not null default false
 );
 
+-- Corte diario de Abarrotera (paso 1 de Cerrar Día): a diferencia de
+-- fondita_cortes (que deliberadamente NO calcula faltante para no ser
+-- estresante), aquí sí se guarda ya resuelto — el dueño de abarrotera lo
+-- quiere ver. Bitácora write-only (mismo patrón que fondita_cortes):
+-- escrita directo a Supabase solo para negocios reales, nada la lee
+-- todavía. `gastos` es el monto que reportó el dueño en el cierre — SÍ se
+-- duplica además como un abarrotes_gastos real (a diferencia del gasto_dia
+-- de Fondita) porque aquí se pide con concepto, como cualquier otro gasto.
+create table if not exists abarrotera_cortes (
+  id uuid primary key default gen_random_uuid(),
+  negocio_id uuid not null references negocios(id) on delete cascade,
+  fecha date not null default current_date,
+  ventas_calculadas numeric(10, 2) not null default 0,
+  efectivo_real numeric(10, 2),
+  gastos numeric(10, 2),
+  faltante numeric(10, 2),
+  created_at timestamptz not null default now()
+);
+
+-- Paso 2 (Caducados/Dañados) de Cerrar Día: un registro por producto que se
+-- decidió en el cierre. producto_nombre queda como snapshot por si el
+-- producto se borra después (producto_id en null, no cascade). accion:
+-- 'vendido_todo' (nada perdido), 'caduco' (con cantidad y pérdida en
+-- dinero — se refleja además como un abarrotes_gastos real, ver
+-- terminarCierre en abarrotes-cerrar-dia.tsx, y descuenta esas piezas del
+-- stock) o 'por_caducar' (deja el badge para mañana, sin pérdida todavía).
+create table if not exists abarrotera_mermas (
+  id uuid primary key default gen_random_uuid(),
+  negocio_id uuid not null references negocios(id) on delete cascade,
+  fecha date not null default current_date,
+  producto_id uuid references abarrotes_productos(id) on delete set null,
+  producto_nombre text not null,
+  accion text not null check (accion in ('vendido_todo', 'caduco', 'por_caducar')),
+  cantidad integer,
+  perdida_dinero numeric(10, 2),
+  created_at timestamptz not null default now()
+);
+
 alter table abarrotes_productos enable row level security;
 alter table abarrotes_lotes enable row level security;
 alter table abarrotes_ventas enable row level security;
 alter table abarrotes_sale_items enable row level security;
 alter table abarrotes_fiados enable row level security;
+alter table abarrotera_cortes enable row level security;
+alter table abarrotera_mermas enable row level security;
 alter table abarrotes_fiado_movimientos enable row level security;
 alter table abarrotes_apartados enable row level security;
 alter table abarrotes_gastos enable row level security;
@@ -823,6 +869,14 @@ create policy "abarrotes_apartados_owner" on abarrotes_apartados for all
 
 drop policy if exists "abarrotes_gastos_owner" on abarrotes_gastos;
 create policy "abarrotes_gastos_owner" on abarrotes_gastos for all
+  using (is_negocio_owner(negocio_id)) with check (is_negocio_owner(negocio_id));
+
+drop policy if exists "abarrotera_cortes_owner" on abarrotera_cortes;
+create policy "abarrotera_cortes_owner" on abarrotera_cortes for all
+  using (is_negocio_owner(negocio_id)) with check (is_negocio_owner(negocio_id));
+
+drop policy if exists "abarrotera_mermas_owner" on abarrotera_mermas;
+create policy "abarrotera_mermas_owner" on abarrotera_mermas for all
   using (is_negocio_owner(negocio_id)) with check (is_negocio_owner(negocio_id));
 
 -- ============================================================================
@@ -1153,6 +1207,10 @@ drop policy if exists "abarrotes_apartados_admin_all" on abarrotes_apartados;
 create policy "abarrotes_apartados_admin_all" on abarrotes_apartados for all using (is_admin()) with check (is_admin());
 drop policy if exists "abarrotes_gastos_admin_all" on abarrotes_gastos;
 create policy "abarrotes_gastos_admin_all" on abarrotes_gastos for all using (is_admin()) with check (is_admin());
+drop policy if exists "abarrotera_cortes_admin_all" on abarrotera_cortes;
+create policy "abarrotera_cortes_admin_all" on abarrotera_cortes for all using (is_admin()) with check (is_admin());
+drop policy if exists "abarrotera_mermas_admin_all" on abarrotera_mermas;
+create policy "abarrotera_mermas_admin_all" on abarrotera_mermas for all using (is_admin()) with check (is_admin());
 
 drop policy if exists "contactos_admin_all" on contactos;
 create policy "contactos_admin_all" on contactos for all using (is_admin()) with check (is_admin());
