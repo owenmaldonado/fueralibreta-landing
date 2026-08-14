@@ -306,7 +306,13 @@ export default function GastosPage() {
                 gastos: serieGastos[i]?.value ?? 0,
                 ganancia: serieGananciaNeta[i]?.value ?? 0,
               }))}
-              gananciaLabel="Ganancia real"
+              // Fondita vende servicio, sin costo de insumo por producto que
+              // restar (a diferencia de Abarrotes) — su "ganancia real" sería
+              // idéntica a ventas - gastos, una línea sin información nueva
+              // que solo confunde. Se omite el prop por completo (en vez de
+              // solo el label) porque TrendLineChart ya no dibuja la 3ra
+              // línea sin él.
+              gananciaLabel={modulo === "abarrotes" ? "Ganancia real" : undefined}
               emptyText="Sin ventas ni gastos en este periodo"
             />
           )}

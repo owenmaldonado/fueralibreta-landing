@@ -6,7 +6,6 @@ import { ClipboardList, UtensilsCrossed, Receipt, X } from "lucide-react";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Stepper } from "@/components/ui/stepper";
 import { Button } from "@/components/ui/button";
@@ -66,7 +65,7 @@ function NuevoPedidoForm({
 }) {
   const [clienteNombre, setClienteNombre] = React.useState("");
   const [hora] = React.useState(nowHHMM());
-  const [ponerHora, setPonerHora] = React.useState(false);
+  const [modo, setModo] = React.useState<"cobrar" | "programar">("cobrar");
   const [horaEntregaInput, setHoraEntregaInput] = React.useState("");
   const [items, setItems] = React.useState<OrderItem[]>([]);
   const [configurando, setConfigurando] = React.useState<string | null>(null);
@@ -111,7 +110,7 @@ function NuevoPedidoForm({
     setItems((prev) => prev.filter((it) => it.id !== id));
   }
 
-  const horaEntrega = ponerHora && horaEntregaInput ? horaEntregaInput : undefined;
+  const horaEntrega = modo === "programar" && horaEntregaInput ? horaEntregaInput : undefined;
 
   function guardar() {
     if (!clienteNombre.trim() || items.length === 0) return;
@@ -124,7 +123,10 @@ function NuevoPedidoForm({
         hora,
         horaEntrega,
         items,
-        estado: "pendiente" as const,
+        // "Cobrar ahora": venta directa, ya entregada, mismo flujo que
+        // abarrotera — no pasa por Pedidos pendientes. "Programar": sí va a
+        // pendientes, con la hora de entrega prometida si se puso.
+        estado: modo === "cobrar" ? ("entregado" as const) : ("pendiente" as const),
         total,
       };
       return { ...prev, fonda: { ...f, pedidos: [pedido, ...f.pedidos] } };
@@ -142,20 +144,30 @@ function NuevoPedidoForm({
         </div>
 
         <div className="space-y-1.5">
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Checkbox
-              checked={ponerHora}
-              onCheckedChange={(v) => {
-                setPonerHora(v);
-                if (!v) setHoraEntregaInput("");
-              }}
-            />
-            ¿Poner hora?
-          </label>
-          {ponerHora && (
-            // type="time" nativo: siempre entrega HH:mm en 24h sin
-            // ambigüedad AM/PM, y en celular abre el selector de reloj.
-            <Input type="time" min="00:00" max="23:59" value={horaEntregaInput} onChange={(e) => setHoraEntregaInput(e.target.value)} />
+          <ChipGroup>
+            <Chip selected={modo === "cobrar"} onClick={() => setModo("cobrar")}>
+              Cobrar ahora · Entregar
+            </Chip>
+            <Chip
+              selected={modo === "programar"}
+              onClick={() => setModo("programar")}
+            >
+              Programar
+            </Chip>
+          </ChipGroup>
+          {modo === "programar" && (
+            <div className="mt-1.5 space-y-1.5">
+              <Label>Entrega programada</Label>
+              {/* type="time" nativo: siempre entrega HH:mm en 24h sin
+                  ambigüedad AM/PM, y en celular abre el selector de reloj. */}
+              <Input
+                type="time"
+                min="00:00"
+                max="23:59"
+                value={horaEntregaInput}
+                onChange={(e) => setHoraEntregaInput(e.target.value)}
+              />
+            </div>
           )}
         </div>
 
@@ -222,7 +234,7 @@ function NuevoPedidoForm({
       </div>
       <SheetFooter>
         <Button size="lg" disabled={!clienteNombre.trim() || items.length === 0} onClick={guardar}>
-          Guardar pedido
+          {modo === "cobrar" ? "Cobrar" : "Programar pedido"}
         </Button>
       </SheetFooter>
     </>
