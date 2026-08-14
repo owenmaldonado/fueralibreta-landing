@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ActionCard } from "./action-card";
 import { EmptyState } from "./empty-state";
 import { CobrarCitaDialog } from "./cobrar-cita-dialog";
+import { CerrarTurnoSheet } from "./barberia-cerrar-turno";
 import { daysSince, formatMoney, statsVisitasCliente, todayISO, waLink } from "@/lib/mock";
 import type { Appointment, TenantData, SessionUpdater } from "@/lib/types";
 
@@ -15,6 +16,7 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
   const business = session.business;
   const hoy = todayISO(0);
   const [cobrando, setCobrando] = React.useState<Appointment | null>(null);
+  const [cerrandoTurno, setCerrandoTurno] = React.useState(false);
 
   const citasHoy = data.citas
     .filter((c) => c.fecha === hoy && c.estado === "pendiente")
@@ -46,7 +48,15 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
 
   return (
     <>
-      <PageHeader title={`Hola, ${business.dueno.split(" ")[0]}`} subtitle="Esto necesita tu atención hoy" />
+      <PageHeader
+        title={`Hola, ${business.dueno.split(" ")[0]}`}
+        subtitle="Esto necesita tu atención hoy"
+        action={
+          <Button size="sm" variant="outline" onClick={() => setCerrandoTurno(true)}>
+            Cerrar turno
+          </Button>
+        }
+      />
       <div className="flex flex-col gap-3 px-4 pb-6">
         {citasHoy.length > 0 && (
           <ActionCard
@@ -115,6 +125,8 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
       </div>
 
       <CobrarCitaDialog cita={cobrando} onClose={() => setCobrando(null)} onConfirmar={marcarListoConMetodo} />
+
+      <CerrarTurnoSheet open={cerrandoTurno} onClose={() => setCerrandoTurno(false)} session={session} update={update} />
     </>
   );
 }

@@ -307,6 +307,28 @@ create table if not exists barberia_productos (
   minimo integer not null default 3
 );
 
+-- Corte diario de Barbería (paso 1 del wizard "Cerrar Turno" en Hoy). Igual
+-- que abarrotera_cortes, SÍ calcula y guarda el faltante (a diferencia de
+-- fondita_cortes, que deliberadamente no lo hace). Bitácora write-only
+-- (mismo patrón que las otras dos): escrita directo a Supabase solo para
+-- negocios reales al terminar el cierre, nada la lee todavía. Las propinas
+-- del día y los gastos de material del paso 2 del wizard NO viven aquí
+-- duplicados — se guardan como barberia_caja reales (tipo 'propina'/'gasto'),
+-- igual que cualquier movimiento manual de Caja, así ya aparecen en su
+-- gráfica sin tocarla; propinas_total y gastos_material aquí son solo el
+-- resumen numérico del cierre.
+create table if not exists barberia_cortes (
+  id uuid primary key default gen_random_uuid(),
+  negocio_id uuid not null references negocios(id) on delete cascade,
+  fecha date not null default current_date,
+  ventas_calculadas numeric(10, 2) not null default 0,
+  efectivo_real numeric(10, 2),
+  propinas_total numeric(10, 2),
+  gastos_material numeric(10, 2),
+  faltante numeric(10, 2),
+  created_at timestamptz not null default now()
+);
+
 alter table barberia_servicios enable row level security;
 alter table barberia_horario enable row level security;
 alter table barberia_excepciones enable row level security;
@@ -314,6 +336,7 @@ alter table barberia_clientes enable row level security;
 alter table barberia_citas enable row level security;
 alter table barberia_caja enable row level security;
 alter table barberia_productos enable row level security;
+alter table barberia_cortes enable row level security;
 
 -- Dueño: control total sobre todo lo de su negocio.
 drop policy if exists "barberia_servicios_owner" on barberia_servicios;
@@ -338,6 +361,10 @@ create policy "barberia_caja_owner" on barberia_caja for all
 
 drop policy if exists "barberia_productos_owner" on barberia_productos;
 create policy "barberia_productos_owner" on barberia_productos for all
+  using (is_negocio_owner(negocio_id)) with check (is_negocio_owner(negocio_id));
+
+drop policy if exists "barberia_cortes_owner" on barberia_cortes;
+create policy "barberia_cortes_owner" on barberia_cortes for all
   using (is_negocio_owner(negocio_id)) with check (is_negocio_owner(negocio_id));
 
 -- Público (clientes en /reserva/[slug]): puede ver servicios/horario/excepciones
@@ -1173,6 +1200,8 @@ drop policy if exists "barberia_caja_admin_all" on barberia_caja;
 create policy "barberia_caja_admin_all" on barberia_caja for all using (is_admin()) with check (is_admin());
 drop policy if exists "barberia_productos_admin_all" on barberia_productos;
 create policy "barberia_productos_admin_all" on barberia_productos for all using (is_admin()) with check (is_admin());
+drop policy if exists "barberia_cortes_admin_all" on barberia_cortes;
+create policy "barberia_cortes_admin_all" on barberia_cortes for all using (is_admin()) with check (is_admin());
 
 drop policy if exists "fonda_platillos_admin_all" on fonda_platillos;
 create policy "fonda_platillos_admin_all" on fonda_platillos for all using (is_admin()) with check (is_admin());
