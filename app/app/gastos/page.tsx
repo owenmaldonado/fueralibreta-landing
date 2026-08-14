@@ -74,10 +74,7 @@ export default function GastosPage() {
   const gastos: Expense[] = session.fonda?.gastos ?? session.abarrotes?.gastos ?? [];
 
   // Un pedido de fonda solo cuenta como venta una vez "entregado" — mientras
-  // está pendiente todavía no es dinero cobrado. En Fondita se vende
-  // servicio: el precio completo del platillo cuenta, no hay costo de
-  // insumo por separado que restar (a diferencia de Abarrotes, que sí tiene
-  // costo/precio por producto en Inventario).
+  // está pendiente todavía no es dinero cobrado.
   //
   // abarrotes_ventas.fecha es timestamptz en UTC (fonda_pedidos.fecha ya es
   // solo-día) — fechaCalendarioLocal la convierte al día calendario del
@@ -102,13 +99,31 @@ export default function GastosPage() {
   // ventas (se superponían en la gráfica). costoUnitario es el costo del
   // producto AL MOMENTO de la venta (snapshot que hace cobrar() en
   // VentaCart) — las ventas de antes de ese campo caen al costo ACTUAL del
-  // producto. Fondita vende servicio sin costo de insumo por separado
-  // (Abarrotes sí lo tiene en Inventario): su "ganancia" es su venta
-  // completa, igual que antes.
+  // producto.
+  //
+  // Fondita: cada Dish tiene un `costo` opcional (agregado en Menú > Editar
+  // platillo). Un platillo SIN costo no aporta margen conocido — su venta
+  // cuenta $0 de ganancia (ni se inventa como venta completa, ni se excluye
+  // del todo: así una fonda con solo ALGUNOS platillos con costo sigue
+  // viendo la ganancia real de esos, en vez de todo-o-nada). El precio de
+  // venta usado es el del platillo AHORA (mismo trade-off que costoUnitario
+  // de Abarrotes vs. un precio histórico que no se guarda por línea en
+  // Fondita) más el precio_extra de la variante elegida, si tenía.
   const costoPorProducto = new Map((session.abarrotes?.productos ?? []).map((p) => [p.id, p.costo]));
+  const platillosPorId = new Map((session.fonda?.platillos ?? []).map((p) => [p.id, p]));
   const gananciaPorVenta: Movimiento[] =
     modulo === "fonda"
-      ? ventas
+      ? pedidosEntregados.map((p) => ({
+          id: p.id,
+          fecha: p.fecha,
+          monto: p.items.reduce((acc, it) => {
+            const platillo = platillosPorId.get(it.platilloId);
+            if (!platillo || platillo.costo == null) return acc;
+            const extra = it.varianteNombre ? platillo.variantes?.find((v) => v.valor === it.varianteNombre)?.precioExtra ?? 0 : 0;
+            return acc + (platillo.precio + extra - platillo.costo) * it.cantidad;
+          }, 0),
+          label: p.clienteNombre || "Pedido",
+        }))
       : (session.abarrotes?.ventas ?? []).map((v) => ({
           id: v.id,
           fecha: fechaCalendarioLocal(v.fecha),
@@ -139,11 +154,14 @@ export default function GastosPage() {
   const gananciaBrutaHoy = gananciaPorVenta.filter((g) => g.fecha === hoy).reduce((acc, g) => acc + g.monto, 0);
   const gananciaRealHoy = gananciaBrutaHoy - gastosHoy;
 
-  // Un "se tiró" sin costo_opcional en el platillo (ver Cerrar Turno > Merma)
-  // no se convierte en gasto: no hay base confiable para calcular la pérdida
-  // real, así que en vez de una "ganancia" que en realidad ya está mal
-  // (el -$510 falso del prompt) se avisa que falta el costo.
-  const hayPlatilloSinCosto = modulo === "fonda" && (session.fonda?.platillos ?? []).some((p) => p.costo == null);
+  // Ganancia real de Fondita solo existe para los platillos que tienen
+  // costo puesto (ver arriba, gananciaPorVenta). Si NINGUNO lo tiene, la
+  // "ganancia" calculada sería 0 en todos lados — en vez de mostrar esa
+  // gráfica en blanco sin explicación, se avisa que falta el costo. En
+  // cuanto al menos uno lo tiene, el número ya es real (aunque parcial) y
+  // deja de mostrarse el aviso.
+  const algunPlatilloConCosto = modulo === "fonda" && (session.fonda?.platillos ?? []).some((p) => p.costo != null && p.costo > 0);
+  const faltaCostoEnFonda = modulo === "fonda" && !algunPlatilloConCosto;
 
   const gastosFiltrados = filterByRango(gastos, rango, (g) => g.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const ventasFiltradas = filterByRango(ventas, rango, (v) => v.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -249,7 +267,7 @@ export default function GastosPage() {
       ) : chartTab === "ganancias" ? (
         <div className="px-4 pt-3">
           <StatTile label="Total ganancia" value={formatMoney(totalGananciaBruta)} />
-          {hayPlatilloSinCosto && (
+          {faltaCostoEnFonda && (
             <p className="mt-2 px-1 text-xs text-muted-foreground">Agrega costo a tus platillos para ver ganancia real (con mermas incluidas).</p>
           )}
         </div>
@@ -278,7 +296,7 @@ export default function GastosPage() {
             <p className={cn("font-display text-lg font-bold", totalGananciaNeta >= 0 ? "text-ledger" : "text-destructive")}>
               {formatMoney(totalGananciaNeta)}
             </p>
-            {hayPlatilloSinCosto && (
+            {faltaCostoEnFonda && (
               <p className="mt-1 text-xs text-muted-foreground">Agrega costo a tus platillos para ver ganancia real.</p>
             )}
           </div>
@@ -318,13 +336,15 @@ export default function GastosPage() {
                 gastos: serieGastos[i]?.value ?? 0,
                 ganancia: serieGananciaNeta[i]?.value ?? 0,
               }))}
-              // Fondita vende servicio, sin costo de insumo por producto que
-              // restar (a diferencia de Abarrotes) — su "ganancia real" sería
-              // idéntica a ventas - gastos, una línea sin información nueva
-              // que solo confunde. Se omite el prop por completo (en vez de
-              // solo el label) porque TrendLineChart ya no dibuja la 3ra
-              // línea sin él.
-              gananciaLabel={modulo === "abarrotes" ? "Ganancia real" : undefined}
+              // Antes Fondita no tenía costo por platillo, así que su
+              // "ganancia real" era idéntica a ventas - gastos (línea sin
+              // información nueva) y se omitía. Ahora que Dish.costo existe
+              // (opcional), gananciaPorVenta ya resta el costo de los
+              // platillos que sí lo tienen — se muestra igual que en
+              // Abarrotes, pero solo en cuanto al menos un platillo tiene
+              // costo puesto (si no, sería solo -gastos disfrazado de
+              // "ganancia", el mismo número engañoso que ya evitamos arriba).
+              gananciaLabel={modulo === "abarrotes" || algunPlatilloConCosto ? "Ganancia real" : undefined}
               emptyText="Sin ventas ni gastos en este periodo"
             />
           )}
