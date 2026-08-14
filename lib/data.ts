@@ -14,6 +14,7 @@ import type {
   CajaEntry,
   InventoryProduct,
   Dish,
+  DishVariant,
   FondaOrder,
   OrderItem,
   Expense,
@@ -290,6 +291,7 @@ const platilloFromRow = (r: Row): Dish => ({
   precio: Number(r.precio),
   categoria: r.categoria as string,
   activoHoy: r.activo_hoy as boolean,
+  costo: r.costo != null ? Number(r.costo) : undefined,
 });
 const platilloToRow = (p: Dish, negocioId: string): Row => ({
   id: p.id,
@@ -298,6 +300,23 @@ const platilloToRow = (p: Dish, negocioId: string): Row => ({
   precio: p.precio,
   categoria: p.categoria,
   activo_hoy: p.activoHoy,
+  costo: p.costo ?? null,
+});
+
+const varianteFromRow = (r: Row): DishVariant => ({
+  id: r.id as string,
+  tipo: r.tipo as string,
+  valor: r.valor as string,
+  precioExtra: Number(r.precio_extra),
+  disponible: r.disponible as boolean,
+});
+const varianteToRow = (v: DishVariant, productoId: string): Row => ({
+  id: v.id,
+  producto_id: productoId,
+  tipo: v.tipo,
+  valor: v.valor,
+  precio_extra: v.precioExtra,
+  disponible: v.disponible,
 });
 
 const pedidoToRow = (p: FondaOrder, negocioId: string): Row => ({
@@ -317,6 +336,7 @@ const itemToRow = (it: OrderItem, pedidoId: string): Row => ({
   platillo_nombre: it.platilloNombre,
   cantidad: it.cantidad,
   nota: it.nota ?? null,
+  variante_nombre: it.varianteNombre ?? null,
 });
 
 const gastoFromRow = (r: Row): Expense => ({
@@ -345,6 +365,14 @@ async function fetchFondaData(negocioId: string): Promise<FondaData> {
     if (r.error) throw r.error;
   }
 
+  const platilloIds = (platillosRes.data ?? []).map((p) => p.id as string);
+  let variantesData: Row[] = [];
+  if (platilloIds.length) {
+    const variantesRes = await supabase.from("fonda_variantes").select("*").in("producto_id", platilloIds);
+    if (variantesRes.error) throw variantesRes.error;
+    variantesData = variantesRes.data ?? [];
+  }
+
   const pedidoIds = (pedidosRes.data ?? []).map((p) => p.id as string);
   let itemsData: Row[] = [];
   if (pedidoIds.length) {
@@ -370,11 +398,18 @@ async function fetchFondaData(negocioId: string): Promise<FondaData> {
         platilloNombre: it.platillo_nombre as string,
         cantidad: it.cantidad as number,
         nota: (it.nota as string) ?? undefined,
+        varianteNombre: (it.variante_nombre as string) ?? undefined,
       })),
   }));
 
+  const platillos: Dish[] = (platillosRes.data ?? []).map((row) => {
+    const dish = platilloFromRow(row);
+    const variantes = variantesData.filter((v) => v.producto_id === dish.id).map(varianteFromRow);
+    return variantes.length > 0 ? { ...dish, variantes } : dish;
+  });
+
   return {
-    platillos: (platillosRes.data ?? []).map(platilloFromRow),
+    platillos,
     pedidos,
     gastos: (gastosRes.data ?? []).map(gastoFromRow),
   };
@@ -647,6 +682,10 @@ export async function persistTenant(tenant: TenantData, ownerId: string): Promis
   if (tenant.fonda) {
     const f = tenant.fonda;
     await mustInsert("fonda_platillos", f.platillos.map((p) => platilloToRow(p, negocioId)));
+    await mustInsert(
+      "fonda_variantes",
+      f.platillos.flatMap((p) => (p.variantes ?? []).map((v) => varianteToRow(v, p.id)))
+    );
     await mustInsert("fonda_pedidos", f.pedidos.map((p) => pedidoToRow(p, negocioId)));
     await mustInsert(
       "fonda_pedido_items",
@@ -726,6 +765,22 @@ async function syncHorario(negocioId: string, horario: HorarioDia[]): Promise<vo
       { onConflict: "negocio_id,dia" }
     );
   if (error) throw error;
+}
+
+/** Reemplaza por completo las variantes de un platillo cuando el platillo cambió (mismo patrón que syncAbarrotesProductos con lotes). */
+async function syncFondaPlatillos(negocioId: string, prevArr: Dish[], nextArr: Dish[]): Promise<void> {
+  await diffAndSync("fonda_platillos", prevArr, nextArr, (p) => platilloToRow(p, negocioId));
+
+  const prevMap = new Map(prevArr.map((p) => [p.id, p]));
+  for (const p of nextArr) {
+    const prevP = prevMap.get(p.id);
+    if (prevP && JSON.stringify(prevP.variantes ?? []) === JSON.stringify(p.variantes ?? [])) continue;
+    await supabase.from("fonda_variantes").delete().eq("producto_id", p.id);
+    await mustInsert(
+      "fonda_variantes",
+      (p.variantes ?? []).map((v) => varianteToRow(v, p.id))
+    );
+  }
 }
 
 /** Reemplaza por completo los lotes de un producto cuando el producto cambió. */
@@ -918,7 +973,7 @@ export async function syncTenantDiff(prev: TenantData, next: TenantData): Promis
   if (prev.fonda && next.fonda) {
     const p = prev.fonda;
     const n = next.fonda;
-    await diffAndSync("fonda_platillos", p.platillos, n.platillos, (x) => platilloToRow(x, negocioId));
+    await syncFondaPlatillos(negocioId, p.platillos, n.platillos);
     await syncFondaPedidos(negocioId, p.pedidos, n.pedidos);
     await diffAndSync("fonda_gastos", p.gastos, n.gastos, (g) => gastoToRow(g, negocioId));
   }

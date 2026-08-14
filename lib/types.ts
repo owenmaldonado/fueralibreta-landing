@@ -109,12 +109,24 @@ export interface InventoryProduct {
 
 // ---------- Fonda ----------
 
+/** Variante de un platillo (ej. proteína: Pollo/Bistec) — mismo platillo, precio ajustado. */
+export interface DishVariant {
+  id: string;
+  tipo: string;
+  valor: string;
+  precioExtra: number;
+  disponible: boolean;
+}
+
 export interface Dish {
   id: string;
   nombre: string;
   precio: number;
   categoria: string;
   activoHoy: boolean;
+  /** Costo del platillo (insumos), opcional — a diferencia de Abarrotes, Fondita no calcula ganancia real con esto todavía (ver app/app/gastos/page.tsx). */
+  costo?: number;
+  variantes?: DishVariant[];
 }
 
 export interface OrderItem {
@@ -123,6 +135,8 @@ export interface OrderItem {
   platilloNombre: string;
   cantidad: number;
   nota?: string;
+  /** Variante elegida (ej. "Pollo") cuando el platillo tiene variantes — se muestra en el ticket como "platillo c/ variante", separado de `nota` (comentarios libres). */
+  varianteNombre?: string;
 }
 
 export type OrderStatus = "pendiente" | "entregado";
