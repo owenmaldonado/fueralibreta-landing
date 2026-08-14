@@ -7,7 +7,8 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { AdminActionsMenu } from "./admin-actions-menu";
 import type { AdminProfile, AdminNegocio } from "@/lib/admin-data";
-import type { PlanId } from "@/lib/planes";
+import { PLAN_LABELS, planDeAcceso, precioReal, formatTrial, type PlanId } from "@/lib/planes";
+import { formatMoney } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 
 interface UsersTableProps {
@@ -47,7 +48,7 @@ export function UsersTable({
   }, [negocios]);
 
   if (profiles.length === 0) {
-    return <p className="py-10 text-center text-sm text-muted-foreground">Sin usuarios que coincidan con el filtro.</p>;
+    return <p className="py-10 text-center text-sm text-muted-foreground">No hay clientes aún.</p>;
   }
 
   return (
@@ -57,7 +58,10 @@ export function UsersTable({
           <TableHead>Usuario</TableHead>
           <TableHead>Rol</TableHead>
           <TableHead className="text-center">Negocios</TableHead>
-          <TableHead>Plan</TableHead>
+          <TableHead>Plan contratado</TableHead>
+          <TableHead>Plan de acceso</TableHead>
+          <TableHead>Precio real</TableHead>
+          <TableHead>Trial</TableHead>
           <TableHead>Registro</TableHead>
           <TableHead>Estado</TableHead>
           <TableHead className="text-right">Acciones</TableHead>
@@ -67,6 +71,8 @@ export function UsersTable({
         {profiles.map((p) => {
           const isSelf = p.id === currentUserId;
           const negocio = negocioPorOwner.get(p.id);
+          const planAcceso = negocio ? planDeAcceso(negocio.plan, negocio.esFundador) : null;
+          const trial = negocio ? formatTrial(negocio.trialFin) : null;
 
           return (
             <TableRow key={p.id}>
@@ -75,7 +81,12 @@ export function UsersTable({
                   <Avatar src={p.avatarUrl} label={p.email ?? "?"} />
                   <div className="min-w-0">
                     <p className="max-w-[200px] truncate text-sm font-medium">{p.email ?? "Sin email"}</p>
-                    {isSelf && <p className="text-[10px] font-mono uppercase tracking-widest text-primary">Tú</p>}
+                    <div className="flex gap-1.5">
+                      {isSelf && <p className="text-[10px] font-mono uppercase tracking-widest text-primary">Tú</p>}
+                      {negocio?.esFundador && (
+                        <p className="text-[10px] font-mono uppercase tracking-widest text-primary">Fundador</p>
+                      )}
+                    </div>
                   </div>
                 </div>
               </TableCell>
@@ -83,15 +94,23 @@ export function UsersTable({
                 <Badge variant={p.role === "admin" ? "default" : "outline"}>{p.role === "admin" ? "Admin" : "User"}</Badge>
               </TableCell>
               <TableCell className="text-center font-mono text-sm">{p.negociosCount}</TableCell>
+              <TableCell>{negocio ? <Badge variant="outline">{PLAN_LABELS[negocio.plan]}</Badge> : "—"}</TableCell>
               <TableCell>
-                <div className="flex flex-wrap gap-1">
-                  <Badge variant={p.plan === "pro" ? "ledger" : "outline"}>{p.plan}</Badge>
-                  {negocio?.esFundador && (
-                    <Badge variant="outline" className="border-primary/40 text-primary">
-                      Fundador
-                    </Badge>
-                  )}
-                </div>
+                {planAcceso ? (
+                  <Badge variant={negocio?.esFundador ? "ledger" : "default"}>{PLAN_LABELS[planAcceso]}</Badge>
+                ) : (
+                  "—"
+                )}
+              </TableCell>
+              <TableCell className="font-mono text-sm">
+                {negocio ? `${formatMoney(precioReal(negocio))}/mes` : "—"}
+              </TableCell>
+              <TableCell className="text-sm">
+                {trial ? (
+                  <span className={trial.vencido ? "text-destructive" : "text-foreground"}>{trial.texto}</span>
+                ) : (
+                  "—"
+                )}
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {new Date(p.createdAt).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}

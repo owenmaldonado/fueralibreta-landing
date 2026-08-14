@@ -88,8 +88,10 @@ begin
 end $$;
 
 -- Insignia de "Fundador" (primeros negocios, trato especial de por vida) —
--- puramente informativa/de marketing, no cambia límites por sí sola.
--- Admin-only, mismo trigger de abajo.
+-- SÍ cambia límites: usePlan() (lib/planes.ts) le da acceso real a Pro+ a
+-- cualquier negocio con es_fundador = true sin importar su `plan` contratado
+-- (que sigue siendo lo que se factura/muestra como "Plan contratado" en
+-- /admin — ver planDeAcceso()). Admin-only, mismo trigger de abajo.
 do $$
 begin
   if not exists (
@@ -100,6 +102,37 @@ begin
   end if;
 end $$;
 
+-- Fecha en que arrancó (o se reinició) el trial de este negocio — separada
+-- de created_at porque un admin puede reiniciar un trial más adelante sin
+-- que eso cambie cuándo se dio de alta el negocio. Se backfillea con la
+-- fecha de creación para negocios que ya existían antes de esta columna.
+-- Admin-only, mismo trigger de abajo.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'negocios' and column_name = 'trial_inicio'
+  ) then
+    alter table negocios add column trial_inicio date;
+    update negocios set trial_inicio = created_at::date where trial_inicio is null;
+    alter table negocios alter column trial_inicio set default current_date;
+    alter table negocios alter column trial_inicio set not null;
+  end if;
+end $$;
+
+-- Notas libres del admin sobre este negocio (ej. "video testimonio 1 min
+-- pendiente") — nunca viajan al objeto Business de /app, solo se leen/
+-- escriben desde /admin. Admin-only, mismo trigger de abajo.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'negocios' and column_name = 'notas_admin'
+  ) then
+    alter table negocios add column notas_admin text;
+  end if;
+end $$;
+
 -- Que el dueño nunca vea estos campos en el objeto Business que le llega
 -- desde /app y no los mande de vuelta ya evita que los cambie DESDE LA APP —
 -- pero RLS es por fila, no por columna: negocios_update de abajo (using
@@ -107,9 +140,9 @@ end $$;
 -- 'pro_plus', regalarse un trial eterno o marcarse Fundador con una llamada
 -- directa a Supabase desde la consola del navegador, sin pasar por /app
 -- para nada. Este trigger es el guard real: solo permite tocar plan/
--- trial_fin/precio_custom/es_fundador cuando la sesión corre con la
--- service_role key (que es como pega /api/admin/negocios/[id]), sin
--- importar qué mande el cliente.
+-- trial_fin/trial_inicio/precio_custom/es_fundador/notas_admin cuando la
+-- sesión corre con la service_role key (que es como pega
+-- /api/admin/negocios/[id]), sin importar qué mande el cliente.
 drop trigger if exists negocios_plan_owner_guard on negocios;
 drop function if exists prevent_owner_plan_change();
 
@@ -121,10 +154,12 @@ begin
   if (
     new.plan is distinct from old.plan
     or new.trial_fin is distinct from old.trial_fin
+    or new.trial_inicio is distinct from old.trial_inicio
     or new.precio_custom is distinct from old.precio_custom
     or new.es_fundador is distinct from old.es_fundador
+    or new.notas_admin is distinct from old.notas_admin
   ) and auth.role() <> 'service_role' then
-    raise exception 'Solo un administrador puede cambiar el plan, trial, precio o estatus de fundador de un negocio';
+    raise exception 'Solo un administrador puede cambiar el plan, trial, precio, estatus de fundador o notas de un negocio';
   end if;
   return new;
 end;

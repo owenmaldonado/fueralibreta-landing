@@ -7,22 +7,25 @@ import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NegocioBillingCard } from "./negocio-billing-card";
 import { fetchUserDetail, type AdminProfile, type UserDetailNegocio } from "@/lib/admin-data";
 import { formatMoney } from "@/lib/mock";
-import { PLAN_LABELS } from "@/lib/planes";
-
-function fechaCorta(iso: string) {
-  return new Date(iso).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
-}
 
 export function UserDetailDialog({
   userId,
   onClose,
   onToggleRole,
+  onToggleFundador,
+  onSaveFacturacion,
 }: {
   userId: string | null;
   onClose: () => void;
   onToggleRole: (profile: AdminProfile) => void;
+  onToggleFundador: (negocioId: string, esFundador: boolean) => void;
+  onSaveFacturacion: (
+    negocioId: string,
+    cambios: { precioCustom: number | null; trialInicio: string; trialFin: string; notasAdmin: string | null }
+  ) => void;
 }) {
   const [loading, setLoading] = React.useState(false);
   const [profile, setProfile] = React.useState<AdminProfile | null>(null);
@@ -51,6 +54,8 @@ export function UserDetailDialog({
     };
   }, [userId]);
 
+  const esFundadorAlgunNegocio = negocios.some((n) => n.esFundador);
+
   return (
     <Dialog open={!!userId} onOpenChange={(o) => !o && onClose()} className="max-w-xl">
       <DialogHeader title="Detalle de usuario" onClose={onClose} />
@@ -72,7 +77,11 @@ export function UserDetailDialog({
               </p>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 <Badge variant={profile.role === "admin" ? "default" : "outline"}>{profile.role}</Badge>
-                <Badge variant={profile.plan === "pro" ? "ledger" : "outline"}>{profile.plan}</Badge>
+                {esFundadorAlgunNegocio && (
+                  <Badge variant="outline" className="border-primary/40 text-primary">
+                    Fundador
+                  </Badge>
+                )}
                 {profile.isBanned && (
                   <Badge variant="outline" className="border-destructive/40 text-destructive">
                     Baneado
@@ -102,7 +111,7 @@ export function UserDetailDialog({
             {negocios.length === 0 ? (
               <p className="text-sm text-muted-foreground">Todavía no tiene ningún negocio.</p>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-3">
                 {negocios.map((n) => (
                   <div key={n.id} className="rounded-xl border border-border bg-surface p-3">
                     <div className="flex items-center justify-between">
@@ -110,14 +119,6 @@ export function UserDetailDialog({
                       <Badge variant={n.isActive ? "ledger" : "outline"}>{n.isActive ? "Activo" : "Pausado"}</Badge>
                     </div>
                     <p className="mt-0.5 text-xs capitalize text-muted-foreground">{n.tipo}</p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      <Badge variant="default">{PLAN_LABELS[n.plan]}</Badge>
-                      {n.esFundador && (
-                        <Badge variant="outline" className="border-primary/40 text-primary">
-                          Fundador
-                        </Badge>
-                      )}
-                    </div>
                     <div className="mt-2 flex gap-4">
                       {n.stats.map((s) => (
                         <div key={s.label}>
@@ -130,10 +131,12 @@ export function UserDetailDialog({
                         <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Ingresos</p>
                       </div>
                     </div>
-                    {/* Pagos: no hay integración de facturación real todavía — esto es lo único que sí existe (trial y precio negociado a mano). */}
-                    <div className="mt-2 flex gap-4 border-t border-border pt-2 text-xs text-muted-foreground">
-                      <span>Trial hasta {fechaCorta(n.trialFin)}</span>
-                      <span>{n.precioCustom != null ? `${formatMoney(n.precioCustom)}/mes (custom)` : "Precio de lista"}</span>
+                    <div className="mt-3">
+                      <NegocioBillingCard
+                        negocio={n}
+                        onToggleFundador={() => onToggleFundador(n.id, !n.esFundador)}
+                        onSaveFacturacion={onSaveFacturacion}
+                      />
                     </div>
                   </div>
                 ))}
