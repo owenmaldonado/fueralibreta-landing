@@ -182,6 +182,8 @@ export interface GroceryProduct {
   lotes?: { cantidad: number; fecha: string }[];
   /** Producto de precio volátil (fruta/verdura): vive en el panel "Frutas y Verdura", no en la lista normal de Inventario. */
   isVolatile?: boolean;
+  /** Marcado en Cerrar Día > Caducados como "por caducar mañana" (ver CerrarDiaSheet) — badge amarillo en Hoy hasta que un próximo cierre lo resuelva (se vendió todo o caducó). */
+  porCaducar?: boolean;
 }
 
 export interface FiadoMovimiento {
