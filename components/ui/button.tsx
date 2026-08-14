@@ -13,6 +13,8 @@ const buttonVariants = cva(
           "bg-primary text-primary-foreground shadow-[0_0_0_1px_hsl(var(--primary)/0.3)] hover:bg-primary/90 hover:shadow-[0_0_24px_-4px_hsl(var(--primary)/0.55)]",
         ledger:
           "bg-ledger text-ledger-foreground hover:bg-ledger/90 hover:shadow-[0_0_24px_-4px_hsl(var(--ledger)/0.55)]",
+        destructive:
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90 hover:shadow-[0_0_24px_-4px_hsl(var(--destructive)/0.55)]",
         outline:
           "border border-border bg-transparent text-foreground hover:bg-secondary hover:border-primary/50",
         ghost: "text-foreground hover:bg-secondary",

@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, X } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { Stepper } from "@/components/ui/stepper";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,8 @@ export default function ProductosPage() {
   const [addOpen, setAddOpen] = React.useState(false);
   const [editando, setEditando] = React.useState<InventoryProduct | null>(null);
   const [borrando, setBorrando] = React.useState<InventoryProduct | null>(null);
+  const [seleccionados, setSeleccionados] = React.useState<Set<string>>(new Set());
+  const [borrandoSeleccion, setBorrandoSeleccion] = React.useState(false);
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -42,7 +45,31 @@ export default function ProductosPage() {
       const b = prev.barberia!;
       return { ...prev, barberia: { ...b, productos: b.productos.filter((p) => p.id !== borrando.id) } };
     });
+    setSeleccionados((prev) => {
+      if (!prev.has(borrando.id)) return prev;
+      const next = new Set(prev);
+      next.delete(borrando.id);
+      return next;
+    });
     setBorrando(null);
+  }
+
+  function toggleSeleccion(id: string, checked: boolean) {
+    setSeleccionados((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function eliminarSeleccionados() {
+    update((prev) => {
+      const b = prev.barberia!;
+      return { ...prev, barberia: { ...b, productos: b.productos.filter((p) => !seleccionados.has(p.id)) } };
+    });
+    setSeleccionados(new Set());
+    setBorrandoSeleccion(false);
   }
 
   return (
@@ -56,38 +83,41 @@ export default function ProductosPage() {
           </Button>
         }
       />
-      <div className="flex flex-col gap-2 px-4 pb-6">
-        {data.productos.map((p) => {
-          const bajo = p.stock <= p.minimo;
-          return (
-            <div key={p.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{p.nombre}</p>
-                <p className={cn("text-xs", bajo ? "font-medium text-primary" : "text-muted-foreground")}>
-                  Stock {p.stock} · mínimo {p.minimo}
-                </p>
-              </div>
-              <Stepper value={p.stock} onChange={(v) => ajustar(p.id, v - p.stock)} />
-              <div className="flex shrink-0 items-center gap-0.5">
-                <button
-                  onClick={() => setEditando(p)}
-                  aria-label="Editar producto"
-                  className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => setBorrando(p)}
-                  aria-label="Eliminar producto"
-                  className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          );
-        })}
+      <div className={cn("flex flex-col gap-2 px-4", seleccionados.size > 0 ? "pb-24" : "pb-6")}>
+        {data.productos.map((p) => (
+          <ProductoRow
+            key={p.id}
+            producto={p}
+            seleccionado={seleccionados.has(p.id)}
+            onToggleSeleccion={(checked) => toggleSeleccion(p.id, checked)}
+            onEdit={() => setEditando(p)}
+            onDeleteRequest={() => setBorrando(p)}
+            ajustarStock={(delta) => ajustar(p.id, delta)}
+          />
+        ))}
       </div>
+
+      {seleccionados.size > 0 && (
+        // z-50: por encima de BottomNav (z-40) — mientras hay selección activa,
+        // esta barra reemplaza visualmente al nav en vez de competir con él por
+        // los taps (cancelar selección lo regresa).
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-4px_16px_-4px_rgba(0,0,0,0.15)]">
+          <div className="mx-auto flex max-w-md items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSeleccionados(new Set())}
+              aria-label="Cancelar selección"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <Button size="lg" variant="destructive" className="flex-1" onClick={() => setBorrandoSeleccion(true)}>
+              <Trash2 className="h-4 w-4" />
+              Eliminar {seleccionados.size} seleccionado{seleccionados.size === 1 ? "" : "s"}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Sheet open={addOpen} onOpenChange={setAddOpen}>
         <ProductoForm onClose={() => setAddOpen(false)} update={update} />
@@ -100,11 +130,120 @@ export default function ProductosPage() {
       <ConfirmDialog
         open={!!borrando}
         title="Eliminar producto"
-        description={`Se borrará "${borrando?.nombre}" de tu inventario.`}
+        description={`¿Seguro? Se borrará "${borrando?.nombre}" de tu inventario.`}
         onClose={() => setBorrando(null)}
         onConfirm={eliminar}
       />
+
+      <ConfirmDialog
+        open={borrandoSeleccion}
+        title="Eliminar productos"
+        description={`¿Seguro? Se borrarán ${seleccionados.size} producto${seleccionados.size === 1 ? "" : "s"} de tu inventario.`}
+        onClose={() => setBorrandoSeleccion(false)}
+        onConfirm={eliminarSeleccionados}
+      />
     </>
+  );
+}
+
+const SWIPE_MAX = 80;
+const SWIPE_ABRIR = 40;
+
+/**
+ * Fila con swipe a la izquierda (arrastra el contenido y revela un botón
+ * rojo de eliminar detrás, estilo iOS Mail) además del botón de papelera
+ * de siempre — dos formas de llegar al mismo ConfirmDialog del padre, para
+ * que nunca se borre nada sin confirmar así sea por swipe o por tap.
+ */
+function ProductoRow({
+  producto,
+  seleccionado,
+  onToggleSeleccion,
+  onEdit,
+  onDeleteRequest,
+  ajustarStock,
+}: {
+  producto: InventoryProduct;
+  seleccionado: boolean;
+  onToggleSeleccion: (checked: boolean) => void;
+  onEdit: () => void;
+  onDeleteRequest: () => void;
+  ajustarStock: (delta: number) => void;
+}) {
+  const [offset, setOffset] = React.useState(0);
+  const [arrastrando, setArrastrando] = React.useState(false);
+  const startX = React.useRef<number | null>(null);
+
+  function onTouchStart(e: React.TouchEvent) {
+    startX.current = e.touches[0].clientX;
+    setArrastrando(true);
+  }
+
+  function onTouchMove(e: React.TouchEvent) {
+    if (startX.current === null) return;
+    const diff = e.touches[0].clientX - startX.current;
+    if (diff <= 0) setOffset(Math.max(diff, -SWIPE_MAX));
+  }
+
+  function onTouchEnd() {
+    startX.current = null;
+    setArrastrando(false);
+    setOffset((o) => (o <= -SWIPE_ABRIR ? -SWIPE_MAX : 0));
+  }
+
+  const bajo = producto.stock <= producto.minimo;
+
+  return (
+    <div className="relative overflow-hidden rounded-xl">
+      <button
+        type="button"
+        onClick={() => {
+          setOffset(0);
+          onDeleteRequest();
+        }}
+        aria-label="Eliminar producto"
+        style={{ width: SWIPE_MAX }}
+        className="absolute inset-y-0 right-0 flex items-center justify-center bg-destructive text-destructive-foreground"
+      >
+        <Trash2 className="h-5 w-5" />
+      </button>
+      <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onClick={() => offset !== 0 && setOffset(0)}
+        style={{ transform: `translateX(${offset}px)` }}
+        className={cn(
+          "relative flex items-center gap-2.5 rounded-xl border border-border bg-card p-3",
+          !arrastrando && "transition-transform duration-200"
+        )}
+      >
+        <Checkbox checked={seleccionado} onCheckedChange={onToggleSeleccion} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{producto.nombre}</p>
+          <p className={cn("text-xs", bajo ? "font-medium text-primary" : "text-muted-foreground")}>
+            Stock {producto.stock} · mínimo {producto.minimo}
+          </p>
+        </div>
+        <Stepper value={producto.stock} onChange={(v) => ajustarStock(v - producto.stock)} />
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button
+            onClick={onEdit}
+            aria-label="Editar producto"
+            className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={onDeleteRequest}
+            aria-label="Eliminar producto"
+            className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
