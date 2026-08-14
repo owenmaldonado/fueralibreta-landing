@@ -37,6 +37,18 @@ export function formatMoney(n: number): string {
   });
 }
 
+/**
+ * Mensaje unificado de diferencia de caja para los 3 wizards de "Cerrar
+ * Turno/Día" (Fondita, Abarrotera, Barbería) — dif = efectivo real -
+ * ventas calculadas, mismo signo en las 3 apps: negativo es faltante,
+ * positivo es sobrante.
+ */
+export function mensajeDiferencia(dif: number): string {
+  if (dif < 0) return `🔴 Te faltan ${formatMoney(-dif)}`;
+  if (dif > 0) return `🔵 Te sobran ${formatMoney(dif)}`;
+  return "🟢 Ya cuadró ✅";
+}
+
 /** "2024-01-01T12:00:00Z" -> "Hace 2h". Para mostrar última actividad en el panel de admin. */
 export function formatRelativeTime(iso: string): string {
   const diffMs = Math.max(0, Date.now() - new Date(iso).getTime());

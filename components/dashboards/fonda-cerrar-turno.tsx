@@ -8,15 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { supabase } from "@/lib/supabase";
-import { formatMoney, uid } from "@/lib/mock";
+import { formatMoney, mensajeDiferencia, uid } from "@/lib/mock";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
 
 type MermaTipo = "acabado" | "sobro_poco" | "sobro_mucho" | "tirado";
 
 const OPCIONES_MERMA: { tipo: MermaTipo; label: string }[] = [
-  { tipo: "acabado", label: "Se acabó todo ✅" },
-  { tipo: "sobro_poco", label: "Sobró poco para mañana" },
-  { tipo: "sobro_mucho", label: "Sobró mucho para mañana" },
+  { tipo: "acabado", label: "Se acabó ✅" },
+  { tipo: "sobro_poco", label: "Sobró poco" },
+  { tipo: "sobro_mucho", label: "Sobró mucho" },
   { tipo: "tirado", label: "Se tiró 🗑️" },
 ];
 
@@ -29,28 +29,31 @@ interface Props {
 }
 
 /**
- * "Cerrar Turno": wizard de 2 pasos, pensado para el ritmo de fin de día de
- * una fonda, no para contabilidad exacta.
+ * "Cerrar Turno": wizard de 2 pasos, esquema base UNIFICADO con Abarrotera
+ * y Barbería (ver prompt "CORTE DIARIO FINAL" — reemplaza la versión
+ * anterior de este wizard, que deliberadamente NO calculaba diferencia).
  *
- * Paso 1 (Corte) guarda efectivo real y gasto del día tal cual los reporta
- * el dueño — NO calcula ni muestra un "faltante" (real vs. esperado): eso es
- * justo el número estresante que este wizard evita. fondita_cortes es solo
- * bitácora (mismo patrón write-only que fondita_menu_dia del prompt 1/2):
- * se escribe directo a Supabase para negocios reales, nada la lee todavía.
+ * Paso 1 (Corte): ventas de hoy calculadas, fondo inicial (opcional),
+ * efectivo real (obligatorio) con la diferencia (efectivo - ventas) en
+ * vivo debajo, y un gasto del día con concepto libre — SÍ se convierte en
+ * un Expense real (a diferencia de la primera versión), así aparece en
+ * Gastos/Ventas y resta de Ganancia. Se guarda en fondita_cortes, bitácora
+ * write-only (mismo patrón que fondita_menu_dia): nada la lee todavía.
  *
- * Paso 2 (Merma) sí tiene efecto en vivo: "Sobró" dócil mantiene el platillo
- * activo para mañana y le pone un badge (ver estadoMerma en Dish/Menú); "Se
- * acabó"/"Se tiró" lo apaga (mañana hay que prenderlo a mano si se repite).
- * Un "Se tiró" con monto Y con costo_opcional definido en el platillo se
- * convierte en un Expense real (mismo mecanismo que cualquier gasto manual,
- * ya fluye a la gráfica de Gastos/Ventas vía el sync genérico). Sin costo no
- * inventamos una pérdida "real" — eso sería el -$510 falso del prompt — así
- * que solo queda en la bitácora fondita_mermas y se avisa en pantalla.
+ * Paso 2 (Merma) sí tiene efecto en vivo: "Sobró" (poco o mucho) mantiene
+ * el platillo activo para mañana con el badge "SOBRANTE DE AYER" (ver
+ * estadoMerma en Dish/Menú); "Se acabó"/"Se tiró" lo apaga. "Se tiró" con
+ * monto SIEMPRE crea un Expense real — es una pérdida que el dueño está
+ * reportando directamente, con o sin costo_opcional en el platillo; el
+ * costo solo importa para la pestaña Ganancias (ver app/app/gastos/page.tsx),
+ * no para si el gasto se registra o no.
  */
 export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }: Props) {
   const [paso, setPaso] = React.useState<1 | 2>(1);
+  const [fondoInicial, setFondoInicial] = React.useState("");
   const [efectivoReal, setEfectivoReal] = React.useState("");
-  const [gastoDia, setGastoDia] = React.useState("");
+  const [gastoMonto, setGastoMonto] = React.useState("");
+  const [gastoConcepto, setGastoConcepto] = React.useState("");
   const [decisiones, setDecisiones] = React.useState<Record<string, { tipo: MermaTipo; monto?: string }>>({});
   const [guardando, setGuardando] = React.useState(false);
 
@@ -74,22 +77,41 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
     return mapa;
   }, [data.pedidos, hoyEnSuZona]);
 
+  const efectivoValido = efectivoReal.trim() !== "" && !isNaN(Number(efectivoReal)) && Number(efectivoReal) >= 0;
+  const diferencia = efectivoValido ? Number(efectivoReal) - ventasHoy : null;
+
   function resetYCerrar() {
     setPaso(1);
+    setFondoInicial("");
     setEfectivoReal("");
-    setGastoDia("");
+    setGastoMonto("");
+    setGastoConcepto("");
     setDecisiones({});
     onClose();
   }
 
   async function guardarCorte() {
+    if (!efectivoValido) return;
+    const efectivoNum = Number(efectivoReal);
+    const gastoNum = gastoMonto.trim() === "" ? null : Number(gastoMonto);
+
+    if (gastoNum && gastoNum > 0) {
+      const gasto: Expense = { id: uid("exp"), categoria: gastoConcepto.trim() || "Gasto del día", monto: gastoNum, fecha: hoyEnSuZona };
+      update((prev) => {
+        const f = prev.fonda!;
+        return { ...prev, fonda: { ...f, gastos: [gasto, ...f.gastos] } };
+      });
+    }
+
     if (esNegocioReal) {
       const { error } = await supabase.from("fondita_cortes").insert({
         negocio_id: negocio.id,
         fecha: hoyEnSuZona,
-        ventas_del_dia: ventasHoy,
-        efectivo_real: efectivoReal.trim() === "" ? null : Number(efectivoReal),
-        gasto_dia: gastoDia.trim() === "" ? null : Number(gastoDia),
+        fondo_inicial: fondoInicial.trim() === "" ? null : Number(fondoInicial),
+        ventas_calculadas: ventasHoy,
+        efectivo_real: efectivoNum,
+        gastos: gastoNum,
+        diferencia: efectivoNum - ventasHoy,
       });
       if (error) console.error("No se pudo guardar el corte:", error);
     }
@@ -124,7 +146,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
         tenia_costo: p.costo != null,
       });
 
-      if (decision.tipo === "tirado" && montoTirado && montoTirado > 0 && p.costo != null) {
+      if (decision.tipo === "tirado" && montoTirado && montoTirado > 0) {
         nuevosGastos.push({ id: uid("exp"), categoria: `Merma: ${p.nombre}`, monto: montoTirado, fecha: hoyEnSuZona });
       }
     }
@@ -142,7 +164,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
         if (decision.tipo === "sobro_poco" || decision.tipo === "sobro_mucho") {
           return { ...p, estadoMerma: decision.tipo };
         }
-        // "Se acabó todo" y "Se tiró" no dejan nada para mañana.
+        // "Se acabó" y "Se tiró" no dejan nada para mañana.
         return { ...p, activoHoy: false, estadoMerma: undefined };
       });
       const gastos = nuevosGastos.length > 0 ? [...nuevosGastos, ...f.gastos] : f.gastos;
@@ -164,16 +186,24 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
               <p className="font-display text-2xl font-bold text-ledger">{formatMoney(ventasHoy)}</p>
             </div>
             <div className="space-y-1.5">
+              <Label>Fondo inicial (opcional)</Label>
+              <Input type="number" inputMode="decimal" value={fondoInicial} onChange={(e) => setFondoInicial(e.target.value)} placeholder="$0" />
+            </div>
+            <div className="space-y-1.5">
               <Label>¿Efectivo real en mano?</Label>
-              <Input type="number" inputMode="decimal" value={efectivoReal} onChange={(e) => setEfectivoReal(e.target.value)} placeholder="$0" />
+              <Input type="number" inputMode="decimal" autoFocus value={efectivoReal} onChange={(e) => setEfectivoReal(e.target.value)} placeholder="$0" />
+              {diferencia != null && <p className="px-1 text-xs text-muted-foreground">{mensajeDiferencia(diferencia)}</p>}
             </div>
             <div className="space-y-1.5">
               <Label>¿Gastaste hoy?</Label>
-              <Input type="number" inputMode="decimal" value={gastoDia} onChange={(e) => setGastoDia(e.target.value)} placeholder="$0" />
+              <Input type="number" inputMode="decimal" value={gastoMonto} onChange={(e) => setGastoMonto(e.target.value)} placeholder="$0" />
+              {gastoMonto.trim() !== "" && Number(gastoMonto) > 0 && (
+                <Input value={gastoConcepto} onChange={(e) => setGastoConcepto(e.target.value)} placeholder="Concepto (ej. gas, verdura)" />
+              )}
             </div>
           </div>
           <SheetFooter>
-            <Button size="lg" onClick={guardarCorte}>
+            <Button size="lg" disabled={!efectivoValido} onClick={guardarCorte}>
               Continuar a Merma
             </Button>
           </SheetFooter>
@@ -207,10 +237,10 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
                           autoFocus
                           value={decision.monto ?? ""}
                           onChange={(e) => setMontoTirado(p.id, e.target.value)}
-                          placeholder="¿Cuánto aprox tiraste? $"
+                          placeholder="¿Cuánto se tiró? $"
                         />
                         {p.costo == null && (
-                          <p className="text-xs text-muted-foreground">Agrega costo a este platillo para ver su pérdida real.</p>
+                          <p className="text-xs text-muted-foreground">Agrega costo a este platillo para ver su pérdida real en Ganancias.</p>
                         )}
                       </div>
                     )}

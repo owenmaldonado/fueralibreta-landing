@@ -307,27 +307,44 @@ create table if not exists barberia_productos (
   minimo integer not null default 3
 );
 
--- Corte diario de Barbería (paso 1 del wizard "Cerrar Turno" en Hoy). Igual
--- que abarrotera_cortes, SÍ calcula y guarda el faltante (a diferencia de
--- fondita_cortes, que deliberadamente no lo hace). Bitácora write-only
--- (mismo patrón que las otras dos): escrita directo a Supabase solo para
--- negocios reales al terminar el cierre, nada la lee todavía. Las propinas
--- del día y los gastos de material del paso 2 del wizard NO viven aquí
--- duplicados — se guardan como barberia_caja reales (tipo 'propina'/'gasto'),
--- igual que cualquier movimiento manual de Caja, así ya aparecen en su
--- gráfica sin tocarla; propinas_total y gastos_material aquí son solo el
--- resumen numérico del cierre.
+-- Corte diario de Barbería (wizard "Cerrar Turno" en Hoy) — mismo esquema
+-- base que fondita_cortes/abarrotera_cortes: fondo_inicial (opcional),
+-- ventas_calculadas, efectivo_real, gastos (el monto genérico del paso 1,
+-- con concepto libre — SÍ crea además un barberia_caja real, ver más abajo)
+-- y diferencia (efectivo_real - ventas_calculadas; negativa = faltante,
+-- positiva = sobrante, mismo signo en las 3 apps). Bitácora write-only:
+-- escrita directo a Supabase solo para negocios reales al terminar el
+-- cierre, nada la lee todavía. propinas_total y gastos_material son el
+-- resumen numérico del paso 2 (propinas y material) — las propinas y cada
+-- gasto de material YA se guardan aparte como barberia_caja reales (tipo
+-- 'propina'/'gasto'), igual que cualquier movimiento manual de Caja, así
+-- aparecen en su gráfica sin tocarla; no viven duplicados aquí, esto es
+-- solo el resumen.
 create table if not exists barberia_cortes (
   id uuid primary key default gen_random_uuid(),
   negocio_id uuid not null references negocios(id) on delete cascade,
   fecha date not null default current_date,
+  fondo_inicial numeric(10, 2),
   ventas_calculadas numeric(10, 2) not null default 0,
   efectivo_real numeric(10, 2),
+  gastos numeric(10, 2),
+  diferencia numeric(10, 2),
   propinas_total numeric(10, 2),
   gastos_material numeric(10, 2),
-  faltante numeric(10, 2),
   created_at timestamptz not null default now()
 );
+
+-- Migración: instalaciones que ya tenían barberia_cortes de antes de
+-- unificar el esquema con fondita_cortes/abarrotera_cortes (ver prompt
+-- "CORTE DIARIO FINAL").
+do $$
+begin
+  if exists (select 1 from information_schema.columns where table_name = 'barberia_cortes' and column_name = 'faltante') then
+    alter table barberia_cortes rename column faltante to diferencia;
+  end if;
+end $$;
+alter table barberia_cortes add column if not exists fondo_inicial numeric(10, 2);
+alter table barberia_cortes add column if not exists gastos numeric(10, 2);
 
 alter table barberia_servicios enable row level security;
 alter table barberia_horario enable row level security;
@@ -588,22 +605,40 @@ create table if not exists fonda_gastos (
   recordatorio boolean not null default false
 );
 
--- Paso 1 ("Corte") del wizard de Cerrar Turno. Guarda el efectivo real y el
--- gasto del día tal cual los reporta el dueño — deliberadamente SIN ninguna
--- columna de "faltante" (real vs. esperado): el wizard no calcula ni muestra
--- ese número, justo para no volverlo estresante. Bitácora write-only (mismo
--- patrón que fondita_menu_dia): nada la lee todavía. gasto_dia es solo
--- informativo, no se duplica como un fonda_gastos — el dueño ya tiene esa
--- pantalla aparte para llevar sus gastos con detalle.
+-- Paso 1 ("Corte") del wizard de Cerrar Turno — mismo esquema base que
+-- abarrotera_cortes/barberia_cortes (ver prompt "CORTE DIARIO FINAL"):
+-- fondo_inicial (opcional), ventas_calculadas, efectivo_real, gastos (con
+-- concepto libre — SÍ crea además un fonda_gastos real, ver más abajo, el
+-- dueño ya tiene la pantalla de Gastos/Ventas para el detalle) y diferencia
+-- (efectivo_real - ventas_calculadas; negativa = faltante, positiva =
+-- sobrante). A diferencia de la primera versión de este wizard, ahora SÍ se
+-- calcula y muestra la diferencia — unificado con las otras 2 apps. Sigue
+-- siendo bitácora write-only: nada la lee todavía.
 create table if not exists fondita_cortes (
   id uuid primary key default gen_random_uuid(),
   negocio_id uuid not null references negocios(id) on delete cascade,
   fecha date not null default current_date,
-  ventas_del_dia numeric(10, 2) not null default 0,
+  fondo_inicial numeric(10, 2),
+  ventas_calculadas numeric(10, 2) not null default 0,
   efectivo_real numeric(10, 2),
-  gasto_dia numeric(10, 2),
+  gastos numeric(10, 2),
+  diferencia numeric(10, 2),
   created_at timestamptz not null default now()
 );
+
+-- Migración: instalaciones que ya tenían fondita_cortes con el esquema
+-- viejo (ventas_del_dia/gasto_dia, sin diferencia ni fondo_inicial).
+do $$
+begin
+  if exists (select 1 from information_schema.columns where table_name = 'fondita_cortes' and column_name = 'ventas_del_dia') then
+    alter table fondita_cortes rename column ventas_del_dia to ventas_calculadas;
+  end if;
+  if exists (select 1 from information_schema.columns where table_name = 'fondita_cortes' and column_name = 'gasto_dia') then
+    alter table fondita_cortes rename column gasto_dia to gastos;
+  end if;
+end $$;
+alter table fondita_cortes add column if not exists fondo_inicial numeric(10, 2);
+alter table fondita_cortes add column if not exists diferencia numeric(10, 2);
 
 -- Paso 2 ("Merma") del wizard de Cerrar Turno: un registro por platillo que
 -- estaba disponible_hoy al cerrar. producto_nombre queda como snapshot
@@ -814,24 +849,34 @@ create table if not exists abarrotes_gastos (
   recordatorio boolean not null default false
 );
 
--- Corte diario de Abarrotera (paso 1 de Cerrar Día): a diferencia de
--- fondita_cortes (que deliberadamente NO calcula faltante para no ser
--- estresante), aquí sí se guarda ya resuelto — el dueño de abarrotera lo
--- quiere ver. Bitácora write-only (mismo patrón que fondita_cortes):
--- escrita directo a Supabase solo para negocios reales, nada la lee
--- todavía. `gastos` es el monto que reportó el dueño en el cierre — SÍ se
--- duplica además como un abarrotes_gastos real (a diferencia del gasto_dia
--- de Fondita) porque aquí se pide con concepto, como cualquier otro gasto.
+-- Corte diario de Abarrotera (paso 1 de Cerrar Día) — mismo esquema base
+-- que fondita_cortes/barberia_cortes: fondo_inicial (opcional),
+-- ventas_calculadas, efectivo_real, gastos (con concepto libre — SÍ se
+-- duplica además como un abarrotes_gastos real, ver terminarCierre en
+-- abarrotes-cerrar-dia.tsx) y diferencia (efectivo_real - ventas_calculadas;
+-- negativa = faltante, positiva = sobrante). Bitácora write-only: escrita
+-- directo a Supabase solo para negocios reales, nada la lee todavía.
 create table if not exists abarrotera_cortes (
   id uuid primary key default gen_random_uuid(),
   negocio_id uuid not null references negocios(id) on delete cascade,
   fecha date not null default current_date,
+  fondo_inicial numeric(10, 2),
   ventas_calculadas numeric(10, 2) not null default 0,
   efectivo_real numeric(10, 2),
   gastos numeric(10, 2),
-  faltante numeric(10, 2),
+  diferencia numeric(10, 2),
   created_at timestamptz not null default now()
 );
+
+-- Migración: instalaciones que ya tenían abarrotera_cortes con el esquema
+-- viejo (columna faltante, sin fondo_inicial).
+do $$
+begin
+  if exists (select 1 from information_schema.columns where table_name = 'abarrotera_cortes' and column_name = 'faltante') then
+    alter table abarrotera_cortes rename column faltante to diferencia;
+  end if;
+end $$;
+alter table abarrotera_cortes add column if not exists fondo_inicial numeric(10, 2);
 
 -- Paso 2 (Caducados/Dañados) de Cerrar Día: un registro por producto que se
 -- decidió en el cierre. producto_nombre queda como snapshot por si el

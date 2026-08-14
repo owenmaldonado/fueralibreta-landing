@@ -145,7 +145,7 @@ function PlatilloRow({
         <span className={`text-sm font-medium ${!p.activoHoy && "text-muted-foreground line-through"}`}>{p.nombre}</span>
         {p.estadoMerma && (
           <span className="shrink-0 rounded-full bg-primary/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-primary">
-            {p.estadoMerma === "sobro_poco" ? "Sobró poco" : "Sobró mucho"}
+            SOBRANTE DE AYER
           </span>
         )}
       </label>

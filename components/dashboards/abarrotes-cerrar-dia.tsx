@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { supabase } from "@/lib/supabase";
-import { formatMoney, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
+import { formatMoney, fechaCalendarioLocal, mensajeDiferencia, todayISO, uid } from "@/lib/mock";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
 
 type Accion = "vendido_todo" | "caduco" | "por_caducar";
@@ -41,8 +41,11 @@ interface Props {
  *
  * Paso 1 (Corte) guarda en abarrotera_cortes — bitácora write-only (mismo
  * patrón que fondita_cortes), directo a Supabase para negocios reales.
+ * Esquema base UNIFICADO con Fondita/Barbería (prompt "CORTE DIARIO
+ * FINAL"): fondo inicial opcional, efectivo real obligatorio, y el mismo
+ * mensaje de diferencia (efectivo - ventas) con emoji.
  *
- * Paso 2 (Caducados) solo lista productos con stock bajo o vendidos hoy.
+ * Paso 2 (Caducados) solo lista productos con stock < 3 o vendidos hoy.
  * "Caducó/Se rompió" con cantidad y pérdida en $ se refleja además como un
  * abarrotes_gastos real (ya fluye a Gastos/Ventas por el sync existente) y
  * descuenta esas piezas del stock. "Por caducar mañana" deja el badge
@@ -51,6 +54,7 @@ interface Props {
  */
 export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
   const [paso, setPaso] = React.useState<1 | 2>(1);
+  const [fondoInicial, setFondoInicial] = React.useState("");
   const [efectivoReal, setEfectivoReal] = React.useState("");
   const [gastoMonto, setGastoMonto] = React.useState("");
   const [gastoConcepto, setGastoConcepto] = React.useState("");
@@ -74,14 +78,14 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
     return mapa;
   }, [ventasHoyList]);
 
-  const productosRelevantes = data.productos.filter(
-    (p) => !p.isVolatile && (p.stock <= p.minimo || vendidosPorProducto.has(p.id))
-  );
+  const productosRelevantes = data.productos.filter((p) => !p.isVolatile && (p.stock < 3 || vendidosPorProducto.has(p.id)));
 
-  const faltante = efectivoReal.trim() === "" ? null : ventasHoyTotal - Number(efectivoReal);
+  const efectivoValido = efectivoReal.trim() !== "" && !isNaN(Number(efectivoReal)) && Number(efectivoReal) >= 0;
+  const diferencia = efectivoValido ? Number(efectivoReal) - ventasHoyTotal : null;
 
   function resetYCerrar() {
     setPaso(1);
+    setFondoInicial("");
     setEfectivoReal("");
     setGastoMonto("");
     setGastoConcepto("");
@@ -90,15 +94,17 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
   }
 
   async function guardarCorte() {
+    if (!efectivoValido) return;
+    const efectivoNum = Number(efectivoReal);
     if (esNegocioReal) {
-      const efectivoNum = efectivoReal.trim() === "" ? null : Number(efectivoReal);
       const { error } = await supabase.from("abarrotera_cortes").insert({
         negocio_id: negocio.id,
         fecha: hoy,
+        fondo_inicial: fondoInicial.trim() === "" ? null : Number(fondoInicial),
         ventas_calculadas: ventasHoyTotal,
         efectivo_real: efectivoNum,
         gastos: gastoMonto.trim() === "" ? null : Number(gastoMonto),
-        faltante: efectivoNum == null ? null : ventasHoyTotal - efectivoNum,
+        diferencia: efectivoNum - ventasHoyTotal,
       });
       if (error) console.error("No se pudo guardar el corte:", error);
     }
@@ -186,17 +192,13 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
               <p className="font-display text-2xl font-bold text-ledger">{formatMoney(ventasHoyTotal)}</p>
             </div>
             <div className="space-y-1.5">
+              <Label>Fondo inicial (opcional)</Label>
+              <Input type="number" inputMode="decimal" value={fondoInicial} onChange={(e) => setFondoInicial(e.target.value)} placeholder="$0" />
+            </div>
+            <div className="space-y-1.5">
               <Label>¿Efectivo real en mano?</Label>
-              <Input type="number" inputMode="decimal" value={efectivoReal} onChange={(e) => setEfectivoReal(e.target.value)} placeholder="$0" />
-              {faltante != null && (
-                <p className="px-1 text-xs text-muted-foreground">
-                  {faltante > 0
-                    ? `Faltante: ${formatMoney(faltante)}`
-                    : faltante < 0
-                      ? `Sobrante: ${formatMoney(-faltante)}`
-                      : "Cuadra exacto ✅"}
-                </p>
-              )}
+              <Input type="number" inputMode="decimal" autoFocus value={efectivoReal} onChange={(e) => setEfectivoReal(e.target.value)} placeholder="$0" />
+              {diferencia != null && <p className="px-1 text-xs text-muted-foreground">{mensajeDiferencia(diferencia)}</p>}
             </div>
             <div className="space-y-1.5">
               <Label>¿Gastaste hoy?</Label>
@@ -207,7 +209,7 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
             </div>
           </div>
           <SheetFooter>
-            <Button size="lg" onClick={guardarCorte}>
+            <Button size="lg" disabled={!efectivoValido} onClick={guardarCorte}>
               Continuar a Merma
             </Button>
           </SheetFooter>
