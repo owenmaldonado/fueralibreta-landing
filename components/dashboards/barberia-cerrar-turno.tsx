@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/lib/supabase";
-import { formatMoney, todayISO, uid } from "@/lib/mock";
-import type { TenantData, SessionUpdater, CajaEntry } from "@/lib/types";
+import { formatMoney, mensajeDiferencia, todayISO, uid } from "@/lib/mock";
+import type { TenantData, SessionUpdater, CajaEntry, InventoryProduct } from "@/lib/types";
 
 const MATERIALES = ["Gel", "Navajas", "Cera"];
 
@@ -28,32 +28,45 @@ interface Props {
   update: SessionUpdater;
 }
 
+/** Nombre de producto de Inventario "parecido" al del checkbox de material — coincidencia simple por substring, sin acentos/mayúsculas, suficiente para "Navajas" -> "Navajas de afeitar". */
+function buscarProductoSimilar(nombre: string, productos: InventoryProduct[]): InventoryProduct | undefined {
+  const n = nombre.toLowerCase();
+  return productos.find((p) => p.nombre.toLowerCase().includes(n) || n.includes(p.nombre.toLowerCase()));
+}
+
 /**
  * "Cerrar Turno" de Barbería: wizard de 2 pasos + una pantalla de resumen.
+ * Esquema base UNIFICADO con Fondita/Abarrotera (prompt "CORTE DIARIO
+ * FINAL"): fondo inicial opcional, efectivo real obligatorio, mensaje de
+ * diferencia con emoji, y un gasto genérico del día con concepto — SÍ se
+ * guarda como CajaEntry real, además del checklist de material del paso 2.
  *
  * Paso 1 (Corte) muestra las ventas de hoy (suma de citas "listo" de hoy) y
- * las citas atendidas, pide efectivo real y calcula el faltante/sobrante en
- * vivo — igual que Abarrotera (a diferencia de Fondita, que deliberadamente
- * no lo calcula).
+ * las citas atendidas.
  *
  * Paso 2 (Propinas y material) es lo que de verdad le importa al barbero:
  * un total de propinas del día y un checklist rápido de gastos de material.
- * Las propinas y cada gasto de material se guardan como CajaEntry reales
- * (mismo tipo/tabla que "Nuevo movimiento" en Caja) — ya fluyen a la
- * gráfica de Caja por el sync existente, sin tocarla. Las propinas NO
- * restan de la ganancia del resumen (son informativas); la ganancia
- * mostrada es ventas - gastos de material del día, calculada aquí mismo
- * para el resumen — no cambia la "Ganancia neta" de Caja (que es un
- * acumulado del periodo con su propia definición, ya establecida).
+ * Si el nombre del material coincide con un producto de Inventario
+ * (barberia_productos), se le descuenta 1 de stock — si no existe ese
+ * producto, el gasto se registra igual, solo sin tocar stock. Las propinas
+ * y cada gasto (el genérico del paso 1 y los de material) se guardan como
+ * CajaEntry reales (mismo tipo/tabla que "Nuevo movimiento" en Caja) — ya
+ * fluyen a la gráfica de Caja por el sync existente, sin tocarla. Las
+ * propinas NO restan de la ganancia del resumen (son informativas); la
+ * ganancia mostrada es ventas - gastos del día, calculada aquí mismo para
+ * el resumen — no cambia la "Ganancia neta" de Caja (que es un acumulado
+ * del periodo con su propia definición, ya establecida).
  *
  * barberia_cortes es bitácora write-only (mismo patrón que fondita_cortes
  * y abarrotera_cortes): se escribe directo a Supabase solo para negocios
- * reales al terminar el cierre, con todo ya resuelto (ventas, efectivo,
- * propinas, gastos de material y faltante); nada la lee todavía.
+ * reales al terminar el cierre, con todo ya resuelto; nada la lee todavía.
  */
 export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
   const [paso, setPaso] = React.useState<1 | 2 | "resumen">(1);
+  const [fondoInicial, setFondoInicial] = React.useState("");
   const [efectivoReal, setEfectivoReal] = React.useState("");
+  const [gastoMonto, setGastoMonto] = React.useState("");
+  const [gastoConcepto, setGastoConcepto] = React.useState("");
   const [propinas, setPropinas] = React.useState("");
   const [materiales, setMateriales] = React.useState<Record<string, string>>({});
   const [otroChecked, setOtroChecked] = React.useState(false);
@@ -71,11 +84,15 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
   const ventasHoyTotal = citasHoyListo.reduce((acc, c) => acc + c.precio, 0);
   const citasAtendidas = citasHoyListo.length;
 
-  const faltante = efectivoReal.trim() === "" ? null : Number(efectivoReal) - ventasHoyTotal;
+  const efectivoValido = efectivoReal.trim() !== "" && !isNaN(Number(efectivoReal)) && Number(efectivoReal) >= 0;
+  const diferencia = efectivoValido ? Number(efectivoReal) - ventasHoyTotal : null;
 
   function resetYCerrar() {
     setPaso(1);
+    setFondoInicial("");
     setEfectivoReal("");
+    setGastoMonto("");
+    setGastoConcepto("");
     setPropinas("");
     setMateriales({});
     setOtroChecked(false);
@@ -95,10 +112,16 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
   }
 
   async function terminarCierre() {
+    if (!efectivoValido) return;
     setGuardando(true);
+    const efectivoNum = Number(efectivoReal);
     const propinasNum = Number(propinas) || 0;
+    const gastoPaso1 = Number(gastoMonto) || 0;
 
     const gastoConceptos: { concepto: string; monto: number }[] = [];
+    if (gastoPaso1 > 0) {
+      gastoConceptos.push({ concepto: gastoConcepto.trim() || "Gasto del día", monto: gastoPaso1 });
+    }
     for (const nombre of MATERIALES) {
       if (nombre in materiales) {
         const monto = Number(materiales[nombre]) || 0;
@@ -109,33 +132,62 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
       const monto = Number(otroMonto) || 0;
       if (monto > 0) gastoConceptos.push({ concepto: otroConcepto.trim() || "Otro material", monto });
     }
-    const gastosMaterialTotal = gastoConceptos.reduce((acc, g) => acc + g.monto, 0);
+    const gastosMaterialTotal = gastoConceptos.reduce((acc, g) => acc + g.monto, 0) - gastoPaso1;
+    const gastosTotal = gastoConceptos.reduce((acc, g) => acc + g.monto, 0);
 
     const nowISO = new Date().toISOString();
     const nuevasEntradas: CajaEntry[] = [];
     if (propinasNum > 0) {
       nuevasEntradas.push({ id: uid("caja"), tipo: "propina", concepto: "Propinas del día", monto: propinasNum, metodo: "efectivo", fecha: nowISO });
     }
-    for (const g of gastoConceptos) {
-      nuevasEntradas.push({ id: uid("caja"), tipo: "gasto", concepto: `Material: ${g.concepto}`, monto: g.monto, metodo: "efectivo", fecha: nowISO });
+    if (gastoPaso1 > 0) {
+      nuevasEntradas.push({ id: uid("caja"), tipo: "gasto", concepto: gastoConcepto.trim() || "Gasto del día", monto: gastoPaso1, metodo: "efectivo", fecha: nowISO });
     }
-    if (nuevasEntradas.length > 0) {
+    // Material con producto de Inventario parecido: se descuenta 1 pieza de
+    // stock (consumo real), además de registrar el gasto. Sin match, el
+    // gasto se guarda igual — solo no hay stock que tocar.
+    const stockADescontar = new Set<string>();
+    for (const nombre of MATERIALES) {
+      if (!(nombre in materiales)) continue;
+      const monto = Number(materiales[nombre]) || 0;
+      if (monto <= 0) continue;
+      nuevasEntradas.push({ id: uid("caja"), tipo: "gasto", concepto: `Material: ${nombre}`, monto, metodo: "efectivo", fecha: nowISO });
+      const producto = buscarProductoSimilar(nombre, data.productos);
+      if (producto) stockADescontar.add(producto.id);
+    }
+    if (otroChecked) {
+      const monto = Number(otroMonto) || 0;
+      if (monto > 0) {
+        const concepto = otroConcepto.trim() || "Otro material";
+        nuevasEntradas.push({ id: uid("caja"), tipo: "gasto", concepto: `Material: ${concepto}`, monto, metodo: "efectivo", fecha: nowISO });
+        const producto = buscarProductoSimilar(concepto, data.productos);
+        if (producto) stockADescontar.add(producto.id);
+      }
+    }
+
+    if (nuevasEntradas.length > 0 || stockADescontar.size > 0) {
       update((prev) => {
         const b = prev.barberia!;
-        return { ...prev, barberia: { ...b, caja: [...nuevasEntradas, ...b.caja] } };
+        const caja = nuevasEntradas.length > 0 ? [...nuevasEntradas, ...b.caja] : b.caja;
+        const productos =
+          stockADescontar.size > 0
+            ? b.productos.map((p) => (stockADescontar.has(p.id) ? { ...p, stock: Math.max(0, p.stock - 1) } : p))
+            : b.productos;
+        return { ...prev, barberia: { ...b, caja, productos } };
       });
     }
 
     if (esNegocioReal) {
-      const efectivoNum = efectivoReal.trim() === "" ? null : Number(efectivoReal);
       const { error } = await supabase.from("barberia_cortes").insert({
         negocio_id: negocio.id,
         fecha: hoy,
+        fondo_inicial: fondoInicial.trim() === "" ? null : Number(fondoInicial),
         ventas_calculadas: ventasHoyTotal,
         efectivo_real: efectivoNum,
+        gastos: gastoPaso1 || null,
+        diferencia: efectivoNum - ventasHoyTotal,
         propinas_total: propinasNum,
         gastos_material: gastosMaterialTotal,
-        faltante: efectivoNum == null ? null : efectivoNum - ventasHoyTotal,
       });
       if (error) console.error("No se pudo guardar el corte:", error);
     }
@@ -143,8 +195,8 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
     setResumen({
       ventas: ventasHoyTotal,
       propinas: propinasNum,
-      gastos: gastosMaterialTotal,
-      ganancia: ventasHoyTotal - gastosMaterialTotal,
+      gastos: gastosTotal,
+      ganancia: ventasHoyTotal - gastosTotal,
       gastoConceptos,
     });
     setGuardando(false);
@@ -173,6 +225,10 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
               <p className="mt-1 text-xs text-muted-foreground">Citas atendidas: {citasAtendidas}</p>
             </div>
             <div className="space-y-1.5">
+              <Label>Fondo inicial (opcional)</Label>
+              <Input type="number" inputMode="decimal" value={fondoInicial} onChange={(e) => setFondoInicial(e.target.value)} placeholder="$0" />
+            </div>
+            <div className="space-y-1.5">
               <Label>¿Efectivo real en mano?</Label>
               <Input
                 type="number"
@@ -183,19 +239,18 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
                 onChange={(e) => setEfectivoReal(e.target.value)}
                 placeholder="$0"
               />
-              {faltante != null && (
-                <p className="px-1 text-xs text-muted-foreground">
-                  {faltante < 0
-                    ? `Faltante: ${formatMoney(-faltante)}`
-                    : faltante > 0
-                      ? `Sobrante: ${formatMoney(faltante)}`
-                      : "Cuadra exacto ✅"}
-                </p>
+              {diferencia != null && <p className="px-1 text-xs text-muted-foreground">{mensajeDiferencia(diferencia)}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label>¿Gastaste hoy?</Label>
+              <Input type="number" inputMode="decimal" value={gastoMonto} onChange={(e) => setGastoMonto(e.target.value)} placeholder="$0" />
+              {gastoMonto.trim() !== "" && Number(gastoMonto) > 0 && (
+                <Input value={gastoConcepto} onChange={(e) => setGastoConcepto(e.target.value)} placeholder="Concepto (ej. renta, luz)" />
               )}
             </div>
           </div>
           <SheetFooter>
-            <Button size="lg" onClick={() => setPaso(2)}>
+            <Button size="lg" disabled={!efectivoValido} onClick={() => setPaso(2)}>
               Continuar
             </Button>
           </SheetFooter>
