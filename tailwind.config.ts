@@ -42,6 +42,10 @@ const config: Config = {
           DEFAULT: "hsl(var(--ledger))",
           foreground: "hsl(var(--ledger-foreground))",
         },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
