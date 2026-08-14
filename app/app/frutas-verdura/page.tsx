@@ -102,11 +102,8 @@ function PrecioRapidoForm({
   const [costo, setCosto] = React.useState(producto.costo);
   const [precio, setPrecio] = React.useState(producto.precio);
 
-  // Los botones rápidos solo mueven el precio de VENTA — el costo de compra
-  // cambia con el proveedor/temporada, no tiene sentido ajustarlo en pasos
-  // de $1, se edita a mano cuando cambia.
-  function ajustarPrecio(delta: number) {
-    setPrecio((prev) => Math.max(0, Math.round((prev + delta) * 100) / 100));
+  function ajustar(setter: React.Dispatch<React.SetStateAction<number>>, delta: number) {
+    setter((prev) => Math.max(0, Math.round((prev + delta) * 100) / 100));
   }
 
   const ganancia = precio - costo;
@@ -133,6 +130,20 @@ function PrecioRapidoForm({
             onChange={(e) => setCosto(Math.max(0, Number(e.target.value) || 0))}
             className="h-12 text-center font-display text-xl font-semibold"
           />
+          <div className="grid w-full grid-cols-4 gap-2 pt-1">
+            <Button type="button" variant="outline" onClick={() => ajustar(setCosto, -1)}>
+              -$1
+            </Button>
+            <Button type="button" variant="outline" onClick={() => ajustar(setCosto, -0.5)}>
+              -$0.50
+            </Button>
+            <Button type="button" variant="outline" onClick={() => ajustar(setCosto, 0.5)}>
+              +$0.50
+            </Button>
+            <Button type="button" variant="outline" onClick={() => ajustar(setCosto, 1)}>
+              +$1
+            </Button>
+          </div>
         </div>
 
         <div className="space-y-1.5">
@@ -146,16 +157,16 @@ function PrecioRapidoForm({
             className="h-16 w-full text-center font-display text-4xl font-bold"
           />
           <div className="grid w-full grid-cols-4 gap-2 pt-1">
-            <Button type="button" variant="outline" size="lg" onClick={() => ajustarPrecio(-1)}>
+            <Button type="button" variant="outline" size="lg" onClick={() => ajustar(setPrecio, -1)}>
               -$1
             </Button>
-            <Button type="button" variant="outline" size="lg" onClick={() => ajustarPrecio(-0.5)}>
+            <Button type="button" variant="outline" size="lg" onClick={() => ajustar(setPrecio, -0.5)}>
               -$0.50
             </Button>
-            <Button type="button" variant="outline" size="lg" onClick={() => ajustarPrecio(0.5)}>
+            <Button type="button" variant="outline" size="lg" onClick={() => ajustar(setPrecio, 0.5)}>
               +$0.50
             </Button>
-            <Button type="button" variant="outline" size="lg" onClick={() => ajustarPrecio(1)}>
+            <Button type="button" variant="outline" size="lg" onClick={() => ajustar(setPrecio, 1)}>
               +$1
             </Button>
           </div>
