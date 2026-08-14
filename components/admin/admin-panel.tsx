@@ -105,6 +105,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   const filteredProfiles = React.useMemo(() => {
     if (!overview) return [];
     let list = overview.profiles;
+    if (excludeSelf) list = list.filter((p) => p.id !== currentUserId);
     if (q.trim()) {
       const needle = q.trim().toLowerCase();
       list = list.filter((p) => p.email?.toLowerCase().includes(needle));
@@ -114,16 +115,18 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     return [...list].sort((a, b) =>
       sortOrder === "recientes" ? b.createdAt.localeCompare(a.createdAt) : a.createdAt.localeCompare(b.createdAt)
     );
-  }, [overview, q, roleFilter, planFilter, sortOrder]);
+  }, [overview, excludeSelf, currentUserId, q, roleFilter, planFilter, sortOrder]);
 
   const filteredNegocios = React.useMemo(() => {
     if (!overview) return [];
-    if (!orgQuery.trim()) return overview.negocios;
-    const needle = orgQuery.trim().toLowerCase();
-    return overview.negocios.filter(
-      (n) => n.nombre.toLowerCase().includes(needle) || n.ownerEmail?.toLowerCase().includes(needle)
-    );
-  }, [overview, orgQuery]);
+    let list = overview.negocios;
+    if (excludeSelf) list = list.filter((n) => n.ownerId !== currentUserId);
+    if (orgQuery.trim()) {
+      const needle = orgQuery.trim().toLowerCase();
+      list = list.filter((n) => n.nombre.toLowerCase().includes(needle) || n.ownerEmail?.toLowerCase().includes(needle));
+    }
+    return list;
+  }, [overview, excludeSelf, currentUserId, orgQuery]);
 
   const filteredLeads = React.useMemo(() => {
     if (!overview) return [];
