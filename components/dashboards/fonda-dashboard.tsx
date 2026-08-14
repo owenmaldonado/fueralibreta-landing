@@ -8,6 +8,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { Sheet, SheetHeader } from "@/components/ui/sheet";
 import { StatTile } from "./stat-tile";
 import { EmptyState } from "./empty-state";
+import { CerrarTurnoSheet } from "./fonda-cerrar-turno";
 import { formatMoney, formatHora12, toISODate, uid } from "@/lib/mock";
 import { supabase } from "@/lib/supabase";
 import { fetchPedidosPendientes } from "@/lib/data";
@@ -31,6 +32,7 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
   const negocio = session.business;
   const [filtro, setFiltro] = React.useState<FiltroDia>("hoy");
   const [variantesSheet, setVariantesSheet] = React.useState<Dish | null>(null);
+  const [cerrandoTurno, setCerrandoTurno] = React.useState(false);
   const activos = data.platillos.filter((p) => p.activoHoy);
 
   // Lectura directa a Supabase para "Hoy" en vez de fiarse del session.fonda
@@ -174,7 +176,17 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
 
   return (
     <>
-      <PageHeader title={tituloHoy} subtitle="Pedidos y ventas de la fonda" />
+      <PageHeader
+        title={tituloHoy}
+        subtitle="Pedidos y ventas de la fonda"
+        action={
+          filtro === "hoy" ? (
+            <Button size="sm" variant="outline" onClick={() => setCerrandoTurno(true)}>
+              Cerrar turno
+            </Button>
+          ) : undefined
+        }
+      />
       <div className="px-4">
         <Tabs value={filtro} onValueChange={(v) => setFiltro(v as FiltroDia)} tabs={FILTROS} />
       </div>
@@ -270,6 +282,8 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
           </>
         )}
       </Sheet>
+
+      <CerrarTurnoSheet open={cerrandoTurno} onClose={() => setCerrandoTurno(false)} session={session} update={update} hoyEnSuZona={hoyEnSuZona} />
     </>
   );
 }

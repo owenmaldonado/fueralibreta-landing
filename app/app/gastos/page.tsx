@@ -139,6 +139,12 @@ export default function GastosPage() {
   const gananciaBrutaHoy = gananciaPorVenta.filter((g) => g.fecha === hoy).reduce((acc, g) => acc + g.monto, 0);
   const gananciaRealHoy = gananciaBrutaHoy - gastosHoy;
 
+  // Un "se tiró" sin costo_opcional en el platillo (ver Cerrar Turno > Merma)
+  // no se convierte en gasto: no hay base confiable para calcular la pérdida
+  // real, así que en vez de una "ganancia" que en realidad ya está mal
+  // (el -$510 falso del prompt) se avisa que falta el costo.
+  const hayPlatilloSinCosto = modulo === "fonda" && (session.fonda?.platillos ?? []).some((p) => p.costo == null);
+
   const gastosFiltrados = filterByRango(gastos, rango, (g) => g.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const ventasFiltradas = filterByRango(ventas, rango, (v) => v.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const gananciaPorVentaFiltrada = filterByRango(gananciaPorVenta, rango, (g) => g.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -243,6 +249,9 @@ export default function GastosPage() {
       ) : chartTab === "ganancias" ? (
         <div className="px-4 pt-3">
           <StatTile label="Total ganancia" value={formatMoney(totalGananciaBruta)} />
+          {hayPlatilloSinCosto && (
+            <p className="mt-2 px-1 text-xs text-muted-foreground">Agrega costo a tus platillos para ver ganancia real (con mermas incluidas).</p>
+          )}
         </div>
       ) : chartTab === "ventas" ? (
         modulo === "fonda" ? (
@@ -269,6 +278,9 @@ export default function GastosPage() {
             <p className={cn("font-display text-lg font-bold", totalGananciaNeta >= 0 ? "text-ledger" : "text-destructive")}>
               {formatMoney(totalGananciaNeta)}
             </p>
+            {hayPlatilloSinCosto && (
+              <p className="mt-1 text-xs text-muted-foreground">Agrega costo a tus platillos para ver ganancia real.</p>
+            )}
           </div>
         </div>
       )}

@@ -292,6 +292,7 @@ const platilloFromRow = (r: Row): Dish => ({
   categoria: r.categoria as string,
   activoHoy: r.activo_hoy as boolean,
   costo: r.costo != null ? Number(r.costo) : undefined,
+  estadoMerma: (r.estado_merma as Dish["estadoMerma"]) ?? undefined,
 });
 const platilloToRow = (p: Dish, negocioId: string): Row => ({
   id: p.id,
@@ -301,6 +302,7 @@ const platilloToRow = (p: Dish, negocioId: string): Row => ({
   categoria: p.categoria,
   activo_hoy: p.activoHoy,
   costo: p.costo ?? null,
+  estado_merma: p.estadoMerma ?? null,
 });
 
 const varianteFromRow = (r: Row): DishVariant => ({

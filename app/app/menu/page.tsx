@@ -140,9 +140,14 @@ function PlatilloRow({
 }) {
   return (
     <div className="flex animate-in fade-in slide-in-from-top-1 items-center gap-3 rounded-xl border border-border bg-card p-3 duration-300">
-      <label className="flex flex-1 items-center gap-3">
+      <label className="flex flex-1 items-center gap-2">
         <Checkbox checked={p.activoHoy} onCheckedChange={() => onToggle(p.id, !p.activoHoy)} />
-        <span className={`flex-1 text-sm font-medium ${!p.activoHoy && "text-muted-foreground line-through"}`}>{p.nombre}</span>
+        <span className={`text-sm font-medium ${!p.activoHoy && "text-muted-foreground line-through"}`}>{p.nombre}</span>
+        {p.estadoMerma && (
+          <span className="shrink-0 rounded-full bg-primary/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-primary">
+            {p.estadoMerma === "sobro_poco" ? "Sobró poco" : "Sobró mucho"}
+          </span>
+        )}
       </label>
       <span className="font-mono text-sm text-muted-foreground">{formatMoney(p.precio)}</span>
       <div className="flex shrink-0 items-center gap-0.5">

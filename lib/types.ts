@@ -127,6 +127,8 @@ export interface Dish {
   /** Costo del platillo (insumos), opcional — a diferencia de Abarrotes, Fondita no calcula ganancia real con esto todavía (ver app/app/gastos/page.tsx). */
   costo?: number;
   variantes?: DishVariant[];
+  /** Resultado de la merma del último cierre de turno (ver CerrarTurnoSheet): "sobró" mantiene el platillo activo para mañana con un badge en Menú, en vez de tener que volver a prenderlo a mano. Se limpia (undefined) en cuanto "se acabó" o "se tiró". */
+  estadoMerma?: "sobro_poco" | "sobro_mucho";
 }
 
 export interface OrderItem {

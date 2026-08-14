@@ -510,6 +510,14 @@ create table if not exists fondita_menu_dia (
   unique (negocio_id, producto_id, fecha)
 );
 
+-- Resultado de la merma del último Cierre de turno (ver fondita_mermas más
+-- abajo y CerrarTurnoSheet en components/dashboards/fonda-cerrar-turno.tsx):
+-- "sobró" mantiene el platillo activo_hoy=true para mañana en vez de tener
+-- que volver a prenderlo a mano, y este campo hace que Menú le muestre un
+-- badge para no confundirlo con algo recién cocinado. Se limpia a null en
+-- cuanto "se acabó" o "se tiró".
+alter table fonda_platillos add column if not exists estado_merma text check (estado_merma in ('sobro_poco', 'sobro_mucho'));
+
 create table if not exists fonda_pedidos (
   id uuid primary key default gen_random_uuid(),
   negocio_id uuid not null references negocios(id) on delete cascade,
@@ -553,12 +561,52 @@ create table if not exists fonda_gastos (
   recordatorio boolean not null default false
 );
 
+-- Paso 1 ("Corte") del wizard de Cerrar Turno. Guarda el efectivo real y el
+-- gasto del día tal cual los reporta el dueño — deliberadamente SIN ninguna
+-- columna de "faltante" (real vs. esperado): el wizard no calcula ni muestra
+-- ese número, justo para no volverlo estresante. Bitácora write-only (mismo
+-- patrón que fondita_menu_dia): nada la lee todavía. gasto_dia es solo
+-- informativo, no se duplica como un fonda_gastos — el dueño ya tiene esa
+-- pantalla aparte para llevar sus gastos con detalle.
+create table if not exists fondita_cortes (
+  id uuid primary key default gen_random_uuid(),
+  negocio_id uuid not null references negocios(id) on delete cascade,
+  fecha date not null default current_date,
+  ventas_del_dia numeric(10, 2) not null default 0,
+  efectivo_real numeric(10, 2),
+  gasto_dia numeric(10, 2),
+  created_at timestamptz not null default now()
+);
+
+-- Paso 2 ("Merma") del wizard de Cerrar Turno: un registro por platillo que
+-- estaba disponible_hoy al cerrar. producto_nombre queda como snapshot
+-- porque producto_id se pone en null (no cascade) si el platillo se borra
+-- después — la bitácora de merma debe sobrevivir aunque el catálogo cambie.
+-- tenia_costo marca si fonda_platillos.costo estaba definido al momento del
+-- cierre: un "tirado" CON costo se refleja además como un fonda_gastos real
+-- (ver terminarMerma en fonda-cerrar-turno.tsx); SIN costo no se inventa una
+-- pérdida "real" ahí (sería el -$510 falso), se avisa en pantalla en vez de
+-- eso y esta fila queda solo como bitácora.
+create table if not exists fondita_mermas (
+  id uuid primary key default gen_random_uuid(),
+  negocio_id uuid not null references negocios(id) on delete cascade,
+  fecha date not null default current_date,
+  producto_id uuid references fonda_platillos(id) on delete set null,
+  producto_nombre text not null,
+  tipo text not null check (tipo in ('acabado', 'sobro_poco', 'sobro_mucho', 'tirado')),
+  monto_tirado numeric(10, 2),
+  tenia_costo boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
 alter table fonda_platillos enable row level security;
 alter table fonda_variantes enable row level security;
 alter table fondita_menu_dia enable row level security;
 alter table fonda_pedidos enable row level security;
 alter table fonda_pedido_items enable row level security;
 alter table fonda_gastos enable row level security;
+alter table fondita_cortes enable row level security;
+alter table fondita_mermas enable row level security;
 
 drop policy if exists "fonda_platillos_owner" on fonda_platillos;
 create policy "fonda_platillos_owner" on fonda_platillos for all
@@ -584,6 +632,14 @@ create policy "fonda_pedido_items_owner" on fonda_pedido_items for all
 
 drop policy if exists "fonda_gastos_owner" on fonda_gastos;
 create policy "fonda_gastos_owner" on fonda_gastos for all
+  using (is_negocio_owner(negocio_id)) with check (is_negocio_owner(negocio_id));
+
+drop policy if exists "fondita_cortes_owner" on fondita_cortes;
+create policy "fondita_cortes_owner" on fondita_cortes for all
+  using (is_negocio_owner(negocio_id)) with check (is_negocio_owner(negocio_id));
+
+drop policy if exists "fondita_mermas_owner" on fondita_mermas;
+create policy "fondita_mermas_owner" on fondita_mermas for all
   using (is_negocio_owner(negocio_id)) with check (is_negocio_owner(negocio_id));
 
 -- ============================================================================
@@ -1076,6 +1132,10 @@ drop policy if exists "fonda_pedido_items_admin_all" on fonda_pedido_items;
 create policy "fonda_pedido_items_admin_all" on fonda_pedido_items for all using (is_admin()) with check (is_admin());
 drop policy if exists "fonda_gastos_admin_all" on fonda_gastos;
 create policy "fonda_gastos_admin_all" on fonda_gastos for all using (is_admin()) with check (is_admin());
+drop policy if exists "fondita_cortes_admin_all" on fondita_cortes;
+create policy "fondita_cortes_admin_all" on fondita_cortes for all using (is_admin()) with check (is_admin());
+drop policy if exists "fondita_mermas_admin_all" on fondita_mermas;
+create policy "fondita_mermas_admin_all" on fondita_mermas for all using (is_admin()) with check (is_admin());
 
 drop policy if exists "abarrotes_productos_admin_all" on abarrotes_productos;
 create policy "abarrotes_productos_admin_all" on abarrotes_productos for all using (is_admin()) with check (is_admin());
