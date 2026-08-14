@@ -67,6 +67,7 @@ export default function PedidosPage() {
                     {p.items.map((it) => (
                       <li key={it.id}>
                         {it.cantidad}× {it.platilloNombre}
+                        {it.varianteNombre && ` c/ ${it.varianteNombre}`}
                         {it.nota && <span className="ml-1 font-medium text-destructive">· {it.nota}</span>}
                       </li>
                     ))}

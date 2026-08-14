@@ -202,8 +202,21 @@ const SERVICIOS_DEFAULT = [
   { nombre: "Corte niño", precio: 100, duracion_min: 25 },
 ];
 
-const PLATILLOS_DEFAULT: { nombre: string; precio: number; categoria: string }[] = [
-  { nombre: "Pozole", precio: 65, categoria: "Platillo fuerte" },
+const PLATILLOS_DEFAULT: {
+  nombre: string;
+  precio: number;
+  categoria: string;
+  variantes?: { tipo: string; valor: string; precioExtra: number }[];
+}[] = [
+  {
+    nombre: "Pozole",
+    precio: 65,
+    categoria: "Platillo fuerte",
+    variantes: [
+      { tipo: "Proteína", valor: "Pollo", precioExtra: 0 },
+      { tipo: "Proteína", valor: "Bistec", precioExtra: 5 },
+    ],
+  },
   { nombre: "Mole con pollo", precio: 70, categoria: "Platillo fuerte" },
   { nombre: "Chiles rellenos", precio: 60, categoria: "Platillo fuerte" },
   { nombre: "Sopa de fideo", precio: 35, categoria: "Entrada" },
@@ -274,7 +287,12 @@ function emptyBarberiaData(): BarberiaData {
 
 function emptyFondaData(): FondaData {
   return {
-    platillos: PLATILLOS_DEFAULT.map((p) => ({ id: uid("dish"), activoHoy: true, ...p })),
+    platillos: PLATILLOS_DEFAULT.map((p) => ({
+      id: uid("dish"),
+      activoHoy: true,
+      ...p,
+      variantes: p.variantes?.map((v) => ({ id: uid("var"), disponible: true, ...v })),
+    })),
     pedidos: [],
     gastos: [],
   };
@@ -465,7 +483,17 @@ export function generateDemoFonda(form: DemoFormFonda): TenantData {
   });
   const data = emptyFondaData();
 
-  const d1 = { id: uid("dish"), nombre: form.platillo1 || "Platillo de hoy 1", precio: 65, categoria: "Platillo fuerte", activoHoy: true };
+  const d1 = {
+    id: uid("dish"),
+    nombre: form.platillo1 || "Platillo de hoy 1",
+    precio: 65,
+    categoria: "Platillo fuerte",
+    activoHoy: true,
+    variantes: [
+      { id: uid("var"), tipo: "Proteína", valor: "Pollo", precioExtra: 0, disponible: true },
+      { id: uid("var"), tipo: "Proteína", valor: "Bistec", precioExtra: 5, disponible: true },
+    ],
+  };
   const d2 = { id: uid("dish"), nombre: form.platillo2 || "Platillo de hoy 2", precio: 70, categoria: "Platillo fuerte", activoHoy: true };
   data.platillos = [d1, d2, ...data.platillos.slice(2)];
 

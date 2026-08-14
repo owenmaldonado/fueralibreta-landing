@@ -5,12 +5,13 @@ import * as React from "react";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { Button } from "@/components/ui/button";
 import { Tabs } from "@/components/ui/tabs";
+import { Sheet, SheetHeader } from "@/components/ui/sheet";
 import { StatTile } from "./stat-tile";
 import { EmptyState } from "./empty-state";
-import { formatMoney, formatHora12, toISODate } from "@/lib/mock";
+import { formatMoney, formatHora12, toISODate, uid } from "@/lib/mock";
 import { supabase } from "@/lib/supabase";
 import { fetchPedidosPendientes } from "@/lib/data";
-import type { TenantData, SessionUpdater, FondaOrder } from "@/lib/types";
+import type { TenantData, SessionUpdater, FondaOrder, Dish, DishVariant } from "@/lib/types";
 
 type FiltroDia = "hoy" | "ayer" | "semana";
 
@@ -20,10 +21,17 @@ const FILTROS: { value: FiltroDia; label: string }[] = [
   { value: "semana", label: "Semana" },
 ];
 
+function nowHHMM() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 export function FondaDashboard({ session, update }: { session: TenantData; update: SessionUpdater }) {
   const data = session.fonda!;
   const negocio = session.business;
   const [filtro, setFiltro] = React.useState<FiltroDia>("hoy");
+  const [variantesSheet, setVariantesSheet] = React.useState<Dish | null>(null);
+  const activos = data.platillos.filter((p) => p.activoHoy);
 
   // Lectura directa a Supabase para "Hoy" en vez de fiarse del session.fonda
   // ya cargado (que solo se refresca al iniciar sesión): un pedido nuevo
@@ -125,6 +133,45 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
     });
   }
 
+  // Venta rápida desde los botones de Hoy: mismo flujo que "Cobrar ahora"
+  // del formulario de Nuevo Pedido (pedido ya entregado, no pasa por
+  // pendientes) — un tap agrega directo si el platillo no tiene variantes,
+  // o crea el pedido con la variante elegida en el bottom-sheet.
+  function onTapPlatillo(platillo: Dish) {
+    const disponibles = (platillo.variantes ?? []).filter((v) => v.disponible);
+    if (disponibles.length > 0) {
+      setVariantesSheet(platillo);
+    } else {
+      venderRapido(platillo);
+    }
+  }
+
+  function venderRapido(platillo: Dish, variante?: DishVariant) {
+    const precio = platillo.precio + (variante?.precioExtra ?? 0);
+    update((prev) => {
+      const f = prev.fonda!;
+      const pedido: FondaOrder = {
+        id: uid("ped"),
+        clienteNombre: "Venta rápida",
+        fecha: hoyEnSuZona,
+        hora: nowHHMM(),
+        items: [
+          {
+            id: uid("it"),
+            platilloId: platillo.id,
+            platilloNombre: platillo.nombre,
+            cantidad: 1,
+            varianteNombre: variante?.valor,
+          },
+        ],
+        estado: "entregado",
+        total: precio,
+      };
+      return { ...prev, fonda: { ...f, pedidos: [pedido, ...f.pedidos] } };
+    });
+    setVariantesSheet(null);
+  }
+
   return (
     <>
       <PageHeader title={tituloHoy} subtitle="Pedidos y ventas de la fonda" />
@@ -135,6 +182,23 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
         <StatTile label="Ventas" value={formatMoney(ventas)} />
         <StatTile label="Gastos" value={formatMoney(gastos)} />
       </div>
+      {filtro === "hoy" && activos.length > 0 && (
+        <div className="px-4 pt-5">
+          <p className="mb-2 px-1 font-mono text-xs uppercase tracking-widest text-muted-foreground">Venta rápida</p>
+          <div className="grid grid-cols-2 gap-2">
+            {activos.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => onTapPlatillo(p)}
+                className="rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/50 active:scale-[0.98]"
+              >
+                <p className="text-sm font-semibold">{p.nombre}</p>
+                <p className="mt-1 font-mono text-xs text-muted-foreground">{formatMoney(p.precio)}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex flex-col gap-3 px-4 py-6">
         <p className="px-1 font-mono text-xs uppercase tracking-widest text-muted-foreground">
           Pedidos · {pedidosPeriodo.length} ({pendientesPeriodo.length} pendientes)
@@ -156,6 +220,7 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
                     {p.items.map((it) => (
                       <li key={it.id}>
                         {it.cantidad}× {it.platilloNombre}
+                        {it.varianteNombre && ` c/ ${it.varianteNombre}`}
                         {it.nota && <span className="ml-1 font-medium text-destructive">· {it.nota}</span>}
                       </li>
                     ))}
@@ -179,6 +244,32 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
           ))
         )}
       </div>
+
+      <Sheet open={!!variantesSheet} onOpenChange={(o) => !o && setVariantesSheet(null)}>
+        {variantesSheet && (
+          <>
+            <SheetHeader title="¿Con qué?" description={variantesSheet.nombre} onClose={() => setVariantesSheet(null)} />
+            <div className="flex flex-col gap-2">
+              {(variantesSheet.variantes ?? [])
+                .filter((v) => v.disponible)
+                .map((v) => (
+                  <Button
+                    key={v.id}
+                    size="lg"
+                    variant="outline"
+                    className="justify-between"
+                    onClick={() => venderRapido(variantesSheet, v)}
+                  >
+                    <span>{v.valor}</span>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {formatMoney(variantesSheet.precio + v.precioExtra)}
+                    </span>
+                  </Button>
+                ))}
+            </div>
+          </>
+        )}
+      </Sheet>
     </>
   );
 }

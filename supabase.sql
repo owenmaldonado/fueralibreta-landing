@@ -475,6 +475,41 @@ create table if not exists fonda_platillos (
   activo_hoy boolean not null default true
 );
 
+-- Costo de insumos del platillo, opcional — Fondita no calcula ganancia real
+-- con esto todavía (a diferencia de Abarrotes, ver PR #41/#51), es solo para
+-- referencia del dueño.
+alter table fonda_platillos add column if not exists costo numeric(10, 2);
+
+-- Variantes de un platillo (ej. proteína: Pollo/Bistec) — mismo platillo,
+-- precio ajustado. Mismo patrón que abarrotes_lotes: hijo de un producto,
+-- se reemplaza por completo cuando el platillo cambia (ver syncFondaPlatillos
+-- en lib/data.ts).
+create table if not exists fonda_variantes (
+  id uuid primary key default gen_random_uuid(),
+  producto_id uuid not null references fonda_platillos(id) on delete cascade,
+  tipo text not null,
+  valor text not null,
+  precio_extra numeric(10, 2) not null default 0,
+  disponible boolean not null default true
+);
+
+-- Un registro por (negocio, platillo, día) de si estuvo disponible ese día —
+-- separado de fonda_platillos.activo_hoy (que sigue siendo el estado EN VIVO
+-- que usa toda la app: Menú, Hoy, Nuevo pedido) para no volver ese campo
+-- sensible a fecha ni tocar ningún flujo existente. Se escribe directo desde
+-- /app/menu cuando el dueño prende/apaga la palomita de un negocio real (no
+-- pasa por el sync genérico de useSession().update(), ver toggle() en
+-- app/app/menu/page.tsx) — por ahora es solo bitácora, nada la lee todavía;
+-- queda lista para reportes de "qué hubo en el menú tal día" más adelante.
+create table if not exists fondita_menu_dia (
+  id uuid primary key default gen_random_uuid(),
+  negocio_id uuid not null references negocios(id) on delete cascade,
+  fecha date not null default current_date,
+  producto_id uuid not null references fonda_platillos(id) on delete cascade,
+  esta_activo_hoy boolean not null default true,
+  unique (negocio_id, producto_id, fecha)
+);
+
 create table if not exists fonda_pedidos (
   id uuid primary key default gen_random_uuid(),
   negocio_id uuid not null references negocios(id) on delete cascade,
@@ -504,6 +539,11 @@ create table if not exists fonda_pedido_items (
   nota text
 );
 
+-- Variante elegida (ej. "Pollo") cuando el platillo tiene variantes — aparte
+-- de `nota` (comentarios libres tipo "sin cebolla") para que el ticket pueda
+-- mostrar "platillo c/ variante" sin mezclarlo con anotaciones.
+alter table fonda_pedido_items add column if not exists variante_nombre text;
+
 create table if not exists fonda_gastos (
   id uuid primary key default gen_random_uuid(),
   negocio_id uuid not null references negocios(id) on delete cascade,
@@ -514,12 +554,23 @@ create table if not exists fonda_gastos (
 );
 
 alter table fonda_platillos enable row level security;
+alter table fonda_variantes enable row level security;
+alter table fondita_menu_dia enable row level security;
 alter table fonda_pedidos enable row level security;
 alter table fonda_pedido_items enable row level security;
 alter table fonda_gastos enable row level security;
 
 drop policy if exists "fonda_platillos_owner" on fonda_platillos;
 create policy "fonda_platillos_owner" on fonda_platillos for all
+  using (is_negocio_owner(negocio_id)) with check (is_negocio_owner(negocio_id));
+
+drop policy if exists "fonda_variantes_owner" on fonda_variantes;
+create policy "fonda_variantes_owner" on fonda_variantes for all
+  using (exists (select 1 from fonda_platillos p where p.id = producto_id and is_negocio_owner(p.negocio_id)))
+  with check (exists (select 1 from fonda_platillos p where p.id = producto_id and is_negocio_owner(p.negocio_id)));
+
+drop policy if exists "fondita_menu_dia_owner" on fondita_menu_dia;
+create policy "fondita_menu_dia_owner" on fondita_menu_dia for all
   using (is_negocio_owner(negocio_id)) with check (is_negocio_owner(negocio_id));
 
 drop policy if exists "fonda_pedidos_owner" on fonda_pedidos;
@@ -1015,6 +1066,10 @@ create policy "barberia_productos_admin_all" on barberia_productos for all using
 
 drop policy if exists "fonda_platillos_admin_all" on fonda_platillos;
 create policy "fonda_platillos_admin_all" on fonda_platillos for all using (is_admin()) with check (is_admin());
+drop policy if exists "fonda_variantes_admin_all" on fonda_variantes;
+create policy "fonda_variantes_admin_all" on fonda_variantes for all using (is_admin()) with check (is_admin());
+drop policy if exists "fondita_menu_dia_admin_all" on fondita_menu_dia;
+create policy "fondita_menu_dia_admin_all" on fondita_menu_dia for all using (is_admin()) with check (is_admin());
 drop policy if exists "fonda_pedidos_admin_all" on fonda_pedidos;
 create policy "fonda_pedidos_admin_all" on fonda_pedidos for all using (is_admin()) with check (is_admin());
 drop policy if exists "fonda_pedido_items_admin_all" on fonda_pedido_items;
