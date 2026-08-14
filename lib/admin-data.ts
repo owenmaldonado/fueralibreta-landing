@@ -49,9 +49,11 @@ export interface AdminNegocio {
   isActive: boolean;
   createdAt: string;
   plan: PlanId;
+  trialInicio: string;
   trialFin: string;
   precioCustom: number | null;
   esFundador: boolean;
+  notasAdmin: string | null;
 }
 
 export interface AdminMetrics {
@@ -69,9 +71,11 @@ export interface AdminOverview {
   negocios: AdminNegocio[];
   leads: AdminLead[];
   metrics: AdminMetrics;
+  /** Movimientos (citas+pedidos+ventas) de los negocios del propio admin — para que "Excluirme" pueda restarlos de Libretas digitalizadas sin otra vuelta a Supabase. */
+  movimientosPropios: number;
 }
 
-export async function fetchAdminOverview(): Promise<AdminOverview> {
+export async function fetchAdminOverview(currentUserId: string): Promise<AdminOverview> {
   const [profilesRes, negociosRes, citasRes, pedidosRes, ventasRes] = await Promise.all([
     supabase.from("profiles").select("*").order("created_at", { ascending: false }),
     supabase.from("negocios").select("*").order("created_at", { ascending: false }),
@@ -115,18 +119,38 @@ export async function fetchAdminOverview(): Promise<AdminOverview> {
     isActive: n.is_active,
     createdAt: n.created_at,
     plan: normalizarPlan(n.plan),
+    trialInicio: n.trial_inicio,
     trialFin: n.trial_fin,
     precioCustom: n.precio_custom != null ? Number(n.precio_custom) : null,
     esFundador: (n.es_fundador as boolean) ?? false,
+    notasAdmin: (n.notas_admin as string | null) ?? null,
   }));
 
   const totalMovimientos = (citasRes.count ?? 0) + (pedidosRes.count ?? 0) + (ventasRes.count ?? 0);
+
+  // "Excluirme" (ver /admin) necesita restar los movimientos de LOS
+  // NEGOCIOS DEL ADMIN ACTUAL de "Libretas digitalizadas" — a diferencia de
+  // usuarios/negocios/por-tipo (que ya vienen completos y se pueden
+  // refiltrar en el cliente), los conteos de arriba son agregados
+  // "head:true" sin negocio_id, así que hace falta esta vuelta extra,
+  // acotada por negocio_id para no traer filas de más.
+  const misNegocioIds = negocios.filter((n) => n.ownerId === currentUserId).map((n) => n.id);
+  let movimientosPropios = 0;
+  if (misNegocioIds.length > 0) {
+    const [citasPropias, pedidosPropios, ventasPropias] = await Promise.all([
+      supabase.from("barberia_citas").select("*", { count: "exact", head: true }).in("negocio_id", misNegocioIds),
+      supabase.from("fonda_pedidos").select("*", { count: "exact", head: true }).in("negocio_id", misNegocioIds),
+      supabase.from("abarrotes_ventas").select("*", { count: "exact", head: true }).in("negocio_id", misNegocioIds),
+    ]);
+    movimientosPropios = (citasPropias.count ?? 0) + (pedidosPropios.count ?? 0) + (ventasPropias.count ?? 0);
+  }
 
   return {
     profiles,
     negocios,
     leads,
     metrics: computeAdminMetrics(profiles, negocios, totalMovimientos),
+    movimientosPropios,
   };
 }
 
@@ -181,9 +205,11 @@ export interface UserDetailNegocio {
   stats: { label: string; value: number }[];
   ingresosTotales: number;
   plan: PlanId;
+  trialInicio: string;
   trialFin: string;
   precioCustom: number | null;
   esFundador: boolean;
+  notasAdmin: string | null;
 }
 
 interface NegocioExtra {
@@ -294,9 +320,11 @@ export async function fetchUserDetail(
       stats: extra.stats,
       ingresosTotales: extra.ingresosTotales,
       plan: normalizarPlan(n.plan),
+      trialInicio: n.trial_inicio,
       trialFin: n.trial_fin,
       precioCustom: n.precio_custom != null ? Number(n.precio_custom) : null,
       esFundador: (n.es_fundador as boolean) ?? false,
+      notasAdmin: (n.notas_admin as string | null) ?? null,
     });
   }
 
@@ -338,11 +366,12 @@ export async function toggleNegocioActive(negocioId: string, isActive: boolean):
 }
 
 /**
- * negocios.plan / trial_fin / precio_custom / es_fundador solo se pueden
- * tocar con service_role (ver el trigger negocios_admin_fields_guard en
- * supabase.sql) — un update directo desde aquí con la sesión normal del
- * admin tronaría, así que las cuatro pasan por la ruta
- * /api/admin/negocios/[id] en vez de supabase.from("negocios").update(...).
+ * negocios.plan / trial_fin / trial_inicio / precio_custom / es_fundador /
+ * notas_admin solo se pueden tocar con service_role (ver el trigger
+ * negocios_admin_fields_guard en supabase.sql) — un update directo desde
+ * aquí con la sesión normal del admin tronaría, así que las seis pasan por
+ * la ruta /api/admin/negocios/[id] en vez de
+ * supabase.from("negocios").update(...).
  */
 export async function updateNegocioPlan(negocioId: string, plan: PlanId): Promise<void> {
   await patchNegocioAdminFields(negocioId, { plan });
@@ -362,9 +391,29 @@ export async function updateNegocioFundador(negocioId: string, esFundador: boole
   await patchNegocioAdminFields(negocioId, { es_fundador: esFundador });
 }
 
+/** Guardado en bloque de la sección "factura" del detalle (precio congelado, fechas de trial y notas) — un solo PATCH en vez de cuatro. */
+export async function updateNegocioFacturacion(
+  negocioId: string,
+  cambios: { precioCustom: number | null; trialInicio: string; trialFin: string; notasAdmin: string | null }
+): Promise<void> {
+  await patchNegocioAdminFields(negocioId, {
+    precio_custom: cambios.precioCustom,
+    trial_inicio: cambios.trialInicio,
+    trial_fin: cambios.trialFin,
+    notas_admin: cambios.notasAdmin,
+  });
+}
+
 async function patchNegocioAdminFields(
   negocioId: string,
-  cambios: { plan?: PlanId; trial_fin?: string; precio_custom?: number | null; es_fundador?: boolean }
+  cambios: {
+    plan?: PlanId;
+    trial_fin?: string;
+    trial_inicio?: string;
+    precio_custom?: number | null;
+    es_fundador?: boolean;
+    notas_admin?: string | null;
+  }
 ): Promise<void> {
   const res = await fetch(`/api/admin/negocios/${negocioId}`, {
     method: "PATCH",

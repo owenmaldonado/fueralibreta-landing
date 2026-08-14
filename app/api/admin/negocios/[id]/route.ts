@@ -6,18 +6,25 @@ import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 interface PatchBody {
   plan?: string;
   trial_fin?: string;
+  trial_inicio?: string;
   precio_custom?: number | null;
   es_fundador?: boolean;
+  notas_admin?: string | null;
+}
+
+function esFechaValida(v: unknown): v is string {
+  return typeof v === "string" && !Number.isNaN(Date.parse(v));
 }
 
 /**
- * Cambia plan / trial_fin / precio_custom / es_fundador de un negocio.
- * Corre con service_role igual que /api/admin/users/[id] — negocios_admin_all
- * (RLS) ya le daría a un admin acceso de escritura directo desde el cliente,
- * pero el trigger negocios_admin_fields_guard (supabase.sql) SOLO deja tocar
- * estas cuatro columnas cuando la sesión corre como service_role, sin
- * importar qué policy RLS aplique — así que esta ruta es la ÚNICA forma real
- * de cambiarlas, ni siquiera un admin autenticado por su propia sesión puede
+ * Cambia plan / trial_fin / trial_inicio / precio_custom / es_fundador /
+ * notas_admin de un negocio. Corre con service_role igual que
+ * /api/admin/users/[id] — negocios_admin_all (RLS) ya le daría a un admin
+ * acceso de escritura directo desde el cliente, pero el trigger
+ * negocios_admin_fields_guard (supabase.sql) SOLO deja tocar estas seis
+ * columnas cuando la sesión corre como service_role, sin importar qué
+ * policy RLS aplique — así que esta ruta es la ÚNICA forma real de
+ * cambiarlas, ni siquiera un admin autenticado por su propia sesión puede
  * hacerlo directo.
  */
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -41,10 +48,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   if (body.trial_fin !== undefined) {
-    if (typeof body.trial_fin !== "string" || Number.isNaN(Date.parse(body.trial_fin))) {
-      return NextResponse.json({ error: "Fecha de trial inválida." }, { status: 400 });
+    if (!esFechaValida(body.trial_fin)) {
+      return NextResponse.json({ error: "Fecha de fin de trial inválida." }, { status: 400 });
     }
     updates.trial_fin = body.trial_fin;
+  }
+
+  if (body.trial_inicio !== undefined) {
+    if (!esFechaValida(body.trial_inicio)) {
+      return NextResponse.json({ error: "Fecha de inicio de trial inválida." }, { status: 400 });
+    }
+    updates.trial_inicio = body.trial_inicio;
   }
 
   if (body.precio_custom !== undefined) {
@@ -59,6 +73,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return NextResponse.json({ error: "Valor de fundador inválido." }, { status: 400 });
     }
     updates.es_fundador = body.es_fundador;
+  }
+
+  if (body.notas_admin !== undefined) {
+    if (body.notas_admin !== null && typeof body.notas_admin !== "string") {
+      return NextResponse.json({ error: "Notas inválidas." }, { status: 400 });
+    }
+    updates.notas_admin = body.notas_admin;
   }
 
   if (Object.keys(updates).length === 0) {

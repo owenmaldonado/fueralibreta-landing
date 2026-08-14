@@ -8,10 +8,10 @@ import { toast } from "sonner";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NegocioBillingCard } from "./negocio-billing-card";
 import { cn } from "@/lib/utils";
 import { waLink, formatMoney, formatRelativeTime } from "@/lib/mock";
 import { fetchNegocioDetail, prepareArcoRequest, type AdminNegocio, type NegocioDetail } from "@/lib/admin-data";
-import { PLAN_LABELS } from "@/lib/planes";
 
 const TIPO_LABEL: Record<AdminNegocio["tipo"], string> = {
   barberia: "Barbería",
@@ -28,12 +28,19 @@ export function NegocioDetailDialog({
   onClose,
   onToggleActive,
   onChangeOwner,
+  onToggleFundador,
+  onSaveFacturacion,
   onDeleteRequest,
 }: {
   negocio: AdminNegocio | null;
   onClose: () => void;
   onToggleActive: (negocio: AdminNegocio) => void;
   onChangeOwner: (negocio: AdminNegocio) => void;
+  onToggleFundador: (negocioId: string, esFundador: boolean) => void;
+  onSaveFacturacion: (
+    negocioId: string,
+    cambios: { precioCustom: number | null; trialInicio: string; trialFin: string; notasAdmin: string | null }
+  ) => void;
   onDeleteRequest: (negocio: AdminNegocio) => void;
 }) {
   const router = useRouter();
@@ -107,27 +114,13 @@ export function NegocioDetailDialog({
               {TIPO_LABEL[detail.tipo]}
             </Badge>
             <Badge variant={detail.isActive ? "ledger" : "outline"}>{detail.isActive ? "Activo" : "Pausado"}</Badge>
-            <Badge variant="default">{PLAN_LABELS[detail.plan]}</Badge>
-            {detail.esFundador && (
-              <Badge variant="outline" className="border-primary/40 text-primary">
-                Fundador
-              </Badge>
-            )}
           </div>
 
-          {/* Plan / trial / pagos */}
-          <div className="flex flex-wrap gap-4 rounded-xl border border-border bg-surface p-3 text-sm">
-            <div>
-              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Trial hasta</p>
-              <p className="font-medium">{fechaLarga(detail.trialFin)}</p>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Precio</p>
-              <p className="font-medium">
-                {detail.precioCustom != null ? `${formatMoney(detail.precioCustom)}/mes (custom)` : "Precio de lista de su plan"}
-              </p>
-            </div>
-          </div>
+          <NegocioBillingCard
+            negocio={detail}
+            onToggleFundador={() => onToggleFundador(detail.id, !detail.esFundador)}
+            onSaveFacturacion={onSaveFacturacion}
+          />
 
           {/* Sección 2: métricas en grid 2x2 */}
           <div className="grid grid-cols-2 gap-3">

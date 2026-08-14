@@ -31,6 +31,7 @@ import {
   updateNegocioTrial,
   updateNegocioPrecioCustom,
   updateNegocioFundador,
+  updateNegocioFacturacion,
   changeNegocioOwner,
   deleteUserCompletely,
   impersonateUser,
@@ -41,12 +42,30 @@ import {
   type AdminLead,
 } from "@/lib/admin-data";
 import { formatMoney } from "@/lib/mock";
-import { PLAN_LABELS, type PlanId } from "@/lib/planes";
+import { PLAN_LABELS, formatTrial, type PlanId } from "@/lib/planes";
 
 type RoleFilter = "todos" | "admin" | "user";
-type PlanFilter = "todos" | "free" | "pro";
+/** "trial" = todavía dentro de su periodo de prueba (trial_fin no vencido); "fundadores" = es_fundador = true. Reemplaza al viejo filtro por profiles.plan (free/pro) — ahora todo el filtrado de plan es a nivel negocio. */
+type PlanEstadoFilter = "todos" | "basico" | "pro" | "pro_plus" | "trial" | "fundadores";
 type SortOrder = "recientes" | "antiguos";
 type LeadEstadoFilter = "todos" | "nuevo" | "contactado" | "convertido";
+
+const PLAN_ESTADO_OPCIONES: { value: PlanEstadoFilter; label: string }[] = [
+  { value: "todos", label: "Todos" },
+  { value: "basico", label: "Básico" },
+  { value: "pro", label: "Pro" },
+  { value: "pro_plus", label: "Pro+" },
+  { value: "trial", label: "Trial" },
+  { value: "fundadores", label: "Fundadores" },
+];
+
+function pasaFiltroPlan(negocio: AdminNegocio | undefined, filtro: PlanEstadoFilter): boolean {
+  if (filtro === "todos") return true;
+  if (!negocio) return false;
+  if (filtro === "trial") return !formatTrial(negocio.trialFin).vencido;
+  if (filtro === "fundadores") return negocio.esFundador;
+  return negocio.plan === filtro;
+}
 
 export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   const searchParams = useSearchParams();
@@ -56,9 +75,10 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
 
   const [q, setQ] = React.useState("");
   const [roleFilter, setRoleFilter] = React.useState<RoleFilter>("todos");
-  const [planFilter, setPlanFilter] = React.useState<PlanFilter>("todos");
+  const [planFilter, setPlanFilter] = React.useState<PlanEstadoFilter>("todos");
   const [sortOrder, setSortOrder] = React.useState<SortOrder>("recientes");
   const [orgQuery, setOrgQuery] = React.useState("");
+  const [orgPlanFilter, setOrgPlanFilter] = React.useState<PlanEstadoFilter>("todos");
   const [leadQuery, setLeadQuery] = React.useState("");
   const [leadEstadoFilter, setLeadEstadoFilter] = React.useState<LeadEstadoFilter>("todos");
   // Las cards de arriba (Total usuarios, Negocios activos...) cuentan al
@@ -77,13 +97,13 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      setOverview(await fetchAdminOverview());
+      setOverview(await fetchAdminOverview(currentUserId));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudieron cargar los datos.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUserId]);
 
   React.useEffect(() => {
     load();
@@ -102,6 +122,14 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     }
   }, [overview, searchParams]);
 
+  const negocioPorOwner = React.useMemo(() => {
+    const map = new Map<string, AdminNegocio>();
+    for (const n of overview?.negocios ?? []) {
+      if (n.ownerId && !map.has(n.ownerId)) map.set(n.ownerId, n);
+    }
+    return map;
+  }, [overview]);
+
   const filteredProfiles = React.useMemo(() => {
     if (!overview) return [];
     let list = overview.profiles;
@@ -111,11 +139,11 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
       list = list.filter((p) => p.email?.toLowerCase().includes(needle));
     }
     if (roleFilter !== "todos") list = list.filter((p) => p.role === roleFilter);
-    if (planFilter !== "todos") list = list.filter((p) => p.plan === planFilter);
+    if (planFilter !== "todos") list = list.filter((p) => pasaFiltroPlan(negocioPorOwner.get(p.id), planFilter));
     return [...list].sort((a, b) =>
       sortOrder === "recientes" ? b.createdAt.localeCompare(a.createdAt) : a.createdAt.localeCompare(b.createdAt)
     );
-  }, [overview, excludeSelf, currentUserId, q, roleFilter, planFilter, sortOrder]);
+  }, [overview, excludeSelf, currentUserId, q, roleFilter, planFilter, sortOrder, negocioPorOwner]);
 
   const filteredNegocios = React.useMemo(() => {
     if (!overview) return [];
@@ -125,8 +153,9 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
       const needle = orgQuery.trim().toLowerCase();
       list = list.filter((n) => n.nombre.toLowerCase().includes(needle) || n.ownerEmail?.toLowerCase().includes(needle));
     }
+    if (orgPlanFilter !== "todos") list = list.filter((n) => pasaFiltroPlan(n, orgPlanFilter));
     return list;
-  }, [overview, excludeSelf, currentUserId, orgQuery]);
+  }, [overview, excludeSelf, currentUserId, orgQuery, orgPlanFilter]);
 
   const filteredLeads = React.useMemo(() => {
     if (!overview) return [];
@@ -170,13 +199,30 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     }
   }
 
-  async function handleToggleFundador(n: AdminNegocio) {
+  async function handleToggleFundadorById(negocioId: string, esFundador: boolean, nombre?: string) {
     try {
-      await updateNegocioFundador(n.id, !n.esFundador);
-      toast.success(n.esFundador ? `${n.nombre} ya no es Fundador.` : `${n.nombre} ahora es Fundador.`);
+      await updateNegocioFundador(negocioId, esFundador);
+      toast.success(esFundador ? `${nombre ?? "El negocio"} ahora es Fundador.` : `${nombre ?? "El negocio"} ya no es Fundador.`);
       load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo actualizar el estatus de fundador.");
+    }
+  }
+
+  function handleToggleFundador(n: AdminNegocio) {
+    handleToggleFundadorById(n.id, !n.esFundador, n.nombre);
+  }
+
+  async function handleSaveFacturacion(
+    negocioId: string,
+    cambios: { precioCustom: number | null; trialInicio: string; trialFin: string; notasAdmin: string | null }
+  ) {
+    try {
+      await updateNegocioFacturacion(negocioId, cambios);
+      toast.success("Facturación actualizada.");
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo actualizar la facturación.");
     }
   }
 
@@ -325,15 +371,16 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
 
   if (loading || !overview) return <LoadingBlock />;
 
-  // "Excluirme": recalcula usuarios/negocios/por-tipo sin el profile ni el
-  // negocio del admin actual, sin volver a pegarle a Supabase. Libretas
-  // digitalizadas (totalMovimientos) queda igual: es un conteo agregado que
-  // ya vino sin desglose por dueño desde fetchAdminOverview.
+  // "Excluirme": recalcula usuarios/negocios/por-tipo Y Libretas
+  // digitalizadas sin el profile ni el negocio del admin actual — este
+  // último usando movimientosPropios (ya viene calculado desde
+  // fetchAdminOverview, acotado por negocio_id) en vez de pegarle otra vez
+  // a Supabase.
   const metrics = excludeSelf
     ? computeAdminMetrics(
         overview.profiles.filter((p) => p.id !== currentUserId),
         overview.negocios.filter((n) => n.ownerId !== currentUserId),
-        overview.metrics.totalMovimientos
+        overview.metrics.totalMovimientos - overview.movimientosPropios
       )
     : overview.metrics;
 
@@ -369,8 +416,14 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
             value={tab}
             onValueChange={setTab}
             tabs={[
-              { value: "usuarios", label: `Usuarios · ${overview.profiles.length}` },
-              { value: "negocios", label: `Negocios · ${overview.negocios.length}` },
+              {
+                value: "usuarios",
+                label: `Usuarios · ${(excludeSelf ? overview.profiles.filter((p) => p.id !== currentUserId) : overview.profiles).length}`,
+              },
+              {
+                value: "negocios",
+                label: `Negocios · ${(excludeSelf ? overview.negocios.filter((n) => n.ownerId !== currentUserId) : overview.negocios).length}`,
+              },
               { value: "leads", label: `Leads · ${overview.leads.length}` },
             ]}
             className="max-w-lg"
@@ -396,15 +449,11 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 </Chip>
               </ChipGroup>
               <ChipGroup>
-                <Chip selected={planFilter === "todos"} onClick={() => setPlanFilter("todos")}>
-                  Free + Pro
-                </Chip>
-                <Chip selected={planFilter === "free"} onClick={() => setPlanFilter("free")}>
-                  Free
-                </Chip>
-                <Chip selected={planFilter === "pro"} onClick={() => setPlanFilter("pro")}>
-                  Pro
-                </Chip>
+                {PLAN_ESTADO_OPCIONES.map((o) => (
+                  <Chip key={o.value} selected={planFilter === o.value} onClick={() => setPlanFilter(o.value)}>
+                    {o.label}
+                  </Chip>
+                ))}
               </ChipGroup>
               <Select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as SortOrder)} className="w-44">
                 <option value="recientes">Más recientes</option>
@@ -430,14 +479,23 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
           </div>
         ) : tab === "negocios" ? (
           <div className="mt-4">
-            <div className="relative max-w-sm">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={orgQuery}
-                onChange={(e) => setOrgQuery(e.target.value)}
-                placeholder="Buscar negocio o dueño..."
-                className="pl-9"
-              />
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative min-w-[220px] flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={orgQuery}
+                  onChange={(e) => setOrgQuery(e.target.value)}
+                  placeholder="Buscar negocio o dueño..."
+                  className="pl-9"
+                />
+              </div>
+              <ChipGroup>
+                {PLAN_ESTADO_OPCIONES.map((o) => (
+                  <Chip key={o.value} selected={orgPlanFilter === o.value} onClick={() => setOrgPlanFilter(o.value)}>
+                    {o.label}
+                  </Chip>
+                ))}
+              </ChipGroup>
             </div>
             <div className="mt-4 overflow-hidden rounded-2xl border border-border">
               <OrgsTable
@@ -489,7 +547,13 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
         )}
       </div>
 
-      <UserDetailDialog userId={detailUserId} onClose={() => setDetailUserId(null)} onToggleRole={handleToggleRole} />
+      <UserDetailDialog
+        userId={detailUserId}
+        onClose={() => setDetailUserId(null)}
+        onToggleRole={handleToggleRole}
+        onToggleFundador={handleToggleFundadorById}
+        onSaveFacturacion={handleSaveFacturacion}
+      />
       <NegocioDetailDialog
         negocio={detailNegocio}
         onClose={() => setDetailNegocio(null)}
@@ -498,6 +562,8 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
           setDetailNegocio(null);
           setChangeOwnerNegocio(n);
         }}
+        onToggleFundador={handleToggleFundadorById}
+        onSaveFacturacion={handleSaveFacturacion}
         onDeleteRequest={(n) => {
           setDetailNegocio(null);
           setDeleteNegocioTarget(n);
