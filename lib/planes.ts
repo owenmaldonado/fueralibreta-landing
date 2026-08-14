@@ -140,8 +140,15 @@ export function usePlan() {
   const { session } = useSession();
   const planContratado = normalizarPlan(session?.business.plan);
   const esFundador = session?.business.esFundador ?? false;
+  const esDemo = session?.business.demo ?? false;
   const planId = planDeAcceso(planContratado, esFundador);
   const def = PLANES[planId];
+
+  // TEMPORAL: gráficas destapadas para demo y para Básico — sin bloqueos de
+  // plan todavía en este renglón mientras se define qué queda exclusivo de
+  // Pro/Pro+. Si lo ve el demo, lo ve Básico. No toca límites
+  // (max_productos/max_ventas_mes) ni el resto de features: eso sigue igual.
+  const graficasDestapadas = esDemo || planContratado === "basico";
 
   return {
     plan: planId,
@@ -150,7 +157,7 @@ export function usePlan() {
     label: def.label,
     limites: def.limites,
     features: def.features,
-    can: (feature: keyof PlanFeatures) => def.features[feature],
+    can: (feature: keyof PlanFeatures) => (feature === "graficas" && graficasDestapadas ? true : def.features[feature]),
     limiteAlcanzado: (limite: keyof PlanLimites, cantidadActual: number) => alcanzoLimite(planId, limite, cantidadActual),
   };
 }
