@@ -1,16 +1,20 @@
 "use client";
 
 import * as React from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, Ban } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
 import { formatMoney, formatHora12 } from "@/lib/mock";
+import { getEmpleadoActual, permisosActuales } from "@/lib/empleados";
 import { cn } from "@/lib/utils";
+import type { FondaOrder } from "@/lib/types";
 
 const FILTROS = [
   { value: "pendiente", label: "Pendientes" },
@@ -18,9 +22,22 @@ const FILTROS = [
   { value: "todos", label: "Todos" },
 ];
 
+const ESTADO_LABEL: Record<string, string> = { pendiente: "pendiente", entregado: "entregado", cancelado: "cancelado" };
+
 export default function PedidosPage() {
   const { session, ready, update } = useSession();
   const [filtro, setFiltro] = React.useState("pendiente");
+  const [cancelando, setCancelando] = React.useState<FondaOrder | null>(null);
+  const [motivo, setMotivo] = React.useState("");
+  // permisosActuales() lee una cookie — se resuelve en un efecto para no
+  // desalinear el primer render del servidor con el del cliente (mismo
+  // patrón que isAdmin en TopBar). Mientras tanto se asume dueño (no oculta
+  // de más ni parpadea el botón de borrar antes de tiempo).
+  const [puedeBorrar, setPuedeBorrar] = React.useState(true);
+
+  React.useEffect(() => {
+    setPuedeBorrar(permisosActuales().borrarVentas);
+  }, []);
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -41,6 +58,27 @@ export default function PedidosPage() {
       const f = prev.fonda!;
       return { ...prev, fonda: { ...f, pedidos: f.pedidos.filter((p) => p.id !== id) } };
     });
+  }
+
+  function confirmarCancelacion() {
+    if (!cancelando) return;
+    const actual = getEmpleadoActual();
+    update((prev) => {
+      const f = prev.fonda!;
+      return {
+        ...prev,
+        fonda: {
+          ...f,
+          pedidos: f.pedidos.map((p) =>
+            p.id === cancelando.id
+              ? { ...p, estado: "cancelado" as const, canceladoPor: actual?.nombre ?? "Dueño", motivoCancelacion: motivo.trim() || undefined }
+              : p
+          ),
+        },
+      };
+    });
+    setCancelando(null);
+    setMotivo("");
   }
 
   return (
@@ -72,33 +110,63 @@ export default function PedidosPage() {
                       </li>
                     ))}
                   </ul>
+                  {p.estado === "cancelado" && p.motivoCancelacion && (
+                    <p className="mt-1.5 text-xs text-destructive">
+                      Cancelado por {p.canceladoPor ?? "—"}: {p.motivoCancelacion}
+                    </p>
+                  )}
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
                   <span className="font-mono text-sm">{formatMoney(p.total)}</span>
                   <span
                     className={cn(
                       "rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest",
-                      p.estado === "pendiente" ? "bg-primary/15 text-primary" : "bg-ledger/15 text-ledger"
+                      p.estado === "pendiente"
+                        ? "bg-primary/15 text-primary"
+                        : p.estado === "cancelado"
+                          ? "bg-destructive/15 text-destructive"
+                          : "bg-ledger/15 text-ledger"
                     )}
                   >
-                    {p.estado}
+                    {ESTADO_LABEL[p.estado]}
                   </span>
                 </div>
               </div>
-              <div className="mt-3 flex gap-2">
-                {p.estado === "pendiente" && (
-                  <Button size="sm" variant="ledger" className="flex-1" onClick={() => marcarEntregado(p.id)}>
-                    ✔️ Entregado
-                  </Button>
-                )}
-                <Button size="sm" variant="outline" onClick={() => eliminar(p.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
+              {p.estado !== "cancelado" && (
+                <div className="mt-3 flex gap-2">
+                  {p.estado === "pendiente" && (
+                    <Button size="sm" variant="ledger" className="flex-1" onClick={() => marcarEntregado(p.id)}>
+                      ✔️ Entregado
+                    </Button>
+                  )}
+                  {puedeBorrar ? (
+                    <Button size="sm" variant="outline" onClick={() => eliminar(p.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={() => setCancelando(p)}>
+                      <Ban className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           ))
         )}
       </div>
+
+      <Dialog open={!!cancelando} onOpenChange={(o) => !o && setCancelando(null)}>
+        <DialogHeader title="Cancelar pedido" description={`${cancelando?.clienteNombre} · ${cancelando ? formatMoney(cancelando.total) : ""}`} onClose={() => setCancelando(null)} />
+        <Input autoFocus value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo (opcional)" />
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setCancelando(null)}>
+            Cerrar
+          </Button>
+          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={confirmarCancelacion}>
+            Cancelar pedido
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </>
   );
 }

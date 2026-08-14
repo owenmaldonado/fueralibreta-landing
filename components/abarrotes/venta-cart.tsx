@@ -14,6 +14,7 @@ import { Dialog, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import { uid, formatMoney } from "@/lib/mock";
 import { usePlan } from "@/lib/planes";
+import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, GroceryProduct, GrocerySale } from "@/lib/types";
 
 const EMOJI_POR_CATEGORIA: Record<string, string> = {
@@ -210,6 +211,7 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
         })),
         total,
         fecha: new Date().toISOString(),
+        ...camposEmpleado(),
       };
       const productos = a.productos.map((p) => {
         const linea = cart.find((l) => l.productoId === p.id);

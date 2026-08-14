@@ -6,6 +6,31 @@ import type { PlanId } from "./planes";
 
 export type BusinessType = "barberia" | "fonda" | "abarrotes";
 
+// ---------- Multiusuario (modo PIN) ----------
+// Ver lib/empleados.ts. Un negocio real (no demo) puede dar de alta
+// empleados con PIN de 4 dígitos, sin cuenta propia — negocio_empleados.
+// user_id queda nullable, preparado para un futuro empleado con cuenta
+// propia (ver comentario en supabase.sql), pero hoy siempre es null.
+
+export type RolEmpleado = "dueno" | "encargado" | "vendedor";
+
+export interface Empleado {
+  id: string;
+  negocioId: string;
+  nombre: string;
+  rol: RolEmpleado;
+  activo: boolean;
+  userId?: string;
+  createdAt: string;
+}
+
+/** Lo que se guarda en la cookie fl_empleado tras un PIN correcto — ver lib/empleados.ts. */
+export interface EmpleadoActual {
+  id: string;
+  nombre: string;
+  rol: RolEmpleado;
+}
+
 export interface Business {
   id: string;
   ownerId?: string; // auth.users.id en Supabase; ausente mientras es solo una demo local
@@ -89,6 +114,12 @@ export interface Appointment {
   estado: AppointmentStatus;
   /** Cómo se cobró el corte. Se pide al marcar la cita como "listo"; ausente en citas viejas o que nunca se cobraron. */
   metodo?: "efectivo" | "transferencia";
+  /** Quién atendió/cobró (ver Multiusuario > modo PIN, lib/empleados.ts) — ausente en citas de antes de este campo o cobradas por el dueño directo. */
+  empleadoId?: string;
+  empleadoNombreCache?: string;
+  /** Cancelación por un rol "vendedor" (no puede borrar, solo cancelar — ver PERMISOS en lib/empleados.ts). */
+  canceladoPor?: string;
+  motivoCancelacion?: string;
 }
 
 export interface CajaEntry {
@@ -98,6 +129,8 @@ export interface CajaEntry {
   monto: number;
   metodo: "efectivo" | "transferencia";
   fecha: string; // ISO datetime
+  empleadoId?: string;
+  empleadoNombreCache?: string;
 }
 
 export interface InventoryProduct {
@@ -141,7 +174,7 @@ export interface OrderItem {
   varianteNombre?: string;
 }
 
-export type OrderStatus = "pendiente" | "entregado";
+export type OrderStatus = "pendiente" | "entregado" | "cancelado";
 
 export interface FondaOrder {
   id: string;
@@ -154,6 +187,12 @@ export interface FondaOrder {
   items: OrderItem[];
   estado: OrderStatus;
   total: number;
+  /** Quién atendió/cobró (ver Multiusuario > modo PIN, lib/empleados.ts) — ausente en pedidos de antes de este campo o cobrados por el dueño directo. */
+  empleadoId?: string;
+  empleadoNombreCache?: string;
+  /** Cancelación por un rol "vendedor" (no puede borrar, solo cancelar — ver PERMISOS en lib/empleados.ts). */
+  canceladoPor?: string;
+  motivoCancelacion?: string;
 }
 
 export interface Expense {
@@ -227,6 +266,12 @@ export interface GrocerySale {
   items: GrocerySaleItem[];
   total: number;
   fecha: string; // ISO datetime
+  empleadoId?: string;
+  empleadoNombreCache?: string;
+  /** Ausente = venta activa. Un rol "vendedor" no puede borrar ventas, solo cancelarlas (ver PERMISOS en lib/empleados.ts) — se excluye de ventas/ganancias igual que si se hubiera borrado, pero queda el registro. */
+  cancelada?: boolean;
+  canceladoPor?: string;
+  motivoCancelacion?: string;
 }
 
 // ---------- Sesión / tenant activo ----------

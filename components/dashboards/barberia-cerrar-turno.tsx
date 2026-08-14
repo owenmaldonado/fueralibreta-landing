@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/lib/supabase";
 import { formatMoney, mensajeDiferencia, todayISO, uid } from "@/lib/mock";
+import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, CajaEntry, InventoryProduct } from "@/lib/types";
 
 const MATERIALES = ["Gel", "Navajas", "Cera"];
@@ -138,10 +139,10 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
     const nowISO = new Date().toISOString();
     const nuevasEntradas: CajaEntry[] = [];
     if (propinasNum > 0) {
-      nuevasEntradas.push({ id: uid("caja"), tipo: "propina", concepto: "Propinas del día", monto: propinasNum, metodo: "efectivo", fecha: nowISO });
+      nuevasEntradas.push({ id: uid("caja"), tipo: "propina", concepto: "Propinas del día", monto: propinasNum, metodo: "efectivo", fecha: nowISO, ...camposEmpleado() });
     }
     if (gastoPaso1 > 0) {
-      nuevasEntradas.push({ id: uid("caja"), tipo: "gasto", concepto: gastoConcepto.trim() || "Gasto del día", monto: gastoPaso1, metodo: "efectivo", fecha: nowISO });
+      nuevasEntradas.push({ id: uid("caja"), tipo: "gasto", concepto: gastoConcepto.trim() || "Gasto del día", monto: gastoPaso1, metodo: "efectivo", fecha: nowISO, ...camposEmpleado() });
     }
     // Material con producto de Inventario parecido: se descuenta 1 pieza de
     // stock (consumo real), además de registrar el gasto. Sin match, el
@@ -151,7 +152,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
       if (!(nombre in materiales)) continue;
       const monto = Number(materiales[nombre]) || 0;
       if (monto <= 0) continue;
-      nuevasEntradas.push({ id: uid("caja"), tipo: "gasto", concepto: `Material: ${nombre}`, monto, metodo: "efectivo", fecha: nowISO });
+      nuevasEntradas.push({ id: uid("caja"), tipo: "gasto", concepto: `Material: ${nombre}`, monto, metodo: "efectivo", fecha: nowISO, ...camposEmpleado() });
       const producto = buscarProductoSimilar(nombre, data.productos);
       if (producto) stockADescontar.add(producto.id);
     }
@@ -159,7 +160,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
       const monto = Number(otroMonto) || 0;
       if (monto > 0) {
         const concepto = otroConcepto.trim() || "Otro material";
-        nuevasEntradas.push({ id: uid("caja"), tipo: "gasto", concepto: `Material: ${concepto}`, monto, metodo: "efectivo", fecha: nowISO });
+        nuevasEntradas.push({ id: uid("caja"), tipo: "gasto", concepto: `Material: ${concepto}`, monto, metodo: "efectivo", fecha: nowISO, ...camposEmpleado() });
         const producto = buscarProductoSimilar(concepto, data.productos);
         if (producto) stockADescontar.add(producto.id);
       }
@@ -188,6 +189,8 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
         diferencia: efectivoNum - ventasHoyTotal,
         propinas_total: propinasNum,
         gastos_material: gastosMaterialTotal,
+        empleado_id: camposEmpleado().empleadoId ?? null,
+        empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
       });
       if (error) console.error("No se pudo guardar el corte:", error);
     }

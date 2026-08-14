@@ -18,6 +18,9 @@ import { ADMIN_EMAIL, exitImpersonation } from "@/lib/admin-data";
 import { BarberiaQuickAdd, BARBERIA_ACTIONS } from "@/components/quick-add/barberia-quick-add";
 import { FondaQuickAdd, FONDA_ACTIONS } from "@/components/quick-add/fonda-quick-add";
 import { AbarrotesQuickAdd, ABARROTES_ACTIONS } from "@/components/quick-add/abarrotes-quick-add";
+import { QuienAtiende } from "@/components/kiosko/quien-atiende";
+import { clearEmpleadoActual, getEmpleadoActual } from "@/lib/empleados";
+import type { EmpleadoActual } from "@/lib/types";
 
 // Segmentos de /app/{segmento} que SÍ son del dueño de un negocio (barbería/
 // fonda/abarrotes) y por lo tanto sí deben exigir sesión + negocio. Todo lo
@@ -32,6 +35,7 @@ const SEGMENTOS_DE_NEGOCIO = new Set([
   "caja",
   "clientes",
   "configuracion",
+  "empleados",
   "fiados",
   "frutas-verdura",
   "gastos",
@@ -65,6 +69,12 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   const [isAdmin, setIsAdmin] = React.useState(false);
   const [impersonating, setImpersonating] = React.useState<{ adminEmail: string; targetEmail: string } | null>(null);
   const [exiting, setExiting] = React.useState(false);
+  // Multiusuario (modo PIN): null mientras se checa si el negocio tiene
+  // empleados dados de alta (solo negocios reales, ver esNegocioReal más
+  // abajo) — un negocio sin ninguno nunca ve el kiosko, se comporta exacto
+  // igual que antes de esta feature.
+  const [hayEmpleados, setHayEmpleados] = React.useState<boolean | null>(null);
+  const [empleadoActual, setEmpleadoActualState] = React.useState<EmpleadoActual | null>(null);
 
   const esRutaSuperAdmin = !esRutaDeNegocio(pathname ?? "");
 
@@ -78,6 +88,34 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
       .then((data) => setImpersonating(data.impersonating ? { adminEmail: data.adminEmail, targetEmail: data.targetEmail } : null))
       .catch(() => setImpersonating(null));
   }, [session]);
+
+  React.useEffect(() => {
+    if (!session) return;
+    setEmpleadoActualState(getEmpleadoActual());
+    const esNegocioReal = Boolean(session.business.ownerId);
+    if (!esNegocioReal) {
+      setHayEmpleados(false);
+      return;
+    }
+    supabase
+      .from("negocio_empleados")
+      .select("id", { count: "exact", head: true })
+      .eq("negocio_id", session.business.id)
+      .eq("activo", true)
+      .then(({ count, error }) => {
+        if (error) {
+          console.error("No se pudo checar si el negocio tiene empleados:", error);
+          setHayEmpleados(false);
+          return;
+        }
+        setHayEmpleados((count ?? 0) > 0);
+      });
+  }, [session]);
+
+  function cambiarUsuario() {
+    clearEmpleadoActual();
+    setEmpleadoActualState(null);
+  }
 
   async function handleExitImpersonation() {
     setExiting(true);
@@ -179,11 +217,27 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
     );
   }
 
+  // Kiosko: negocio real con al menos un empleado dado de alta Y este
+  // dispositivo/navegador todavía no tiene a nadie activo en fl_empleado —
+  // "¿Quién atiende?" en vez del contenido normal. Una vez elegido (dueño o
+  // empleado), la cookie lo recuerda hasta "Cambiar usuario".
+  if (hayEmpleados && !empleadoActual) {
+    return (
+      <QuienAtiende
+        negocioId={business.id}
+        onEntrar={(emp) => {
+          setEmpleadoActualState(emp);
+          router.replace("/app/inicio");
+        }}
+      />
+    );
+  }
+
   const actions = business.tipo === "barberia" ? BARBERIA_ACTIONS : business.tipo === "fonda" ? FONDA_ACTIONS : ABARROTES_ACTIONS;
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <TopBar data={session} isAdmin={isAdmin} />
+      <TopBar data={session} isAdmin={isAdmin} empleadoActual={empleadoActual} onCambiarUsuario={cambiarUsuario} />
 
       {impersonating && (
         <div className="sticky top-14 z-20 flex items-center justify-between gap-3 border-b border-purple-500/40 bg-purple-950/90 px-4 py-2.5 text-white">
@@ -230,7 +284,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
         <AbarrotesQuickAdd active={quickAdd} onClose={() => setQuickAdd(null)} session={session} update={update} />
       )}
 
-      <BottomNav tipo={business.tipo} />
+      <BottomNav tipo={business.tipo} rolActual={empleadoActual?.rol} />
     </div>
   );
 }

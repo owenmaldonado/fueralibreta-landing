@@ -12,6 +12,7 @@ import { CerrarTurnoSheet } from "./fonda-cerrar-turno";
 import { formatMoney, formatHora12, toISODate, uid } from "@/lib/mock";
 import { supabase } from "@/lib/supabase";
 import { fetchPedidosPendientes } from "@/lib/data";
+import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, FondaOrder, Dish, DishVariant } from "@/lib/types";
 
 type FiltroDia = "hoy" | "ayer" | "semana";
@@ -168,6 +169,7 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
         ],
         estado: "entregado",
         total: precio,
+        ...camposEmpleado(),
       };
       return { ...prev, fonda: { ...f, pedidos: [pedido, ...f.pedidos] } };
     });

@@ -31,6 +31,8 @@ export const PLAN_PRECIO_LISTA: Record<PlanId, number> = {
 export interface PlanLimites {
   max_productos: number | null;
   max_ventas_mes: number | null;
+  /** Total de filas activas en negocio_empleados, CONTANDO al dueño (ver app/app/empleados/page.tsx). Básico = 1 (solo el dueño, sin espacio para nadie más), Pro = 5, Pro+ = ilimitado. */
+  max_empleados: number | null;
 }
 
 export interface PlanFeatures {
@@ -53,19 +55,19 @@ export const PLANES: Record<PlanId, PlanDef> = {
   basico: {
     id: "basico",
     label: PLAN_LABELS.basico,
-    limites: { max_productos: 30, max_ventas_mes: 100 },
+    limites: { max_productos: 30, max_ventas_mes: 100, max_empleados: 1 },
     features: { graficas: false, exportar: false, multi_caja: false, realtime: false, ia: false, soporte_prioritario: false },
   },
   pro: {
     id: "pro",
     label: PLAN_LABELS.pro,
-    limites: { max_productos: 200, max_ventas_mes: null },
+    limites: { max_productos: 200, max_ventas_mes: null, max_empleados: 5 },
     features: { graficas: true, exportar: true, multi_caja: false, realtime: true, ia: false, soporte_prioritario: false },
   },
   pro_plus: {
     id: "pro_plus",
     label: PLAN_LABELS.pro_plus,
-    limites: { max_productos: null, max_ventas_mes: null },
+    limites: { max_productos: null, max_ventas_mes: null, max_empleados: null },
     features: { graficas: true, exportar: true, multi_caja: true, realtime: true, ia: true, soporte_prioritario: true },
   },
 };

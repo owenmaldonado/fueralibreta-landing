@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { supabase } from "@/lib/supabase";
 import { formatMoney, fechaCalendarioLocal, mensajeDiferencia, todayISO, uid } from "@/lib/mock";
+import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
 
 type Accion = "vendido_todo" | "caduco" | "por_caducar";
@@ -105,6 +106,8 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
         efectivo_real: efectivoNum,
         gastos: gastoMonto.trim() === "" ? null : Number(gastoMonto),
         diferencia: efectivoNum - ventasHoyTotal,
+        empleado_id: camposEmpleado().empleadoId ?? null,
+        empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
       });
       if (error) console.error("No se pudo guardar el corte:", error);
     }

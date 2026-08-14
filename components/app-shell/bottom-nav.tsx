@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { Home, CalendarDays, Users, Wallet, Settings, ClipboardList, UtensilsCrossed, Receipt, Boxes, HandCoins } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { BusinessType } from "@/lib/types";
+import type { BusinessType, RolEmpleado } from "@/lib/types";
 
 interface NavItem {
   href: string;
@@ -44,9 +44,15 @@ const NAV_BY_TYPE: Record<BusinessType, NavItem[]> = {
   abarrotes: NAV_ABARROTES,
 };
 
-export function BottomNav({ tipo }: { tipo: BusinessType }) {
+// Reportes financieros (Gastos/Caja) — un rol "vendedor" solo vende y
+// cobra, sin ver reportes; "encargado" sí los ve (le corresponde el corte
+// del día), la distinción más fina de "sin ganancias históricas" se
+// resuelve dentro de esas pantallas, no ocultando la pestaña entera.
+const HREFS_REPORTES = new Set(["/app/gastos", "/app/caja"]);
+
+export function BottomNav({ tipo, rolActual }: { tipo: BusinessType; rolActual?: RolEmpleado }) {
   const pathname = usePathname();
-  const items = NAV_BY_TYPE[tipo];
+  const items = NAV_BY_TYPE[tipo].filter((item) => !(rolActual === "vendedor" && HREFS_REPORTES.has(item.href)));
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">

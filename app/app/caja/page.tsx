@@ -19,6 +19,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useSession } from "@/lib/session";
 import { formatMoney, uid } from "@/lib/mock";
 import { aggregateTwoByRange, type RangoTiempo } from "@/lib/chart-buckets";
+import { camposEmpleado, permisosActuales } from "@/lib/empleados";
 import { cn } from "@/lib/utils";
 import type { CajaEntry } from "@/lib/types";
 
@@ -36,6 +37,12 @@ export default function CajaPage() {
   const [editando, setEditando] = React.useState<CajaEntry | null>(null);
   const [borrando, setBorrando] = React.useState<CajaEntry | null>(null);
   const [rango, setRango] = React.useState<RangoTiempo>("semanal");
+  // Multiusuario: un rol "vendedor" no puede borrar movimientos de Caja.
+  const [puedeBorrar, setPuedeBorrar] = React.useState(true);
+
+  React.useEffect(() => {
+    setPuedeBorrar(permisosActuales().borrarVentas);
+  }, []);
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -151,13 +158,15 @@ export default function CajaPage() {
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
-                  <button
-                    onClick={() => setBorrando(m)}
-                    aria-label="Eliminar movimiento"
-                    className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  {puedeBorrar && (
+                    <button
+                      onClick={() => setBorrando(m)}
+                      aria-label="Eliminar movimiento"
+                      className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -215,7 +224,7 @@ function CajaForm({
       if (entry) {
         return { ...prev, barberia: { ...b, caja: b.caja.map((m) => (m.id === entry.id ? { ...m, ...datos } : m)) } };
       }
-      const nuevo: CajaEntry = { id: uid("caja"), ...datos };
+      const nuevo: CajaEntry = { id: uid("caja"), ...datos, ...camposEmpleado() };
       return { ...prev, barberia: { ...b, caja: [nuevo, ...b.caja] } };
     });
     onClose();
