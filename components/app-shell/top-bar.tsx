@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, LogOut, X, ShieldCheck, Lock } from "lucide-react";
+import { Search, LogOut, X, ShieldCheck, Lock, Users, Settings } from "lucide-react";
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { clearDemoPreview } from "@/lib/demoPreview";
@@ -22,7 +22,7 @@ export function TopBar({
 }: {
   data: TenantData;
   isAdmin?: boolean;
-  /** El negocio (real, no demo) tiene al menos un empleado dado de alta — sin esto, el pill de turno ni el candadito de Empleados se muestran: un negocio de 1 persona no ve nada nuevo. */
+  /** El negocio (real, no demo) tiene al menos un empleado dado de alta — sin esto, el pill de turno no se muestra: un negocio de 1 persona no ve nada nuevo ahí. El candadito de Empleados/Ajustes SIEMPRE se muestra, sin importar este flag. */
   hayEmpleados?: boolean;
   /** Quién está atendiendo en este dispositivo AHORA (login opcional por sesión, ver TurnoControl) — null = dueño, sin nadie elegido. */
   empleadoActual?: EmpleadoActual | null;
@@ -30,6 +30,7 @@ export function TopBar({
 }) {
   const [searching, setSearching] = React.useState(false);
   const [q, setQ] = React.useState("");
+  const [menuCandado, setMenuCandado] = React.useState(false);
   const [pinDueno, setPinDueno] = React.useState(false);
   const router = useRouter();
   const results = React.useMemo(() => universalSearch(data, q), [data, q]);
@@ -47,28 +48,31 @@ export function TopBar({
     router.push("/login");
   }
 
-  // Candadito del menú del dueño: si ya está atendiendo el propio dueño (o
-  // nadie, que es lo mismo), entra directo a Empleados. Si hay un
-  // encargado/vendedor logueado, primero pide el PIN de dueño — no cierra
-  // esa sesión de vendedor sola, la reemplaza por la del dueño (mismo
-  // mecanismo que "Cambiar de usuario"), así Empleados queda accesible sin
-  // que el middleware lo bloquee.
+  // Candadito del header: siempre visible (ya no depende de hayEmpleados —
+  // un negocio de 1 persona también necesita llegar a Ajustes). Al picarle
+  // abre un menú con 2 opciones en vez de navegar directo: "Gestionar
+  // Empleados" y "Ajustes del negocio".
   function accederEmpleados() {
-    // eslint-disable-next-line no-console -- debug temporal, ver TopBar
-    console.log("[topbar] click candado", { empleadoActual });
+    setMenuCandado(false);
     if (!empleadoActual || empleadoActual.rol === "dueno") {
       // Dueño (o nadie logueado, que es lo mismo): entra directo a
-      // Ajustes > Empleados, sin PIN — no hay ningún redirect a "/" ni a
-      // /app/inicio en esta rama, solo esta navegación explícita.
+      // Ajustes > Empleados, sin PIN.
       router.push("/app/empleados");
       return;
     }
+    // Encargado/vendedor logueado: primero pide el PIN de dueño — no
+    // cierra esa sesión de vendedor sola, la reemplaza por la del dueño
+    // (mismo mecanismo que "Cambiar de usuario"), así Empleados queda
+    // accesible sin que el middleware lo bloquee.
     setPinDueno(true);
   }
 
+  function accederAjustes() {
+    setMenuCandado(false);
+    router.push("/app/mas");
+  }
+
   function handlePinDuenoExito(empleado: EmpleadoActual) {
-    // eslint-disable-next-line no-console -- debug temporal, ver TopBar
-    console.log("[topbar] pin de dueño correcto", empleado);
     onSesionCambiada?.(empleado);
     setPinDueno(false);
     router.push("/app/empleados");
@@ -124,16 +128,14 @@ export function TopBar({
             >
               <Search className="h-4 w-4" />
             </button>
-            {(hayEmpleados || empleadoActual) && (
-              <button
-                type="button"
-                onClick={accederEmpleados}
-                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                aria-label="Empleados"
-              >
-                <Lock className="h-4 w-4" />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setMenuCandado(true)}
+              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              aria-label="Empleados y ajustes"
+            >
+              <Lock className="h-4 w-4" />
+            </button>
             <button
               type="button"
               onClick={logout}
@@ -170,6 +172,32 @@ export function TopBar({
           )}
         </div>
       )}
+
+      <Dialog open={menuCandado} onOpenChange={setMenuCandado}>
+        <DialogHeader title="Empleados y ajustes" onClose={() => setMenuCandado(false)} />
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={accederEmpleados}
+            className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors active:scale-[0.99]"
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+              <Users className="h-4 w-4" />
+            </div>
+            <span className="text-sm font-medium">Gestionar Empleados</span>
+          </button>
+          <button
+            type="button"
+            onClick={accederAjustes}
+            className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors active:scale-[0.99]"
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+              <Settings className="h-4 w-4" />
+            </div>
+            <span className="text-sm font-medium">Ajustes del negocio</span>
+          </button>
+        </div>
+      </Dialog>
 
       <Dialog open={pinDueno} onOpenChange={(o) => !o && setPinDueno(false)}>
         <DialogHeader title="Acceso a Empleados" description="Pide el PIN del dueño" onClose={() => setPinDueno(false)} />
