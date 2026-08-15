@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Loader2, Lock } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,26 +66,35 @@ export function PinDuenoForm({
 
     setVerificando(true);
     setErrorMsg(null);
-    const ok = await verificarPinDueno(negocioId, pin);
-    setVerificando(false);
+    try {
+      const ok = await verificarPinDueno(negocioId, pin);
+      if (ok) {
+        limpiarIntentos(negocioId);
+        onExito();
+        return;
+      }
 
-    if (ok) {
-      limpiarIntentos(negocioId);
-      onExito();
-      return;
+      // PIN incorrecto (sí se llegó a verificar) — esto SÍ cuenta para el bloqueo local.
+      const nuevosFails = fails + 1;
+      const nuevoBloqueo =
+        nuevosFails >= UMBRAL_BLOQUEO_LARGO
+          ? Date.now() + BLOQUEO_LARGO_MS
+          : nuevosFails >= UMBRAL_BLOQUEO_CORTO
+            ? Date.now() + BLOQUEO_CORTO_MS
+            : 0;
+      guardarIntentos(negocioId, nuevosFails, nuevoBloqueo);
+      setBloqueadoHasta(nuevoBloqueo);
+      setPin("");
+      setErrorMsg(nuevoBloqueo > Date.now() ? "Demasiados intentos. Espera un momento." : "PIN incorrecto.");
+    } catch (err) {
+      // Error de red/timeout — NO se llegó a verificar el PIN, así que no
+      // cuenta como intento fallido. Nunca se deja el modal cargando.
+      console.error("Error verificando PIN de dueño:", err);
+      toast.error("Error verificando PIN. Intenta de nuevo.");
+      setPin("");
+    } finally {
+      setVerificando(false);
     }
-
-    const nuevosFails = fails + 1;
-    const nuevoBloqueo =
-      nuevosFails >= UMBRAL_BLOQUEO_LARGO
-        ? Date.now() + BLOQUEO_LARGO_MS
-        : nuevosFails >= UMBRAL_BLOQUEO_CORTO
-          ? Date.now() + BLOQUEO_CORTO_MS
-          : 0;
-    guardarIntentos(negocioId, nuevosFails, nuevoBloqueo);
-    setBloqueadoHasta(nuevoBloqueo);
-    setPin("");
-    setErrorMsg(nuevoBloqueo > Date.now() ? "Demasiados intentos. Espera un momento." : "PIN incorrecto.");
   }
 
   const segundosRestantes = bloqueadoHasta > ahora ? Math.ceil((bloqueadoHasta - ahora) / 1000) : 0;
@@ -115,7 +125,18 @@ export function PinDuenoForm({
         {verificando ? <Loader2 className="h-4 w-4 animate-spin" /> : "Entrar"}
       </Button>
       {onCancel && (
-        <button type="button" onClick={onCancel} className="text-xs text-muted-foreground underline underline-offset-2">
+        <button
+          type="button"
+          onClick={() => {
+            // Reset explícito antes de salir — aunque el unmount ya limpia
+            // este estado local solo, no dejar nada a medias por las dudas.
+            setPin("");
+            setVerificando(false);
+            setErrorMsg(null);
+            onCancel();
+          }}
+          className="text-xs text-muted-foreground underline underline-offset-2"
+        >
           Cancelar
         </button>
       )}
