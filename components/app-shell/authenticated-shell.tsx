@@ -18,8 +18,7 @@ import { ADMIN_EMAIL, exitImpersonation } from "@/lib/admin-data";
 import { BarberiaQuickAdd, BARBERIA_ACTIONS } from "@/components/quick-add/barberia-quick-add";
 import { FondaQuickAdd, FONDA_ACTIONS } from "@/components/quick-add/fonda-quick-add";
 import { AbarrotesQuickAdd, ABARROTES_ACTIONS } from "@/components/quick-add/abarrotes-quick-add";
-import { QuienAtiende } from "@/components/kiosko/quien-atiende";
-import { clearEmpleadoActual, getEmpleadoActual } from "@/lib/empleados";
+import { getEmpleadoActual } from "@/lib/empleados";
 import type { EmpleadoActual } from "@/lib/types";
 
 // Segmentos de /app/{segmento} que SÍ son del dueño de un negocio (barbería/
@@ -69,11 +68,12 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   const [isAdmin, setIsAdmin] = React.useState(false);
   const [impersonating, setImpersonating] = React.useState<{ adminEmail: string; targetEmail: string } | null>(null);
   const [exiting, setExiting] = React.useState(false);
-  // Multiusuario (modo PIN): null mientras se checa si el negocio tiene
-  // empleados dados de alta (solo negocios reales, ver esNegocioReal más
-  // abajo) — un negocio sin ninguno nunca ve el kiosko, se comporta exacto
-  // igual que antes de esta feature.
-  const [hayEmpleados, setHayEmpleados] = React.useState<boolean | null>(null);
+  // Multiusuario (modo PIN, login OPCIONAL por sesión — nunca por venta ni
+  // al abrir la app): un negocio real con al menos un empleado dado de
+  // alta ve el pill "Vendedor: Dueño"/"Atendiendo: X" en el header (ver
+  // TopBar/TurnoControl); un negocio sin ninguno (o demo) no ve nada
+  // nuevo, se comporta exacto igual que antes de esta feature.
+  const [hayEmpleados, setHayEmpleados] = React.useState<boolean>(false);
   const [empleadoActual, setEmpleadoActualState] = React.useState<EmpleadoActual | null>(null);
 
   const esRutaSuperAdmin = !esRutaDeNegocio(pathname ?? "");
@@ -111,11 +111,6 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
         setHayEmpleados((count ?? 0) > 0);
       });
   }, [session]);
-
-  function cambiarUsuario() {
-    clearEmpleadoActual();
-    setEmpleadoActualState(null);
-  }
 
   async function handleExitImpersonation() {
     setExiting(true);
@@ -217,27 +212,17 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
     );
   }
 
-  // Kiosko: negocio real con al menos un empleado dado de alta Y este
-  // dispositivo/navegador todavía no tiene a nadie activo en fl_empleado —
-  // "¿Quién atiende?" en vez del contenido normal. Una vez elegido (dueño o
-  // empleado), la cookie lo recuerda hasta "Cambiar usuario".
-  if (hayEmpleados && !empleadoActual) {
-    return (
-      <QuienAtiende
-        negocioId={business.id}
-        onEntrar={(emp) => {
-          setEmpleadoActualState(emp);
-          router.replace("/app/inicio");
-        }}
-      />
-    );
-  }
-
   const actions = business.tipo === "barberia" ? BARBERIA_ACTIONS : business.tipo === "fonda" ? FONDA_ACTIONS : ABARROTES_ACTIONS;
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <TopBar data={session} isAdmin={isAdmin} empleadoActual={empleadoActual} onCambiarUsuario={cambiarUsuario} />
+      <TopBar
+        data={session}
+        isAdmin={isAdmin}
+        hayEmpleados={hayEmpleados}
+        empleadoActual={empleadoActual}
+        onSesionCambiada={setEmpleadoActualState}
+      />
 
       {impersonating && (
         <div className="sticky top-14 z-20 flex items-center justify-between gap-3 border-b border-purple-500/40 bg-purple-950/90 px-4 py-2.5 text-white">

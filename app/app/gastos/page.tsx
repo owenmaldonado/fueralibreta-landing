@@ -1,8 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { Plus, Pencil, Trash2, Users } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -84,10 +83,15 @@ export default function GastosPage() {
   // rango y las gráficas) ya trabaja con el día correcto sin tener que
   // repetir la conversión en cada sitio.
   const pedidosEntregados = (session.fonda?.pedidos ?? []).filter((p) => p.estado === "entregado");
+  // cancelada excluye una venta de Abarrotes de ventas/ganancias sin
+  // borrarla (un rol "vendedor" no puede borrar, solo cancelar — ver
+  // PERMISOS en lib/empleados.ts); fonda ya queda afuera con el filtro de
+  // "entregado" de arriba, "cancelado" nunca entra ahí.
+  const ventasAbarrotesActivas = (session.abarrotes?.ventas ?? []).filter((v) => !v.cancelada);
   const ventas: Movimiento[] =
     modulo === "fonda"
       ? pedidosEntregados.map((p) => ({ id: p.id, fecha: p.fecha, monto: p.total, label: p.clienteNombre || "Pedido" }))
-      : (session.abarrotes?.ventas ?? []).map((v) => ({
+      : ventasAbarrotesActivas.map((v) => ({
           id: v.id,
           fecha: fechaCalendarioLocal(v.fecha),
           monto: v.total,
@@ -125,7 +129,7 @@ export default function GastosPage() {
           }, 0),
           label: p.clienteNombre || "Pedido",
         }))
-      : (session.abarrotes?.ventas ?? []).map((v) => ({
+      : ventasAbarrotesActivas.map((v) => ({
           id: v.id,
           fecha: fechaCalendarioLocal(v.fecha),
           monto: v.items.reduce((acc, it) => {
@@ -227,18 +231,9 @@ export default function GastosPage() {
         title="Gastos / Ventas"
         subtitle="Lo que entra y lo que sale"
         action={
-          <div className="flex items-center gap-2">
-            {session.business.ownerId && (
-              <Button asChild size="sm" variant="outline" aria-label="Empleados">
-                <Link href="/app/empleados">
-                  <Users className="h-4 w-4" />
-                </Link>
-              </Button>
-            )}
-            <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
-              <Plus className="h-4 w-4" /> Nuevo
-            </Button>
-          </div>
+          <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+            <Plus className="h-4 w-4" /> Nuevo
+          </Button>
         }
       />
 
