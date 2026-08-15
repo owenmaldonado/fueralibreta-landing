@@ -218,6 +218,156 @@ create policy "negocios_update" on negocios for update
 -- service_role key desde el servidor, que salta RLS automáticamente.
 
 -- ============================================================================
+-- MULTIUSUARIO POR NEGOCIO (modo PIN)
+-- ============================================================================
+-- Dueño entra con Google, sesión de Supabase persistente en el cel/tablet
+-- del negocio (compartido entre turnos). Empleados NO tienen cuenta propia
+-- todavía — solo un PIN de 4 dígitos, verificado por la Edge Function
+-- verificar-pin (ver supabase/functions/verificar-pin) contra pin_hash
+-- (bcrypt vía pgcrypto, nunca texto plano). El front guarda quién está
+-- activo en una cookie (fl_empleado, no localStorage: el middleware de
+-- Next.js corre en el edge y necesita leerlo ahí para bloquear /app/empleados
+-- y /app/configuracion por URL directa sin PIN de dueño — ver middleware.ts
+-- y lib/empleados.ts).
+--
+-- user_id queda nullable a propósito: hoy siempre es null (modo PIN puro),
+-- pero un futuro "empleado con cuenta propia" solo tendría que llenar esta
+-- columna con su auth.users.id — is_negocio_owner() más abajo ya lo
+-- reconoce automáticamente (ver el OR EXISTS agregado a su definición),
+-- sin tener que tocar ninguna policy existente.
+create table if not exists negocio_empleados (
+  id uuid primary key default gen_random_uuid(),
+  negocio_id uuid not null references negocios(id) on delete cascade,
+  nombre text not null,
+  rol text not null check (rol in ('dueno', 'encargado', 'vendedor')),
+  pin_hash text not null,
+  user_id uuid references auth.users(id) on delete set null,
+  activo boolean not null default true,
+  created_at timestamptz not null default now(),
+  unique (negocio_id, nombre)
+);
+
+-- Bitácora de intentos de PIN (éxitos y fallos) — la escribe la Edge
+-- Function verificar-pin con la service_role key, saltando RLS. El
+-- bloqueo temporal (3 fallos = 30s, 3 más = 5min) vive en el front
+-- (ver components/kiosko/quien-atiende.tsx), esta tabla es solo el
+-- registro para que el dueño pueda auditar intentos sospechosos.
+create table if not exists auditoria_pin (
+  id uuid primary key default gen_random_uuid(),
+  negocio_id uuid not null references negocios(id) on delete cascade,
+  empleado_id_intentado uuid references negocio_empleados(id) on delete set null,
+  exito boolean not null,
+  motivo text,
+  created_at timestamptz not null default now()
+);
+
+alter table negocio_empleados enable row level security;
+alter table auditoria_pin enable row level security;
+
+drop policy if exists "negocio_empleados_owner" on negocio_empleados;
+create policy "negocio_empleados_owner" on negocio_empleados for all
+  using (is_negocio_owner(negocio_id)) with check (is_negocio_owner(negocio_id));
+
+-- Solo select para el dueño; el insert real lo hace la Edge Function con
+-- service_role (que salta RLS por completo), así que esta policy de insert
+-- es nada más una red de seguridad si algún día se inserta desde el
+-- cliente con la sesión del dueño.
+drop policy if exists "auditoria_pin_select" on auditoria_pin;
+create policy "auditoria_pin_select" on auditoria_pin for select
+  using (is_negocio_owner(negocio_id));
+drop policy if exists "auditoria_pin_insert" on auditoria_pin;
+create policy "auditoria_pin_insert" on auditoria_pin for insert
+  with check (is_negocio_owner(negocio_id));
+
+-- Redefine is_negocio_owner() (declarada arriba, en NEGOCIOS) para que
+-- también reconozca a un futuro empleado con cuenta propia — hoy
+-- negocio_empleados.user_id siempre es null, así que este OR nunca aplica
+-- todavía y el comportamiento actual no cambia en absoluto. Como todas las
+-- policies del archivo llaman a esta función por nombre (no inline), un
+-- futuro "empleado con cuenta propia" queda cubierto en TODA la app sin
+-- tocar una sola policy más.
+create or replace function is_negocio_owner(p_negocio_id uuid)
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (
+    select 1 from negocios n where n.id = p_negocio_id and n.owner_id = auth.uid()
+  ) or exists (
+    select 1 from negocio_empleados e
+    where e.negocio_id = p_negocio_id and e.user_id = auth.uid() and e.activo = true
+  );
+$$;
+
+-- Función que valida el PIN adentro de Postgres (pgcrypto crypt()), para
+-- que el hash y la comparación vivan en un solo lugar auditable — la Edge
+-- Function verificar-pin solo la llama con service_role y escribe la
+-- bitácora. security definer porque el caller (service_role) igual necesita
+-- leer negocio_empleados sin las policies normales de por medio en este
+-- flujo específico. No expone el hash: regresa null si no hay match.
+create or replace function verificar_pin_empleado(p_negocio_id uuid, p_empleado_id uuid, p_pin text)
+returns table (id uuid, nombre text, rol text, user_id uuid)
+language plpgsql
+security definer
+as $$
+begin
+  return query
+  select e.id, e.nombre, e.rol, e.user_id
+  from negocio_empleados e
+  where e.id = p_empleado_id
+    and e.negocio_id = p_negocio_id
+    and e.activo = true
+    and e.pin_hash = crypt(p_pin, e.pin_hash);
+end;
+$$;
+
+-- Utilidad para que el front (vía RPC, con la sesión del dueño) verifique
+-- si un PIN candidato ya está en uso por otro empleado activo del mismo
+-- negocio, antes de guardarlo — "no repetidos por negocio" del prompt.
+-- security definer: el dueño puede leer negocio_empleados de su propio
+-- negocio de todos modos, pero así nunca expone pin_hash, solo un booleano.
+create or replace function pin_disponible(p_negocio_id uuid, p_pin text)
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select not exists (
+    select 1 from negocio_empleados e
+    where e.negocio_id = p_negocio_id and e.activo = true and e.pin_hash = crypt(p_pin, e.pin_hash)
+  );
+$$;
+
+-- Alta de empleado desde Ajustes > Empleados (app/app/empleados/page.tsx) —
+-- hashea el PIN con pgcrypto adentro de Postgres, nunca en el cliente.
+-- No es security definer: corre con los privilegios del dueño que llama
+-- (RLS normal de negocio_empleados_owner ya exige is_negocio_owner), así
+-- que un dueño no puede crear empleados en un negocio que no es suyo.
+create or replace function crear_empleado(p_negocio_id uuid, p_nombre text, p_rol text, p_pin text)
+returns negocio_empleados
+language plpgsql
+as $$
+declare
+  fila negocio_empleados;
+begin
+  insert into negocio_empleados (negocio_id, nombre, rol, pin_hash)
+  values (p_negocio_id, p_nombre, p_rol, crypt(p_pin, gen_salt('bf')))
+  returning * into fila;
+  return fila;
+end;
+$$;
+
+-- Cambiar o regenerar el PIN de un empleado existente — mismo motivo que
+-- crear_empleado para no ser security definer.
+create or replace function actualizar_pin_empleado(p_empleado_id uuid, p_pin text)
+returns void
+language sql
+as $$
+  update negocio_empleados set pin_hash = crypt(p_pin, gen_salt('bf')) where id = p_empleado_id;
+$$;
+
+-- ============================================================================
 -- BARBERÍA
 -- ============================================================================
 
@@ -289,6 +439,16 @@ end $$;
 
 create index if not exists barberia_citas_negocio_fecha_idx on barberia_citas(negocio_id, fecha);
 
+-- Multiusuario: quién atendió/cobró esta cita (ver negocio_empleados más
+-- arriba). empleado_nombre_cache sobrevive aunque el empleado se borre
+-- después (empleado_id se pone en null, no cascade). cancelado_por/
+-- motivo_cancelacion: un rol "vendedor" no puede borrar citas, solo
+-- cancelarlas (estado ya tenía 'cancelada' desde antes de multiusuario).
+alter table barberia_citas add column if not exists empleado_id uuid references negocio_empleados(id) on delete set null;
+alter table barberia_citas add column if not exists empleado_nombre_cache text;
+alter table barberia_citas add column if not exists cancelado_por text;
+alter table barberia_citas add column if not exists motivo_cancelacion text;
+
 create table if not exists barberia_caja (
   id uuid primary key default gen_random_uuid(),
   negocio_id uuid not null references negocios(id) on delete cascade,
@@ -298,6 +458,9 @@ create table if not exists barberia_caja (
   metodo text not null check (metodo in ('efectivo', 'transferencia')),
   fecha timestamptz not null default now()
 );
+
+alter table barberia_caja add column if not exists empleado_id uuid references negocio_empleados(id) on delete set null;
+alter table barberia_caja add column if not exists empleado_nombre_cache text;
 
 create table if not exists barberia_productos (
   id uuid primary key default gen_random_uuid(),
@@ -345,6 +508,9 @@ begin
 end $$;
 alter table barberia_cortes add column if not exists fondo_inicial numeric(10, 2);
 alter table barberia_cortes add column if not exists gastos numeric(10, 2);
+-- Multiusuario: quién cerró el turno.
+alter table barberia_cortes add column if not exists empleado_id uuid references negocio_empleados(id) on delete set null;
+alter table barberia_cortes add column if not exists empleado_nombre_cache text;
 
 alter table barberia_servicios enable row level security;
 alter table barberia_horario enable row level security;
@@ -570,7 +736,7 @@ create table if not exists fonda_pedidos (
   fecha date not null default current_date,
   hora time not null default current_time,
   hora_entrega time,
-  estado text not null default 'pendiente' check (estado in ('pendiente', 'entregado')),
+  estado text not null default 'pendiente' check (estado in ('pendiente', 'entregado', 'cancelado')),
   total numeric(10, 2) not null default 0,
   created_at timestamptz not null default now()
 );
@@ -581,6 +747,22 @@ create table if not exists fonda_pedidos (
 alter table fonda_pedidos add column if not exists fecha date not null default current_date;
 alter table fonda_pedidos add column if not exists hora_entrega time;
 update fonda_pedidos set fecha = created_at::date where fecha = current_date and created_at::date <> current_date;
+
+-- Multiusuario: quién tomó/cobró el pedido, y (si un rol "vendedor" lo
+-- canceló en vez de borrarlo — no puede borrar) quién y por qué. 'cancelado'
+-- se agrega al check de estado para instalaciones viejas que ya tenían esta
+-- tabla sin ese valor permitido.
+do $$
+begin
+  if exists (select 1 from pg_constraint where conname = 'fonda_pedidos_estado_check') then
+    alter table fonda_pedidos drop constraint fonda_pedidos_estado_check;
+  end if;
+  alter table fonda_pedidos add constraint fonda_pedidos_estado_check check (estado in ('pendiente', 'entregado', 'cancelado'));
+end $$;
+alter table fonda_pedidos add column if not exists empleado_id uuid references negocio_empleados(id) on delete set null;
+alter table fonda_pedidos add column if not exists empleado_nombre_cache text;
+alter table fonda_pedidos add column if not exists cancelado_por text;
+alter table fonda_pedidos add column if not exists motivo_cancelacion text;
 
 create table if not exists fonda_pedido_items (
   id uuid primary key default gen_random_uuid(),
@@ -639,6 +821,9 @@ begin
 end $$;
 alter table fondita_cortes add column if not exists fondo_inicial numeric(10, 2);
 alter table fondita_cortes add column if not exists diferencia numeric(10, 2);
+-- Multiusuario: quién cerró el turno.
+alter table fondita_cortes add column if not exists empleado_id uuid references negocio_empleados(id) on delete set null;
+alter table fondita_cortes add column if not exists empleado_nombre_cache text;
 
 -- Paso 2 ("Merma") del wizard de Cerrar Turno: un registro por platillo que
 -- estaba disponible_hoy al cerrar. producto_nombre queda como snapshot
@@ -752,6 +937,16 @@ create table if not exists abarrotes_ventas (
   total numeric(10, 2) not null default 0,
   fecha timestamptz not null default now()
 );
+
+-- Multiusuario: quién cobró la venta, y si un rol "vendedor" la canceló en
+-- vez de borrarla (no puede borrar) — cancelada=true la excluye de
+-- ventas/ganancias en Gastos/Ventas (ver app/app/gastos/page.tsx) sin
+-- perder el registro.
+alter table abarrotes_ventas add column if not exists empleado_id uuid references negocio_empleados(id) on delete set null;
+alter table abarrotes_ventas add column if not exists empleado_nombre_cache text;
+alter table abarrotes_ventas add column if not exists cancelada boolean not null default false;
+alter table abarrotes_ventas add column if not exists cancelado_por text;
+alter table abarrotes_ventas add column if not exists motivo_cancelacion text;
 
 create table if not exists abarrotes_sale_items (
   id uuid primary key default gen_random_uuid(),
@@ -877,6 +1072,9 @@ begin
   end if;
 end $$;
 alter table abarrotera_cortes add column if not exists fondo_inicial numeric(10, 2);
+-- Multiusuario: quién cerró el día.
+alter table abarrotera_cortes add column if not exists empleado_id uuid references negocio_empleados(id) on delete set null;
+alter table abarrotera_cortes add column if not exists empleado_nombre_cache text;
 
 -- Paso 2 (Caducados/Dañados) de Cerrar Día: un registro por producto que se
 -- decidió en el cierre. producto_nombre queda como snapshot por si el
@@ -1217,6 +1415,10 @@ create policy "profiles_admin_all" on profiles for all
 -- sin tocar el Table Editor de Supabase.
 drop policy if exists "negocios_admin_all" on negocios;
 create policy "negocios_admin_all" on negocios for all using (is_admin()) with check (is_admin());
+drop policy if exists "negocio_empleados_admin_all" on negocio_empleados;
+create policy "negocio_empleados_admin_all" on negocio_empleados for all using (is_admin()) with check (is_admin());
+drop policy if exists "auditoria_pin_admin_all" on auditoria_pin;
+create policy "auditoria_pin_admin_all" on auditoria_pin for all using (is_admin()) with check (is_admin());
 
 -- mis_apps es exclusivamente del super admin: nadie más puede ni leerla.
 alter table mis_apps enable row level security;

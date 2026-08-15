@@ -11,6 +11,7 @@ import { Stepper } from "@/components/ui/stepper";
 import { Button } from "@/components/ui/button";
 import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatMoney, todayISO } from "@/lib/mock";
+import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, OrderItem, Expense } from "@/lib/types";
 
 export const FONDA_ACTIONS: FabAction[] = [
@@ -128,6 +129,7 @@ function NuevoPedidoForm({
         // pendientes, con la hora de entrega prometida si se puso.
         estado: modo === "cobrar" ? ("entregado" as const) : ("pendiente" as const),
         total,
+        ...camposEmpleado(),
       };
       return { ...prev, fonda: { ...f, pedidos: [pedido, ...f.pedidos] } };
     });

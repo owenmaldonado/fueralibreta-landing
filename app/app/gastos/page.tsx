@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Plus, Pencil, Trash2, Users } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -226,9 +227,18 @@ export default function GastosPage() {
         title="Gastos / Ventas"
         subtitle="Lo que entra y lo que sale"
         action={
-          <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
-            <Plus className="h-4 w-4" /> Nuevo
-          </Button>
+          <div className="flex items-center gap-2">
+            {session.business.ownerId && (
+              <Button asChild size="sm" variant="outline" aria-label="Empleados">
+                <Link href="/app/empleados">
+                  <Users className="h-4 w-4" />
+                </Link>
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+              <Plus className="h-4 w-4" /> Nuevo
+            </Button>
+          </div>
         }
       />
 

@@ -196,6 +196,10 @@ export const citaFromRow = (r: Row): Appointment => ({
   hora: (r.hora as string).slice(0, 5),
   estado: r.estado as Appointment["estado"],
   metodo: (r.metodo as Appointment["metodo"]) ?? undefined,
+  empleadoId: (r.empleado_id as string) ?? undefined,
+  empleadoNombreCache: (r.empleado_nombre_cache as string) ?? undefined,
+  canceladoPor: (r.cancelado_por as string) ?? undefined,
+  motivoCancelacion: (r.motivo_cancelacion as string) ?? undefined,
 });
 const citaToRow = (c: Appointment, negocioId: string): Row => ({
   id: c.id,
@@ -210,6 +214,10 @@ const citaToRow = (c: Appointment, negocioId: string): Row => ({
   hora: c.hora,
   estado: c.estado,
   metodo: c.metodo ?? null,
+  empleado_id: c.empleadoId ?? null,
+  empleado_nombre_cache: c.empleadoNombreCache ?? null,
+  cancelado_por: c.canceladoPor ?? null,
+  motivo_cancelacion: c.motivoCancelacion ?? null,
 });
 
 const cajaFromRow = (r: Row): CajaEntry => ({
@@ -219,6 +227,8 @@ const cajaFromRow = (r: Row): CajaEntry => ({
   monto: Number(r.monto),
   metodo: r.metodo as CajaEntry["metodo"],
   fecha: r.fecha as string,
+  empleadoId: (r.empleado_id as string) ?? undefined,
+  empleadoNombreCache: (r.empleado_nombre_cache as string) ?? undefined,
 });
 const cajaToRow = (c: CajaEntry, negocioId: string): Row => ({
   id: c.id,
@@ -228,6 +238,8 @@ const cajaToRow = (c: CajaEntry, negocioId: string): Row => ({
   monto: c.monto,
   metodo: c.metodo,
   fecha: c.fecha,
+  empleado_id: c.empleadoId ?? null,
+  empleado_nombre_cache: c.empleadoNombreCache ?? null,
 });
 
 const productoBarberiaFromRow = (r: Row): InventoryProduct => ({
@@ -331,6 +343,10 @@ const pedidoToRow = (p: FondaOrder, negocioId: string): Row => ({
   hora_entrega: p.horaEntrega ?? null,
   estado: p.estado,
   total: p.total,
+  empleado_id: p.empleadoId ?? null,
+  empleado_nombre_cache: p.empleadoNombreCache ?? null,
+  cancelado_por: p.canceladoPor ?? null,
+  motivo_cancelacion: p.motivoCancelacion ?? null,
 });
 const itemToRow = (it: OrderItem, pedidoId: string): Row => ({
   pedido_id: pedidoId,
@@ -392,6 +408,10 @@ async function fetchFondaData(negocioId: string): Promise<FondaData> {
     horaEntrega: (row.hora_entrega as string | null)?.slice(0, 5) ?? undefined,
     estado: row.estado as FondaOrder["estado"],
     total: Number(row.total),
+    empleadoId: (row.empleado_id as string) ?? undefined,
+    empleadoNombreCache: (row.empleado_nombre_cache as string) ?? undefined,
+    canceladoPor: (row.cancelado_por as string) ?? undefined,
+    motivoCancelacion: (row.motivo_cancelacion as string) ?? undefined,
     items: itemsData
       .filter((it) => it.pedido_id === row.id)
       .map((it) => ({
@@ -450,6 +470,8 @@ export async function fetchPedidosPendientes(negocioId: string): Promise<FondaOr
     horaEntrega: (row.hora_entrega as string | null)?.slice(0, 5) ?? undefined,
     estado: row.estado as FondaOrder["estado"],
     total: Number(row.total),
+    empleadoId: (row.empleado_id as string) ?? undefined,
+    empleadoNombreCache: (row.empleado_nombre_cache as string) ?? undefined,
     items: itemsData
       .filter((it) => it.pedido_id === row.id)
       .map((it) => ({
@@ -490,6 +512,11 @@ const ventaToRow = (v: GrocerySale, negocioId: string): Row => ({
   negocio_id: negocioId,
   total: v.total,
   fecha: v.fecha,
+  empleado_id: v.empleadoId ?? null,
+  empleado_nombre_cache: v.empleadoNombreCache ?? null,
+  cancelada: v.cancelada ?? false,
+  cancelado_por: v.canceladoPor ?? null,
+  motivo_cancelacion: v.motivoCancelacion ?? null,
 });
 const ventaItemToRow = (it: GrocerySaleItem, ventaId: string): Row => ({
   venta_id: ventaId,
@@ -551,6 +578,11 @@ const ventaFromRow = (row: Row, itemsRows: Row[]): GrocerySale => ({
   id: row.id as string,
   total: Number(row.total),
   fecha: row.fecha as string,
+  empleadoId: (row.empleado_id as string) ?? undefined,
+  empleadoNombreCache: (row.empleado_nombre_cache as string) ?? undefined,
+  cancelada: (row.cancelada as boolean) ?? false,
+  canceladoPor: (row.cancelado_por as string) ?? undefined,
+  motivoCancelacion: (row.motivo_cancelacion as string) ?? undefined,
   items: itemsRows.filter((it) => it.venta_id === row.id).map(saleItemFromRow),
 });
 

@@ -20,6 +20,7 @@ import { BarcodeScanner } from "@/components/barcode-scanner";
 import { VentaCart } from "@/components/abarrotes/venta-cart";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
+import { permisosActuales } from "@/lib/empleados";
 import { formatMoney, todayISO, uid } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 import type { GroceryProduct, GrocerySale, GrocerySaleItem } from "@/lib/types";
@@ -38,6 +39,14 @@ export default function InventarioPage() {
   const [borrando, setBorrando] = React.useState<GroceryProduct | null>(null);
   const [editandoVenta, setEditandoVenta] = React.useState<GrocerySale | null>(null);
   const [borrandoVenta, setBorrandoVenta] = React.useState<GrocerySale | null>(null);
+  // Multiusuario: un rol "vendedor" no puede borrar ventas — se resuelve en
+  // un efecto (permisosActuales lee una cookie) para no desalinear el
+  // primer render del servidor con el del cliente.
+  const [puedeBorrarVentas, setPuedeBorrarVentas] = React.useState(true);
+
+  React.useEffect(() => {
+    setPuedeBorrarVentas(permisosActuales().borrarVentas);
+  }, []);
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -206,13 +215,15 @@ export default function InventarioPage() {
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
-                  <button
-                    onClick={() => setBorrandoVenta(v)}
-                    aria-label="Eliminar venta"
-                    className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  {puedeBorrarVentas && (
+                    <button
+                      onClick={() => setBorrandoVenta(v)}
+                      aria-label="Eliminar venta"
+                      className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
               );

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Boxes, Settings, ChevronRight, ArrowRight, Copy, Check, MessageCircle, History } from "lucide-react";
+import { Boxes, Settings, ChevronRight, ArrowRight, Copy, Check, MessageCircle, History, Users } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -14,6 +14,7 @@ import { ADMIN_EMAIL } from "@/lib/admin-data";
 const LINKS = [
   { href: "/app/productos", label: "Productos", desc: "Inventario de insumos", icon: Boxes },
   { href: "/app/configuracion", label: "Configuración", desc: "Horarios, excepciones y servicios", icon: Settings },
+  { href: "/app/empleados", label: "Empleados", desc: "Multiusuario con PIN", icon: Users },
 ];
 
 const LINKS_BARBERIA = [

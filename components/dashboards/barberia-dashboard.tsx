@@ -9,6 +9,7 @@ import { EmptyState } from "./empty-state";
 import { CobrarCitaDialog } from "./cobrar-cita-dialog";
 import { CerrarTurnoSheet } from "./barberia-cerrar-turno";
 import { daysSince, formatMoney, statsVisitasCliente, todayISO, waLink } from "@/lib/mock";
+import { camposEmpleado } from "@/lib/empleados";
 import type { Appointment, TenantData, SessionUpdater } from "@/lib/types";
 
 export function BarberiaDashboard({ session, update }: { session: TenantData; update: SessionUpdater }) {
@@ -40,7 +41,10 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
       const b = prev.barberia!;
       return {
         ...prev,
-        barberia: { ...b, citas: b.citas.map((c) => (c.id === citaId ? { ...c, estado: "listo" as const, metodo } : c)) },
+        barberia: {
+          ...b,
+          citas: b.citas.map((c) => (c.id === citaId ? { ...c, estado: "listo" as const, metodo, ...camposEmpleado() } : c)),
+        },
       };
     });
     setCobrando(null);

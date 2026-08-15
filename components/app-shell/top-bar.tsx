@@ -3,14 +3,25 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, LogOut, X, ShieldCheck } from "lucide-react";
+import { Search, LogOut, X, ShieldCheck, Users } from "lucide-react";
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { clearDemoPreview } from "@/lib/demoPreview";
 import { universalSearch } from "@/lib/search";
-import type { TenantData } from "@/lib/types";
+import type { TenantData, EmpleadoActual } from "@/lib/types";
 
-export function TopBar({ data, isAdmin }: { data: TenantData; isAdmin?: boolean }) {
+export function TopBar({
+  data,
+  isAdmin,
+  empleadoActual,
+  onCambiarUsuario,
+}: {
+  data: TenantData;
+  isAdmin?: boolean;
+  /** Modo PIN activo en este dispositivo (ver AuthenticatedShell) — presente tanto si es un empleado como si es el dueño entrando por el kiosko. */
+  empleadoActual?: EmpleadoActual | null;
+  onCambiarUsuario?: () => void;
+}) {
   const [searching, setSearching] = React.useState(false);
   const [q, setQ] = React.useState("");
   const router = useRouter();
@@ -51,7 +62,7 @@ export function TopBar({ data, isAdmin }: { data: TenantData; isAdmin?: boolean 
             <div className="flex flex-1 flex-col leading-tight">
               <span className="truncate font-display text-sm font-semibold">{data.business.nombre}</span>
               <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                {data.business.demo ? "Modo demo" : data.business.dueno}
+                {empleadoActual ? `${empleadoActual.nombre} · ${empleadoActual.rol}` : data.business.demo ? "Modo demo" : data.business.dueno}
               </span>
             </div>
             {isAdmin && (
@@ -70,14 +81,25 @@ export function TopBar({ data, isAdmin }: { data: TenantData; isAdmin?: boolean 
             >
               <Search className="h-4 w-4" />
             </button>
-            <button
-              type="button"
-              onClick={logout}
-              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              aria-label="Cerrar sesión"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
+            {empleadoActual ? (
+              <button
+                type="button"
+                onClick={onCambiarUsuario}
+                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                aria-label="Cambiar usuario / Cerrar turno"
+              >
+                <Users className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={logout}
+                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                aria-label="Cerrar sesión"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            )}
           </>
         )}
       </div>

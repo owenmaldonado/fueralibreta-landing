@@ -8,6 +8,13 @@ const ROOT_HOSTS = ["fueralibreta.com", "www.fueralibreta.com", "localhost", "12
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
+// Multiusuario (modo PIN, ver lib/empleados.ts): rutas exclusivas del dueño.
+// Un empleado con la cookie fl_empleado puesta (rol != "dueno") que intenta
+// entrar aquí por URL directa se bloquea y regresa a Hoy — esto corre en el
+// edge (antes de renderizar la página), por eso fl_empleado es una cookie
+// normal y no localStorage: localStorage no existe aquí.
+const RUTAS_SOLO_DUENO = ["/app/empleados", "/app/configuracion"];
+
 export async function middleware(req: NextRequest) {
   const url = req.nextUrl;
 
@@ -25,6 +32,20 @@ export async function middleware(req: NextRequest) {
     target.searchParams.set("code", strayCode);
     target.searchParams.set("next", url.pathname);
     return NextResponse.redirect(target);
+  }
+
+  if (RUTAS_SOLO_DUENO.some((r) => url.pathname === r || url.pathname.startsWith(`${r}/`))) {
+    const cookieEmpleado = req.cookies.get("fl_empleado")?.value;
+    if (cookieEmpleado) {
+      try {
+        const empleado = JSON.parse(cookieEmpleado);
+        if (empleado?.rol && empleado.rol !== "dueno") {
+          return NextResponse.redirect(new URL("/app/inicio", url.origin));
+        }
+      } catch {
+        // Cookie corrupta/vieja: no bloquea, se comporta como si no hubiera empleado activo.
+      }
+    }
   }
 
   // /app/fuera-libreta es el destino de "Entrar" para la tarjeta de Fuera

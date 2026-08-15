@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { supabase } from "@/lib/supabase";
 import { formatMoney, mensajeDiferencia, uid } from "@/lib/mock";
+import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
 
 type MermaTipo = "acabado" | "sobro_poco" | "sobro_mucho" | "tirado";
@@ -112,6 +113,8 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
         efectivo_real: efectivoNum,
         gastos: gastoNum,
         diferencia: efectivoNum - ventasHoy,
+        empleado_id: camposEmpleado().empleadoId ?? null,
+        empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
       });
       if (error) console.error("No se pudo guardar el corte:", error);
     }
