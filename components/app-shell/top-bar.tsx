@@ -7,6 +7,7 @@ import { Search, LogOut, X, ShieldCheck, Users } from "lucide-react";
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { clearDemoPreview } from "@/lib/demoPreview";
+import { clearEmpleadoActual } from "@/lib/empleados";
 import { universalSearch } from "@/lib/search";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { PinDuenoForm } from "@/components/kiosko/pin-dueno";
@@ -69,6 +70,23 @@ export function TopBar({
     router.push("/app/empleados");
   }
 
+  /**
+   * Salida de emergencia: Shift+click en el nombre del negocio fuerza a
+   * modo Dueño sin pasar por PIN ni por el selector — pensado para un
+   * dispositivo que se quedó atorado en modo empleado y ya no deja llegar
+   * a ningún botón normal (p. ej. una cookie fl_empleado corrupta que el
+   * middleware bloquea, o cualquier estado raro no previsto). No requiere
+   * confirmar nada porque Shift+click no es algo con lo que alguien
+   * tropiece por accidente, y solo cierra sesión de EMPLEADO — nunca la de
+   * Supabase Auth real.
+   */
+  function resetEmergencia(e: React.MouseEvent) {
+    if (!e.shiftKey) return;
+    e.preventDefault();
+    clearEmpleadoActual();
+    window.location.href = "/app/inicio";
+  }
+
   return (
     <header className="sticky top-0 z-30 border-b border-border/60 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
       <div className="flex h-14 items-center gap-2 px-4">
@@ -89,7 +107,9 @@ export function TopBar({
         ) : (
           <>
             <div className="flex min-w-0 flex-1 flex-col items-start gap-1 leading-tight">
-              <span className="truncate font-display text-sm font-semibold">{data.business.nombre}</span>
+              <span onClick={resetEmergencia} className="truncate font-display text-sm font-semibold">
+                {data.business.nombre}
+              </span>
               <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                 {data.business.demo ? "Modo demo" : data.business.dueno}
               </span>
