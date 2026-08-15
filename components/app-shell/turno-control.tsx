@@ -52,6 +52,8 @@ export function TurnoControl({
       <button
         type="button"
         onClick={() => {
+          // eslint-disable-next-line no-console -- debug temporal, ver componente TurnoControl
+          console.log("[turno] click pill", { empleadoActual, negocioId });
           setEligiendo(false);
           setOpen(true);
         }}
