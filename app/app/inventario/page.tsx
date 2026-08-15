@@ -21,6 +21,7 @@ import { VentaCart } from "@/components/abarrotes/venta-cart";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { permisosActuales } from "@/lib/empleados";
+import { buscarEnCatalogoGlobal, aportarACatalogoGlobal, type CatalogoGlobalEntry } from "@/lib/catalogo-global";
 import { formatMoney, todayISO, uid } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 import type { GroceryProduct, GrocerySale, GrocerySaleItem } from "@/lib/types";
@@ -34,6 +35,7 @@ export default function InventarioPage() {
   const [ventaOpen, setVentaOpen] = React.useState(false);
   const [ajustar, setAjustar] = React.useState<GroceryProduct | null>(null);
   const [nuevoCodigo, setNuevoCodigo] = React.useState<string | null>(null);
+  const [sugeridoGlobal, setSugeridoGlobal] = React.useState<CatalogoGlobalEntry | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
   const [editando, setEditando] = React.useState<GroceryProduct | null>(null);
   const [borrando, setBorrando] = React.useState<GroceryProduct | null>(null);
@@ -65,9 +67,15 @@ export default function InventarioPage() {
     const producto = data.productos.find((p) => p.codigo === codigo);
     if (producto) {
       setAjustar(producto);
-    } else {
-      setNuevoCodigo(codigo);
+      return;
     }
+    // No está en ESTE negocio — antes de pedirle al usuario que escriba el
+    // nombre a mano, pregunta si algún otro negocio ya lo escaneó (ver
+    // lib/catalogo-global.ts). Async y no bloqueante: el Sheet se abre de
+    // una vez con el código; si la consulta llega, autocompleta encima.
+    setNuevoCodigo(codigo);
+    setSugeridoGlobal(null);
+    buscarEnCatalogoGlobal(codigo).then(setSugeridoGlobal);
   }
 
   function eliminarProducto() {
@@ -240,9 +248,26 @@ export default function InventarioPage() {
         {ajustar && <AjustarStockForm producto={ajustar} onClose={() => setAjustar(null)} update={update} />}
       </Sheet>
 
-      <Sheet open={!!nuevoCodigo} onOpenChange={(o) => !o && setNuevoCodigo(null)}>
+      <Sheet
+        open={!!nuevoCodigo}
+        onOpenChange={(o) => {
+          if (!o) {
+            setNuevoCodigo(null);
+            setSugeridoGlobal(null);
+          }
+        }}
+      >
         {nuevoCodigo && (
-          <ProductoForm codigo={nuevoCodigo} onClose={() => setNuevoCodigo(null)} update={update} limiteAlcanzado={tocoLimiteProductos} />
+          <ProductoForm
+            codigo={nuevoCodigo}
+            sugerido={sugeridoGlobal}
+            onClose={() => {
+              setNuevoCodigo(null);
+              setSugeridoGlobal(null);
+            }}
+            update={update}
+            limiteAlcanzado={tocoLimiteProductos}
+          />
         )}
       </Sheet>
 
@@ -315,18 +340,21 @@ function AjustarStockForm({
 function ProductoForm({
   producto,
   codigo,
+  sugerido,
   onClose,
   update,
   limiteAlcanzado = false,
 }: {
   producto?: GroceryProduct;
   codigo: string | null;
+  /** Del catálogo global (ver lib/catalogo-global.ts) — otro negocio ya escaneó este código. Solo autocompleta nombre: marca/presentacion no tienen input en este formulario todavía. */
+  sugerido?: CatalogoGlobalEntry | null;
   onClose: () => void;
   update: ReturnType<typeof useSession>["update"];
   /** Solo aplica al crear (no a editar un producto que ya existe) — ver plan.limiteAlcanzado("max_productos", ...) en el padre. */
   limiteAlcanzado?: boolean;
 }) {
-  const [nombre, setNombre] = React.useState(producto?.nombre ?? "");
+  const [nombre, setNombre] = React.useState(producto?.nombre ?? sugerido?.nombre ?? "");
   const [codigoInput, setCodigoInput] = React.useState(producto?.codigo ?? codigo ?? "");
   const [scanning, setScanning] = React.useState(false);
   const [categoria, setCategoria] = React.useState(producto?.categoria ?? "");
@@ -338,12 +366,24 @@ function ProductoForm({
   const [controlCaducidad, setControlCaducidad] = React.useState(producto?.controlCaducidad ?? false);
   const [fechaCaducidad, setFechaCaducidad] = React.useState(producto?.lotes?.[0]?.fecha ?? todayISO(30));
 
+  // sugerido llega async (consulta al catálogo global después de escanear,
+  // ver handleScan en el padre) — puede resolver DESPUÉS de que este
+  // formulario ya montó con nombre vacío. Solo autocompleta si el usuario
+  // no había escrito nada todavía, para no pisarle lo que ya tecleó.
+  React.useEffect(() => {
+    if (sugerido && !producto && !nombre.trim()) {
+      setNombre(sugerido.nombre);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo debe reaccionar a que llegue el sugerido, no a cada tecla en nombre
+  }, [sugerido]);
+
   const utilidad = Number(precio || 0) - Number(costo || 0);
   const bloqueadoPorLimite = !producto && limiteAlcanzado;
   const puedeGuardar = nombre.trim().length > 1 && Number(precio) > 0 && !bloqueadoPorLimite;
 
   function guardar() {
     if (!puedeGuardar) return;
+    const codigoFinal = codigoInput.trim() || Math.floor(1000000000 + Math.random() * 8999999999).toString();
     update((prev) => {
       const a = prev.abarrotes!;
       const datos = {
@@ -362,12 +402,19 @@ function ProductoForm({
       }
       const nuevo: GroceryProduct = {
         id: uid("gp"),
-        codigo: codigoInput.trim() || Math.floor(1000000000 + Math.random() * 8999999999).toString(),
+        codigo: codigoFinal,
         minimo: 5,
         ...datos,
       };
       return { ...prev, abarrotes: { ...a, productos: [nuevo, ...a.productos] } };
     });
+    // Producto NUEVO (no edición) -> aporta al catálogo global para el
+    // siguiente negocio que escanee este mismo código. Fire-and-forget: ni
+    // bloquea el cierre del Sheet ni muestra error si falla (ver
+    // lib/catalogo-global.ts).
+    if (!producto) {
+      aportarACatalogoGlobal(codigoFinal, nombre);
+    }
     onClose();
   }
 

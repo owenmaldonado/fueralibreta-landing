@@ -15,6 +15,7 @@ import { MetricsCards } from "./metrics-cards";
 import { UsersTable } from "./users-table";
 import { OrgsTable } from "./orgs-table";
 import { LeadsTable } from "./leads-table";
+import { CatalogoTab } from "./catalogo-tab";
 import { UserDetailDialog } from "./user-detail-dialog";
 import { NegocioDetailDialog } from "./negocio-detail-dialog";
 import { ChangeOwnerDialog } from "./change-owner-dialog";
@@ -425,6 +426,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 label: `Negocios · ${(excludeSelf ? overview.negocios.filter((n) => n.ownerId !== currentUserId) : overview.negocios).length}`,
               },
               { value: "leads", label: `Leads · ${overview.leads.length}` },
+              { value: "catalogo", label: "Catálogo" },
             ]}
             className="max-w-lg"
           />
@@ -513,7 +515,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
               />
             </div>
           </div>
-        ) : (
+        ) : tab === "leads" ? (
           <div className="mt-4">
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative min-w-[220px] flex-1">
@@ -544,6 +546,8 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
               <LeadsTable leads={filteredLeads} onMarkContactado={handleMarkLeadContactado} onConvertir={handleConvertirLead} />
             </div>
           </div>
+        ) : (
+          <CatalogoTab />
         )}
       </div>
 
