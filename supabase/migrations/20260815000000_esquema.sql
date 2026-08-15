@@ -261,6 +261,15 @@ create table if not exists auditoria_pin (
   created_at timestamptz not null default now()
 );
 
+-- negocio_empleados ya tiene un índice implícito por negocio_id (columna
+-- líder del unique(negocio_id, nombre) de arriba), pero uno explícito no
+-- estorba y deja la intención clara. auditoria_pin sí lo necesitaba de
+-- verdad: no tiene ningún unique/índice propio y auditoria_pin_select
+-- (más abajo) filtra por negocio_id en cada consulta, en una tabla que
+-- solo crece (un renglón por cada intento de PIN, éxito o fallo).
+create index if not exists negocio_empleados_negocio_id_idx on negocio_empleados(negocio_id);
+create index if not exists auditoria_pin_negocio_id_idx on auditoria_pin(negocio_id);
+
 alter table negocio_empleados enable row level security;
 alter table auditoria_pin enable row level security;
 

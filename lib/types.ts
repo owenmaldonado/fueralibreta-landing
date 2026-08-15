@@ -10,7 +10,7 @@ export type BusinessType = "barberia" | "fonda" | "abarrotes";
 // Ver lib/empleados.ts. Un negocio real (no demo) puede dar de alta
 // empleados con PIN de 4 dígitos, sin cuenta propia — negocio_empleados.
 // user_id queda nullable, preparado para un futuro empleado con cuenta
-// propia (ver comentario en supabase.sql), pero hoy siempre es null.
+// propia (ver comentario en supabase/migrations/20260815000000_esquema.sql), pero hoy siempre es null.
 
 export type RolEmpleado = "dueno" | "encargado" | "vendedor";
 

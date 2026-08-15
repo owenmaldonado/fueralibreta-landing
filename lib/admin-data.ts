@@ -379,7 +379,7 @@ export async function toggleNegocioActive(negocioId: string, isActive: boolean):
 /**
  * negocios.plan / trial_fin / trial_inicio / precio_custom / es_fundador /
  * notas_admin solo se pueden tocar con service_role (ver el trigger
- * negocios_admin_fields_guard en supabase.sql) — un update directo desde
+ * negocios_admin_fields_guard en supabase/migrations/20260815000000_esquema.sql) — un update directo desde
  * aquí con la sesión normal del admin tronaría, así que las seis pasan por
  * la ruta /api/admin/negocios/[id] en vez de
  * supabase.from("negocios").update(...).

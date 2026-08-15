@@ -21,7 +21,7 @@ function esFechaValida(v: unknown): v is string {
  * notas_admin de un negocio. Corre con service_role igual que
  * /api/admin/users/[id] — negocios_admin_all (RLS) ya le daría a un admin
  * acceso de escritura directo desde el cliente, pero el trigger
- * negocios_admin_fields_guard (supabase.sql) SOLO deja tocar estas seis
+ * negocios_admin_fields_guard (supabase/migrations/20260815000000_esquema.sql) SOLO deja tocar estas seis
  * columnas cuando la sesión corre como service_role, sin importar qué
  * policy RLS aplique — así que esta ruta es la ÚNICA forma real de
  * cambiarlas, ni siquiera un admin autenticado por su propia sesión puede
