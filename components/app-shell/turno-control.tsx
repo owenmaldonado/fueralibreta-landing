@@ -48,6 +48,19 @@ export function TurnoControl({
     cerrar();
   }
 
+  /**
+   * "Cerrar turno" REAL: limpia la sesión (ver handleSesionCambiada en
+   * AuthenticatedShell, que ahora sí borra la cookie fl_empleado, no solo
+   * el estado de React) y fuerza una recarga completa a /app/inicio en vez
+   * de dejar que React re-renderice solo — así queda descartado cualquier
+   * estado en memoria residual de la sesión anterior (listeners de
+   * realtime, caché de useSession, lo que sea), no solo la cookie.
+   */
+  function volverADuenoYRecargar() {
+    onSesionCambiada(null);
+    window.location.href = "/app/inicio";
+  }
+
   /** Tarjeta "Dueño" del selector — ya sea desde la lista inicial o desde "Cambiar de usuario"/"Cerrar turno". */
   function elegirDueno() {
     if (!empleadoActual) {
@@ -56,16 +69,14 @@ export function TurnoControl({
       return;
     }
     if (!pinDuenoSet) {
-      onSesionCambiada(null);
-      cerrar();
+      volverADuenoYRecargar();
       return;
     }
     setPidiendoPinDueno(true);
   }
 
   function handlePinDuenoExito() {
-    onSesionCambiada(null);
-    cerrar();
+    volverADuenoYRecargar();
   }
 
   const mostrarLista = eligiendo || !empleadoActual;

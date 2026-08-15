@@ -18,7 +18,7 @@ import { ADMIN_EMAIL, exitImpersonation } from "@/lib/admin-data";
 import { BarberiaQuickAdd, BARBERIA_ACTIONS } from "@/components/quick-add/barberia-quick-add";
 import { FondaQuickAdd, FONDA_ACTIONS } from "@/components/quick-add/fonda-quick-add";
 import { AbarrotesQuickAdd, ABARROTES_ACTIONS } from "@/components/quick-add/abarrotes-quick-add";
-import { getEmpleadoActual, pinDuenoConfigurado } from "@/lib/empleados";
+import { getEmpleadoActual, setEmpleadoActual, clearEmpleadoActual, pinDuenoConfigurado } from "@/lib/empleados";
 import type { EmpleadoActual } from "@/lib/types";
 
 // Segmentos de /app/{segmento} que SÍ son del dueño de un negocio (barbería/
@@ -101,6 +101,26 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
     }
     pinDuenoConfigurado(session.business.id).then(setPinDuenoSet);
   }, [session]);
+
+  /**
+   * ÚNICO punto donde cambia quién está atendiendo — TopBar/TurnoControl
+   * nunca tocan la cookie fl_empleado directo, solo llaman esto. Antes
+   * "Cerrar turno"/"volver a Dueño" solo hacía setEmpleadoActualState(null)
+   * (estado de React en memoria) SIN limpiar la cookie — al recargar la
+   * página, getEmpleadoActual() volvía a leer la cookie vieja (todavía con
+   * el vendedor puesto) y lo regresaba a modo vendedor solo: el bug real
+   * detrás de "cerrar turno no funciona, al recargar vuelve a entrar como
+   * vendedor". clearEmpleadoActual()/setEmpleadoActual() (lib/empleados.ts)
+   * existían desde el principio pero nunca se llamaban desde ningún lado.
+   */
+  function handleSesionCambiada(empleado: EmpleadoActual | null) {
+    if (empleado) {
+      setEmpleadoActual(empleado);
+    } else {
+      clearEmpleadoActual();
+    }
+    setEmpleadoActualState(empleado);
+  }
 
   async function handleExitImpersonation() {
     setExiting(true);
@@ -211,7 +231,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
         isAdmin={isAdmin}
         empleadoActual={empleadoActual}
         pinDuenoSet={pinDuenoSet}
-        onSesionCambiada={setEmpleadoActualState}
+        onSesionCambiada={handleSesionCambiada}
       />
 
       {impersonating && (
