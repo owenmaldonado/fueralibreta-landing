@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Loader2, Lock } from "lucide-react";
+import { toast } from "sonner";
 
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -118,8 +119,12 @@ export function SeleccionarEmpleado({
   }
 
   function cerrarModal() {
+    // Reset explícito antes de volver a la lista — aunque errorMsg/pin ya
+    // se limpian solos en cada intento, esto evita cualquier residuo si se
+    // cierra a media verificación.
     setSeleccionado(null);
     setPin("");
+    setVerificando(false);
     setErrorMsg(null);
   }
 
@@ -130,27 +135,40 @@ export function SeleccionarEmpleado({
 
     setVerificando(true);
     setErrorMsg(null);
-    const resultado = await verificarPin(negocioId, seleccionado.id, pin);
-    setVerificando(false);
+    // verificarPin (lib/empleados.ts) nunca deja la promesa colgada — tiene
+    // su propio timeout — pero igual todo esto va en un finally: no hay
+    // camino donde "Entrar..." se quede girando para siempre.
+    try {
+      const resultado = await verificarPin(negocioId, seleccionado.id, pin);
 
-    if (resultado.ok && resultado.empleado) {
-      limpiarIntentos(seleccionado.id);
-      setEmpleadoActual(resultado.empleado);
-      onExito(resultado.empleado);
-      return;
+      if (resultado.ok && resultado.empleado) {
+        limpiarIntentos(seleccionado.id);
+        setEmpleadoActual(resultado.empleado);
+        onExito(resultado.empleado);
+        return;
+      }
+
+      if (resultado.error === "network_error") {
+        // No se llegó a verificar de verdad — no cuenta como intento fallido.
+        toast.error("Error verificando PIN. Intenta de nuevo.");
+        setPin("");
+        return;
+      }
+
+      const nuevosFails = fails + 1;
+      const nuevoBloqueo =
+        nuevosFails >= UMBRAL_BLOQUEO_LARGO
+          ? Date.now() + BLOQUEO_LARGO_MS
+          : nuevosFails >= UMBRAL_BLOQUEO_CORTO
+            ? Date.now() + BLOQUEO_CORTO_MS
+            : 0;
+      guardarIntentos(seleccionado.id, nuevosFails, nuevoBloqueo);
+      setBloqueadoHasta(nuevoBloqueo);
+      setPin("");
+      setErrorMsg(nuevoBloqueo > Date.now() ? "Demasiados intentos. Espera un momento." : "PIN incorrecto.");
+    } finally {
+      setVerificando(false);
     }
-
-    const nuevosFails = fails + 1;
-    const nuevoBloqueo =
-      nuevosFails >= UMBRAL_BLOQUEO_LARGO
-        ? Date.now() + BLOQUEO_LARGO_MS
-        : nuevosFails >= UMBRAL_BLOQUEO_CORTO
-          ? Date.now() + BLOQUEO_CORTO_MS
-          : 0;
-    guardarIntentos(seleccionado.id, nuevosFails, nuevoBloqueo);
-    setBloqueadoHasta(nuevoBloqueo);
-    setPin("");
-    setErrorMsg(nuevoBloqueo > Date.now() ? "Demasiados intentos. Espera un momento." : "PIN incorrecto.");
   }
 
   const segundosRestantes = bloqueadoHasta > ahora ? Math.ceil((bloqueadoHasta - ahora) / 1000) : 0;

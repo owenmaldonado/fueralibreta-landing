@@ -51,7 +51,11 @@ export function TopBar({
   // el propio dueño (o nadie, que es lo mismo), entra directo. Si hay un
   // encargado/vendedor logueado, pide el PIN maestro solo si está
   // configurado — si no, entra directo también (el middleware sigue
-  // bloqueando /app/empleados por rol de la cookie de todos modos).
+  // bloqueando /app/empleados por rol de la cookie de todos modos). Este
+  // estado (pinDueno) es propio de TopBar, independiente del Dialog de
+  // TurnoControl — no comparten ningún state, así que un selector de
+  // turno colgado no debería poder bloquear este botón (y ahora tampoco
+  // se puede quedar colgado: ver el timeout en verificarPinDueno).
   function accederEmpleados() {
     if (!empleadoActual || empleadoActual.rol === "dueno" || !pinDuenoSet) {
       router.push("/app/empleados");
@@ -115,7 +119,7 @@ export function TopBar({
             <button
               type="button"
               onClick={accederEmpleados}
-              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              className="relative z-10 rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
               aria-label="Empleados"
             >
               <Users className="h-4 w-4" />

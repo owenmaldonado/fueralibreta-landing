@@ -18,6 +18,30 @@ import type { EmpleadoActual, RolEmpleado } from "./types";
 const COOKIE_NAME = "fl_empleado";
 const COOKIE_MAX_AGE_DIAS = 180;
 
+/**
+ * Mismo problema (y mismo arreglo) que conTimeout en lib/session.ts: sin
+ * esto, un RPC/Edge Function que se cuelga (no truena, solo nunca resuelve
+ * — típico de una conexión mala) deja el modal de PIN en "Entrar..."
+ * girando para siempre, porque nada vuelve a llamar setVerificando(false).
+ * Con el timeout, un cuelgue se trata igual que cualquier otro error de
+ * red: rechaza la promesa a los N ms, el catch de quien llama la reactiva.
+ */
+function conTimeout<T>(thenable: PromiseLike<T>, ms: number, etiqueta: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Tiempo de espera agotado (${ms}ms) esperando: ${etiqueta}`)), ms);
+    thenable.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 const PINS_OBVIOS = new Set(["0000", "1111", "1234", "4321"]);
 
 export function pinEsObvio(pin: string): boolean {
@@ -153,15 +177,29 @@ export interface VerificarPinResultado {
   error?: string;
 }
 
-/** Llama a la Edge Function verificar-pin (ver supabase/functions/verificar-pin) — el hash y el registro en auditoria_pin viven ahí, nunca en el cliente. */
+/**
+ * Llama a la Edge Function verificar-pin (ver supabase/functions/verificar-pin)
+ * — el hash y el registro en auditoria_pin viven ahí, nunca en el cliente.
+ * error: "network_error" es un caso APARTE de "pin_invalido" (el rechazo
+ * explícito del servidor) — quien llama debe mostrar un mensaje distinto y
+ * NO contarlo como intento fallido para el bloqueo local, ya que el PIN
+ * nunca se llegó a verificar de verdad.
+ */
 export async function verificarPin(negocioId: string, empleadoId: string, pin: string): Promise<VerificarPinResultado> {
-  const { data, error } = await supabase.functions.invoke("verificar-pin", {
-    body: { negocio_id: negocioId, empleado_id: empleadoId, pin },
-  });
-  if (error || !data || data.error) {
-    return { ok: false, error: data?.error ?? "pin_invalido" };
+  try {
+    const { data, error } = await conTimeout(
+      supabase.functions.invoke("verificar-pin", { body: { negocio_id: negocioId, empleado_id: empleadoId, pin } }),
+      6000,
+      "verificar-pin"
+    );
+    if (error || !data || data.error) {
+      return { ok: false, error: data?.error ?? "pin_invalido" };
+    }
+    return { ok: true, empleado: { id: data.empleado_id, nombre: data.nombre, rol: data.rol as RolEmpleado } };
+  } catch (err) {
+    console.error("No se pudo verificar el PIN (red/timeout):", err);
+    return { ok: false, error: "network_error" };
   }
-  return { ok: true, empleado: { id: data.empleado_id, nombre: data.nombre, rol: data.rol as RolEmpleado } };
 }
 
 /**
@@ -185,12 +223,21 @@ export async function setPinDueno(negocioId: string, pin: string): Promise<void>
   if (error) throw error;
 }
 
+/**
+ * A diferencia de las demás funciones de este archivo, esta SÍ deja que el
+ * error/timeout se propague (throw) en vez de tragárselo como `false` —
+ * PinDuenoForm necesita distinguir "PIN incorrecto" (data === false, sí se
+ * verificó) de "no se pudo verificar" (error de red/timeout) para no
+ * contar un cuelgue de RPC como intento fallido del bloqueo local, y para
+ * mostrar un mensaje distinto ("Error verificando PIN" vs "PIN incorrecto").
+ */
 export async function verificarPinDueno(negocioId: string, pin: string): Promise<boolean> {
-  const { data, error } = await supabase.rpc("verificar_pin_dueno", { p_negocio_id: negocioId, p_pin: pin });
-  if (error) {
-    console.error("No se pudo verificar el PIN de dueño:", error);
-    return false;
-  }
+  const { data, error } = await conTimeout(
+    supabase.rpc("verificar_pin_dueno", { p_negocio_id: negocioId, p_pin: pin }),
+    6000,
+    "verificar_pin_dueno"
+  );
+  if (error) throw error;
   return Boolean(data);
 }
 
