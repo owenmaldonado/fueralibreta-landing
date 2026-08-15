@@ -117,7 +117,7 @@ export function TopBar({
             >
               <Search className="h-4 w-4" />
             </button>
-            {hayEmpleados && (
+            {(hayEmpleados || empleadoActual) && (
               <button
                 type="button"
                 onClick={accederEmpleados}
