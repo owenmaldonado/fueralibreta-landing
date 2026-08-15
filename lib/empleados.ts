@@ -3,7 +3,7 @@ import type { EmpleadoActual, RolEmpleado } from "./types";
 
 /**
  * Multiusuario (modo PIN) — ver negocio_empleados/auditoria_pin en
- * supabase.sql, la Edge Function supabase/functions/verificar-pin, y el
+ * supabase/migrations/20260815000000_esquema.sql, la Edge Function supabase/functions/verificar-pin, y el
  * comentario de diseño en components/kiosko/quien-atiende.tsx.
  *
  * "Quién está atendiendo" vive en una COOKIE (fl_empleado), no en
@@ -159,7 +159,7 @@ export function permisosActuales(): PermisosRol {
   return PERMISOS[actual?.rol ?? "dueno"];
 }
 
-/** Genera un PIN de 4 dígitos que no es obvio y no choca con otro empleado activo del negocio (pin_disponible, RPC en supabase.sql) — reintenta unas cuantas veces si choca. */
+/** Genera un PIN de 4 dígitos que no es obvio y no choca con otro empleado activo del negocio (pin_disponible, RPC en supabase/migrations/20260815000000_esquema.sql) — reintenta unas cuantas veces si choca. */
 export async function generarPinDisponible(negocioId: string): Promise<string> {
   for (let intento = 0; intento < 15; intento++) {
     const candidato = String(Math.floor(1000 + Math.random() * 9000));
@@ -204,7 +204,7 @@ export async function verificarPin(negocioId: string, empleadoId: string, pin: s
 
 /**
  * PIN maestro de dueño (OPCIONAL) — vive en negocio_pin_dueno (ver
- * supabase.sql), no en negocio_empleados: es el switch para volver a modo
+ * supabase/migrations/20260815000000_esquema.sql), no en negocio_empleados: es el switch para volver a modo
  * DUEÑO desde el selector de turno sin depender de tener un empleado con
  * rol='dueno' dado de alta. Todo pasa por RPCs security definer que nunca
  * exponen el hash al cliente.

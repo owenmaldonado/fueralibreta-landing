@@ -32,7 +32,7 @@ const ROL_LABEL: Record<RolEmpleado, string> = { dueno: "Dueño", encargado: "En
  * Ajustes > Empleados — solo dueño (protegida por middleware.ts, ver
  * RUTAS_SOLO_DUENO). Alta/edición/baja de negocio_empleados; los PIN se
  * generan y hashean SIEMPRE en Postgres (crear_empleado/actualizar_pin_empleado
- * en supabase.sql, vía pgcrypto) — este archivo nunca calcula ni guarda un
+ * en supabase/migrations/20260815000000_esquema.sql, vía pgcrypto) — este archivo nunca calcula ni guarda un
  * hash, solo pide el PIN en texto plano una vez para mostrárselo al dueño
  * y lo manda a la función de Supabase.
  */

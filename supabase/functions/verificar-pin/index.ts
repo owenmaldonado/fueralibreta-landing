@@ -1,7 +1,7 @@
 // Edge Function: verificar-pin
 //
 // Valida el PIN de 4 dígitos de un empleado (modo PIN, sin cuenta propia —
-// ver negocio_empleados en supabase.sql y lib/empleados.ts) contra su
+// ver negocio_empleados en supabase/migrations/20260815000000_esquema.sql y lib/empleados.ts) contra su
 // pin_hash (bcrypt vía pgcrypto), registra el intento en auditoria_pin, y
 // si es correcto regresa los datos del empleado para que el front guarde
 // "quién está atendiendo" en la cookie fl_empleado.
@@ -65,7 +65,7 @@ Deno.serve(async (req: Request) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-  // verificar_pin_empleado (security definer, ver supabase.sql) hace el
+  // verificar_pin_empleado (security definer, ver supabase/migrations/20260815000000_esquema.sql) hace el
   // crypt(pin, pin_hash) adentro de Postgres — el hash nunca sale de la
   // base de datos ni pasa por esta función en texto plano.
   const { data, error } = await supabase.rpc("verificar_pin_empleado", {

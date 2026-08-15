@@ -49,7 +49,7 @@ export const citaLookupSchema = z.object({
   telefono: telefonoSchema,
 });
 
-/** Valores válidos de `leads.tipo_negocio` (ver supabase.sql). */
+/** Valores válidos de `leads.tipo_negocio` (ver supabase/migrations/20260815000000_esquema.sql). */
 export const LEAD_TIPOS = ["fonda", "abarrotes", "barberia", "otro"] as const;
 export type LeadTipoNegocio = (typeof LEAD_TIPOS)[number];
 

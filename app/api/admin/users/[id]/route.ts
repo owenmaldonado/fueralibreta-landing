@@ -69,7 +69,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 /**
  * Elimina un usuario por completo: primero limpia todo lo que cuelgue de
  * cada uno de sus negocios (tabla por tabla, vía admin_delete_negocios_data()
- * en supabase.sql — ver ahí por qué no se hardcodean nombres de tabla ni se
+ * en supabase/migrations/20260815000000_esquema.sql — ver ahí por qué no se hardcodean nombres de tabla ni se
  * confía solo en ON DELETE CASCADE) y las filas de negocios, y al final
  * borra la fila de auth.users. Antes esto dependía completamente de que el
  * CASCADE limpiara todo al borrar auth.users: si una sola tabla con

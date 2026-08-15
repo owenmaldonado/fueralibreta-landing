@@ -9,12 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
+import { Dialog, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { CobrarCitaDialog } from "@/components/dashboards/cobrar-cita-dialog";
 import { useSession } from "@/lib/session";
 import { formatMoney, mensajeRecordatorioCita, todayISO, waLink } from "@/lib/mock";
-import type { Appointment, AppointmentStatus, BarberiaData } from "@/lib/types";
+import { getEmpleadoActual } from "@/lib/empleados";
+import type { Appointment, BarberiaData } from "@/lib/types";
 
 type Modo = "hoy" | "manana" | "semanal" | "fecha";
 
@@ -31,17 +33,34 @@ export default function AgendaPage() {
   const [fecha, setFecha] = React.useState(todayISO(0));
   const [moviendo, setMoviendo] = React.useState<Appointment | null>(null);
   const [cobrando, setCobrando] = React.useState<Appointment | null>(null);
+  const [cancelando, setCancelando] = React.useState<Appointment | null>(null);
+  const [motivo, setMotivo] = React.useState("");
 
   if (!ready || !session) return <LoadingBlock />;
 
   const data = session.barberia!;
   const negocioNombre = session.business.nombre;
 
-  function marcar(id: string, estado: AppointmentStatus) {
+  /** "Cancelar cita" siempre deja constancia de quién y por qué — mismo patrón que Pedidos (fonda). */
+  function confirmarCancelacion() {
+    if (!cancelando) return;
+    const actual = getEmpleadoActual();
     update((prev) => {
       const b = prev.barberia!;
-      return { ...prev, barberia: { ...b, citas: b.citas.map((c) => (c.id === id ? { ...c, estado } : c)) } };
+      return {
+        ...prev,
+        barberia: {
+          ...b,
+          citas: b.citas.map((c) =>
+            c.id === cancelando.id
+              ? { ...c, estado: "cancelada" as const, canceladoPor: actual?.nombre ?? "Dueño", motivoCancelacion: motivo.trim() || undefined }
+              : c
+          ),
+        },
+      };
     });
+    setCancelando(null);
+    setMotivo("");
   }
 
   function marcarListoConMetodo(id: string, metodo: "efectivo" | "transferencia") {
@@ -91,20 +110,33 @@ export default function AgendaPage() {
       )}
 
       {modo === "semanal" ? (
-        <SemanaView data={data} onMarcar={marcar} onCobrar={setCobrando} onMover={setMoviendo} negocioNombre={negocioNombre} />
+        <SemanaView data={data} onCobrar={setCobrando} onMover={setMoviendo} onCancelar={setCancelando} negocioNombre={negocioNombre} />
       ) : (
         <DiaView
           data={data}
           fecha={modo === "hoy" ? todayISO(0) : modo === "manana" ? todayISO(1) : fecha}
-          onMarcar={marcar}
           onCobrar={setCobrando}
           onMover={setMoviendo}
+          onCancelar={setCancelando}
           negocioNombre={negocioNombre}
         />
       )}
 
       <MoverCitaSheet cita={moviendo} onClose={() => setMoviendo(null)} onGuardar={mover} />
       <CobrarCitaDialog cita={cobrando} onClose={() => setCobrando(null)} onConfirmar={marcarListoConMetodo} />
+
+      <Dialog open={!!cancelando} onOpenChange={(o) => !o && setCancelando(null)}>
+        <DialogHeader title="Cancelar cita" description={`${cancelando?.clienteNombre} · ${cancelando?.hora}`} onClose={() => setCancelando(null)} />
+        <Input autoFocus value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo (opcional)" />
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setCancelando(null)}>
+            Cerrar
+          </Button>
+          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={confirmarCancelacion}>
+            Cancelar cita
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </>
   );
 }
@@ -112,16 +144,16 @@ export default function AgendaPage() {
 function DiaView({
   data,
   fecha,
-  onMarcar,
   onCobrar,
   onMover,
+  onCancelar,
   negocioNombre,
 }: {
   data: BarberiaData;
   fecha: string;
-  onMarcar: (id: string, estado: AppointmentStatus) => void;
   onCobrar: (c: Appointment) => void;
   onMover: (c: Appointment) => void;
+  onCancelar: (c: Appointment) => void;
   negocioNombre: string;
 }) {
   const citas = data.citas.filter((c) => c.fecha === fecha && c.estado !== "cancelada").sort((a, b) => a.hora.localeCompare(b.hora));
@@ -131,7 +163,9 @@ function DiaView({
       {citas.length === 0 ? (
         <EmptyState texto="Sin citas para este día" />
       ) : (
-        citas.map((c) => <CitaRow key={c.id} cita={c} onMarcar={onMarcar} onCobrar={onCobrar} onMover={onMover} negocioNombre={negocioNombre} />)
+        citas.map((c) => (
+          <CitaRow key={c.id} cita={c} onCobrar={onCobrar} onMover={onMover} onCancelar={onCancelar} negocioNombre={negocioNombre} />
+        ))
       )}
     </div>
   );
@@ -139,15 +173,15 @@ function DiaView({
 
 function SemanaView({
   data,
-  onMarcar,
   onCobrar,
   onMover,
+  onCancelar,
   negocioNombre,
 }: {
   data: BarberiaData;
-  onMarcar: (id: string, estado: AppointmentStatus) => void;
   onCobrar: (c: Appointment) => void;
   onMover: (c: Appointment) => void;
+  onCancelar: (c: Appointment) => void;
   negocioNombre: string;
 }) {
   // Lunes a domingo de la semana de calendario en curso (misma definición
@@ -180,7 +214,14 @@ function SemanaView({
               </p>
               <div className="flex flex-col gap-2">
                 {d.citas.map((c) => (
-                  <CitaRow key={c.id} cita={c} onMarcar={onMarcar} onCobrar={onCobrar} onMover={onMover} negocioNombre={negocioNombre} />
+                  <CitaRow
+                    key={c.id}
+                    cita={c}
+                    onCobrar={onCobrar}
+                    onMover={onMover}
+                    onCancelar={onCancelar}
+                    negocioNombre={negocioNombre}
+                  />
                 ))}
               </div>
             </div>
@@ -192,15 +233,15 @@ function SemanaView({
 
 function CitaRow({
   cita: c,
-  onMarcar,
   onCobrar,
   onMover,
+  onCancelar,
   negocioNombre,
 }: {
   cita: Appointment;
-  onMarcar: (id: string, estado: AppointmentStatus) => void;
   onCobrar: (c: Appointment) => void;
   onMover: (c: Appointment) => void;
+  onCancelar: (c: Appointment) => void;
   negocioNombre: string;
 }) {
   return (
@@ -235,7 +276,7 @@ function CitaRow({
               ]
             : []),
           { label: "Mover cita", onClick: () => onMover(c) },
-          { label: "Cancelar cita", danger: true, onClick: () => onMarcar(c.id, "cancelada") },
+          { label: "Cancelar cita", danger: true, onClick: () => onCancelar(c) },
         ]}
       />
     </div>

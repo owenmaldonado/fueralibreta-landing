@@ -19,7 +19,7 @@ import { fetchAppsConStats, createMisApp, type AppConStats } from "@/lib/admin-a
 // construyó nada ahí. "Entrar" siempre lleva a algo, nunca a un link muerto.
 
 // icono/color son puramente cosméticos y viven aquí, no en mis_apps (esa
-// tabla en producción no tiene esas columnas — ver supabase.sql). Slugs sin
+// tabla en producción no tiene esas columnas — ver supabase/migrations/20260815000000_esquema.sql). Slugs sin
 // entrada usan DEFAULT_LOOK, elegido de forma estable por hash del slug para
 // no repetir siempre el mismo color en apps nuevas.
 const APP_LOOK: Record<string, { icono: string; color: string }> = {
