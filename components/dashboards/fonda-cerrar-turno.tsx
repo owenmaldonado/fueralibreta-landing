@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
+import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { supabase } from "@/lib/supabase";
 import { formatMoney, mensajeDiferencia, uid } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
@@ -65,6 +66,15 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
   const ventasHoy = data.pedidos
     .filter((p) => p.estado === "entregado" && p.fecha === hoyEnSuZona)
     .reduce((acc, p) => acc + p.total, 0);
+  const ventasPorEmpleado = React.useMemo(() => {
+    const mapa = new Map<string, number>();
+    for (const p of data.pedidos) {
+      if (p.estado !== "entregado" || p.fecha !== hoyEnSuZona) continue;
+      const nombre = p.empleadoNombreCache ?? "Dueño";
+      mapa.set(nombre, (mapa.get(nombre) ?? 0) + p.total);
+    }
+    return Array.from(mapa, ([nombre, monto]) => ({ nombre, monto }));
+  }, [data.pedidos, hoyEnSuZona]);
 
   const disponiblesHoy = data.platillos.filter((p) => p.activoHoy);
   const vendidosPorPlatillo = React.useMemo(() => {
@@ -188,6 +198,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
               <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ventas de hoy (calculadas)</p>
               <p className="font-display text-2xl font-bold text-ledger">{formatMoney(ventasHoy)}</p>
             </div>
+            <VentasPorEmpleado datos={ventasPorEmpleado} />
             <div className="space-y-1.5">
               <Label>Fondo inicial (opcional)</Label>
               <Input type="number" inputMode="decimal" value={fondoInicial} onChange={(e) => setFondoInicial(e.target.value)} placeholder="$0" />

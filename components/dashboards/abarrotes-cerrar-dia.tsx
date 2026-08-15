@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
+import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { supabase } from "@/lib/supabase";
 import { formatMoney, fechaCalendarioLocal, mensajeDiferencia, todayISO, uid } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
@@ -67,8 +68,16 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
   const esNegocioReal = Boolean(negocio.ownerId);
   const hoy = todayISO(0);
 
-  const ventasHoyList = data.ventas.filter((v) => fechaCalendarioLocal(v.fecha) === hoy);
+  const ventasHoyList = data.ventas.filter((v) => !v.cancelada && fechaCalendarioLocal(v.fecha) === hoy);
   const ventasHoyTotal = ventasHoyList.reduce((acc, v) => acc + v.total, 0);
+  const ventasPorEmpleado = React.useMemo(() => {
+    const mapa = new Map<string, number>();
+    for (const v of ventasHoyList) {
+      const nombre = v.empleadoNombreCache ?? "Dueño";
+      mapa.set(nombre, (mapa.get(nombre) ?? 0) + v.total);
+    }
+    return Array.from(mapa, ([nombre, monto]) => ({ nombre, monto }));
+  }, [ventasHoyList]);
   const vendidosPorProducto = React.useMemo(() => {
     const mapa = new Map<string, number>();
     for (const v of ventasHoyList) {
@@ -194,6 +203,7 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
               <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ventas de hoy (calculadas)</p>
               <p className="font-display text-2xl font-bold text-ledger">{formatMoney(ventasHoyTotal)}</p>
             </div>
+            <VentasPorEmpleado datos={ventasPorEmpleado} />
             <div className="space-y-1.5">
               <Label>Fondo inicial (opcional)</Label>
               <Input type="number" inputMode="decimal" value={fondoInicial} onChange={(e) => setFondoInicial(e.target.value)} placeholder="$0" />

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { supabase } from "@/lib/supabase";
 import { formatMoney, mensajeDiferencia, todayISO, uid } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
@@ -84,6 +85,14 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
   const citasHoyListo = data.citas.filter((c) => c.fecha === hoy && c.estado === "listo");
   const ventasHoyTotal = citasHoyListo.reduce((acc, c) => acc + c.precio, 0);
   const citasAtendidas = citasHoyListo.length;
+  const ventasPorEmpleado = React.useMemo(() => {
+    const mapa = new Map<string, number>();
+    for (const c of citasHoyListo) {
+      const nombre = c.empleadoNombreCache ?? "Dueño";
+      mapa.set(nombre, (mapa.get(nombre) ?? 0) + c.precio);
+    }
+    return Array.from(mapa, ([nombre, monto]) => ({ nombre, monto }));
+  }, [citasHoyListo]);
 
   const efectivoValido = efectivoReal.trim() !== "" && !isNaN(Number(efectivoReal)) && Number(efectivoReal) >= 0;
   const diferencia = efectivoValido ? Number(efectivoReal) - ventasHoyTotal : null;
@@ -227,6 +236,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
               <p className="font-display text-2xl font-bold text-ledger">{formatMoney(ventasHoyTotal)}</p>
               <p className="mt-1 text-xs text-muted-foreground">Citas atendidas: {citasAtendidas}</p>
             </div>
+            <VentasPorEmpleado datos={ventasPorEmpleado} />
             <div className="space-y-1.5">
               <Label>Fondo inicial (opcional)</Label>
               <Input type="number" inputMode="decimal" value={fondoInicial} onChange={(e) => setFondoInicial(e.target.value)} placeholder="$0" />

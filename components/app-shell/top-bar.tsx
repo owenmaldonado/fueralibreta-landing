@@ -3,27 +3,34 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, LogOut, X, ShieldCheck, Users } from "lucide-react";
+import { Search, LogOut, X, ShieldCheck, Lock } from "lucide-react";
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { clearDemoPreview } from "@/lib/demoPreview";
 import { universalSearch } from "@/lib/search";
+import { Dialog, DialogHeader } from "@/components/ui/dialog";
+import { SeleccionarEmpleado } from "@/components/kiosko/quien-atiende";
+import { TurnoControl } from "./turno-control";
 import type { TenantData, EmpleadoActual } from "@/lib/types";
 
 export function TopBar({
   data,
   isAdmin,
+  hayEmpleados,
   empleadoActual,
-  onCambiarUsuario,
+  onSesionCambiada,
 }: {
   data: TenantData;
   isAdmin?: boolean;
-  /** Modo PIN activo en este dispositivo (ver AuthenticatedShell) — presente tanto si es un empleado como si es el dueño entrando por el kiosko. */
+  /** El negocio (real, no demo) tiene al menos un empleado dado de alta — sin esto, el pill de turno ni el candadito de Empleados se muestran: un negocio de 1 persona no ve nada nuevo. */
+  hayEmpleados?: boolean;
+  /** Quién está atendiendo en este dispositivo AHORA (login opcional por sesión, ver TurnoControl) — null = dueño, sin nadie elegido. */
   empleadoActual?: EmpleadoActual | null;
-  onCambiarUsuario?: () => void;
+  onSesionCambiada?: (empleado: EmpleadoActual | null) => void;
 }) {
   const [searching, setSearching] = React.useState(false);
   const [q, setQ] = React.useState("");
+  const [pinDueno, setPinDueno] = React.useState(false);
   const router = useRouter();
   const results = React.useMemo(() => universalSearch(data, q), [data, q]);
 
@@ -38,6 +45,26 @@ export function TopBar({
       await supabase.auth.signOut();
     }
     router.push("/login");
+  }
+
+  // Candadito del menú del dueño: si ya está atendiendo el propio dueño (o
+  // nadie, que es lo mismo), entra directo a Empleados. Si hay un
+  // encargado/vendedor logueado, primero pide el PIN de dueño — no cierra
+  // esa sesión de vendedor sola, la reemplaza por la del dueño (mismo
+  // mecanismo que "Cambiar de usuario"), así Empleados queda accesible sin
+  // que el middleware lo bloquee.
+  function accederEmpleados() {
+    if (!empleadoActual || empleadoActual.rol === "dueno") {
+      router.push("/app/empleados");
+      return;
+    }
+    setPinDueno(true);
+  }
+
+  function handlePinDuenoExito(empleado: EmpleadoActual) {
+    onSesionCambiada?.(empleado);
+    setPinDueno(false);
+    router.push("/app/empleados");
   }
 
   return (
@@ -59,11 +86,20 @@ export function TopBar({
           </div>
         ) : (
           <>
-            <div className="flex flex-1 flex-col leading-tight">
+            <div className="flex min-w-0 flex-1 flex-col items-start gap-1 leading-tight">
               <span className="truncate font-display text-sm font-semibold">{data.business.nombre}</span>
-              <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                {empleadoActual ? `${empleadoActual.nombre} · ${empleadoActual.rol}` : data.business.demo ? "Modo demo" : data.business.dueno}
-              </span>
+              {hayEmpleados || empleadoActual ? (
+                // hayEmpleados solo decide si INVITA a arrancar una sesión;
+                // si por lo que sea ya hay una activa (ej. quedó una cookie
+                // de cuando este negocio sí tenía empleados) siempre se
+                // respeta y se muestra, para no ocultar quién está
+                // atendiendo de verdad.
+                <TurnoControl negocioId={data.business.id} empleadoActual={empleadoActual ?? null} onSesionCambiada={(e) => onSesionCambiada?.(e)} />
+              ) : (
+                <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  {data.business.demo ? "Modo demo" : data.business.dueno}
+                </span>
+              )}
             </div>
             {isAdmin && (
               <Link
@@ -81,25 +117,24 @@ export function TopBar({
             >
               <Search className="h-4 w-4" />
             </button>
-            {empleadoActual ? (
+            {hayEmpleados && (
               <button
                 type="button"
-                onClick={onCambiarUsuario}
+                onClick={accederEmpleados}
                 className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                aria-label="Cambiar usuario / Cerrar turno"
+                aria-label="Empleados"
               >
-                <Users className="h-4 w-4" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={logout}
-                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                aria-label="Cerrar sesión"
-              >
-                <LogOut className="h-4 w-4" />
+                <Lock className="h-4 w-4" />
               </button>
             )}
+            <button
+              type="button"
+              onClick={logout}
+              className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              aria-label="Cerrar sesión"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </>
         )}
       </div>
@@ -128,6 +163,11 @@ export function TopBar({
           )}
         </div>
       )}
+
+      <Dialog open={pinDueno} onOpenChange={(o) => !o && setPinDueno(false)}>
+        <DialogHeader title="Acceso a Empleados" description="Pide el PIN del dueño" onClose={() => setPinDueno(false)} />
+        <SeleccionarEmpleado negocioId={data.business.id} soloRol={["dueno"]} onExito={handlePinDuenoExito} />
+      </Dialog>
     </header>
   );
 }
