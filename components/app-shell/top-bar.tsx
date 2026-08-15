@@ -54,7 +54,12 @@ export function TopBar({
   // mecanismo que "Cambiar de usuario"), así Empleados queda accesible sin
   // que el middleware lo bloquee.
   function accederEmpleados() {
+    // eslint-disable-next-line no-console -- debug temporal, ver TopBar
+    console.log("[topbar] click candado", { empleadoActual });
     if (!empleadoActual || empleadoActual.rol === "dueno") {
+      // Dueño (o nadie logueado, que es lo mismo): entra directo a
+      // Ajustes > Empleados, sin PIN — no hay ningún redirect a "/" ni a
+      // /app/inicio en esta rama, solo esta navegación explícita.
       router.push("/app/empleados");
       return;
     }
@@ -62,6 +67,8 @@ export function TopBar({
   }
 
   function handlePinDuenoExito(empleado: EmpleadoActual) {
+    // eslint-disable-next-line no-console -- debug temporal, ver TopBar
+    console.log("[topbar] pin de dueño correcto", empleado);
     onSesionCambiada?.(empleado);
     setPinDueno(false);
     router.push("/app/empleados");
@@ -117,7 +124,7 @@ export function TopBar({
             >
               <Search className="h-4 w-4" />
             </button>
-            {hayEmpleados && (
+            {(hayEmpleados || empleadoActual) && (
               <button
                 type="button"
                 onClick={accederEmpleados}
