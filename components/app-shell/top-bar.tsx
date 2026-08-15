@@ -3,34 +3,33 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, LogOut, X, ShieldCheck, Lock, Users, Settings } from "lucide-react";
+import { Search, LogOut, X, ShieldCheck, Users } from "lucide-react";
 
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { clearDemoPreview } from "@/lib/demoPreview";
 import { universalSearch } from "@/lib/search";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
-import { SeleccionarEmpleado } from "@/components/kiosko/quien-atiende";
+import { PinDuenoForm } from "@/components/kiosko/pin-dueno";
 import { TurnoControl } from "./turno-control";
 import type { TenantData, EmpleadoActual } from "@/lib/types";
 
 export function TopBar({
   data,
   isAdmin,
-  hayEmpleados,
   empleadoActual,
+  pinDuenoSet,
   onSesionCambiada,
 }: {
   data: TenantData;
   isAdmin?: boolean;
-  /** El negocio (real, no demo) tiene al menos un empleado dado de alta — sin esto, el pill de turno no se muestra: un negocio de 1 persona no ve nada nuevo ahí. El candadito de Empleados/Ajustes SIEMPRE se muestra, sin importar este flag. */
-  hayEmpleados?: boolean;
   /** Quién está atendiendo en este dispositivo AHORA (login opcional por sesión, ver TurnoControl) — null = dueño, sin nadie elegido. */
   empleadoActual?: EmpleadoActual | null;
+  /** El dueño configuró un PIN maestro (Ajustes > Empleados) — si no, volver a DUEÑO o entrar a Empleados nunca pide PIN. */
+  pinDuenoSet?: boolean;
   onSesionCambiada?: (empleado: EmpleadoActual | null) => void;
 }) {
   const [searching, setSearching] = React.useState(false);
   const [q, setQ] = React.useState("");
-  const [menuCandado, setMenuCandado] = React.useState(false);
   const [pinDueno, setPinDueno] = React.useState(false);
   const router = useRouter();
   const results = React.useMemo(() => universalSearch(data, q), [data, q]);
@@ -48,32 +47,20 @@ export function TopBar({
     router.push("/login");
   }
 
-  // Candadito del header: siempre visible (ya no depende de hayEmpleados —
-  // un negocio de 1 persona también necesita llegar a Ajustes). Al picarle
-  // abre un menú con 2 opciones en vez de navegar directo: "Gestionar
-  // Empleados" y "Ajustes del negocio".
+  // Icono de Empleados del header: siempre visible. Si ya está atendiendo
+  // el propio dueño (o nadie, que es lo mismo), entra directo. Si hay un
+  // encargado/vendedor logueado, pide el PIN maestro solo si está
+  // configurado — si no, entra directo también (el middleware sigue
+  // bloqueando /app/empleados por rol de la cookie de todos modos).
   function accederEmpleados() {
-    setMenuCandado(false);
-    if (!empleadoActual || empleadoActual.rol === "dueno") {
-      // Dueño (o nadie logueado, que es lo mismo): entra directo a
-      // Ajustes > Empleados, sin PIN.
+    if (!empleadoActual || empleadoActual.rol === "dueno" || !pinDuenoSet) {
       router.push("/app/empleados");
       return;
     }
-    // Encargado/vendedor logueado: primero pide el PIN de dueño — no
-    // cierra esa sesión de vendedor sola, la reemplaza por la del dueño
-    // (mismo mecanismo que "Cambiar de usuario"), así Empleados queda
-    // accesible sin que el middleware lo bloquee.
     setPinDueno(true);
   }
 
-  function accederAjustes() {
-    setMenuCandado(false);
-    router.push("/app/mas");
-  }
-
-  function handlePinDuenoExito(empleado: EmpleadoActual) {
-    onSesionCambiada?.(empleado);
+  function handlePinDuenoExito() {
     setPinDueno(false);
     router.push("/app/empleados");
   }
@@ -99,18 +86,9 @@ export function TopBar({
           <>
             <div className="flex min-w-0 flex-1 flex-col items-start gap-1 leading-tight">
               <span className="truncate font-display text-sm font-semibold">{data.business.nombre}</span>
-              {hayEmpleados || empleadoActual ? (
-                // hayEmpleados solo decide si INVITA a arrancar una sesión;
-                // si por lo que sea ya hay una activa (ej. quedó una cookie
-                // de cuando este negocio sí tenía empleados) siempre se
-                // respeta y se muestra, para no ocultar quién está
-                // atendiendo de verdad.
-                <TurnoControl negocioId={data.business.id} empleadoActual={empleadoActual ?? null} onSesionCambiada={(e) => onSesionCambiada?.(e)} />
-              ) : (
-                <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                  {data.business.demo ? "Modo demo" : data.business.dueno}
-                </span>
-              )}
+              <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                {data.business.demo ? "Modo demo" : data.business.dueno}
+              </span>
             </div>
             {isAdmin && (
               <Link
@@ -120,6 +98,12 @@ export function TopBar({
                 <ShieldCheck className="h-3.5 w-3.5" /> Admin
               </Link>
             )}
+            <TurnoControl
+              negocioId={data.business.id}
+              empleadoActual={empleadoActual ?? null}
+              pinDuenoSet={Boolean(pinDuenoSet)}
+              onSesionCambiada={(e) => onSesionCambiada?.(e)}
+            />
             <button
               type="button"
               onClick={() => setSearching(true)}
@@ -130,11 +114,11 @@ export function TopBar({
             </button>
             <button
               type="button"
-              onClick={() => setMenuCandado(true)}
+              onClick={accederEmpleados}
               className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              aria-label="Empleados y ajustes"
+              aria-label="Empleados"
             >
-              <Lock className="h-4 w-4" />
+              <Users className="h-4 w-4" />
             </button>
             <button
               type="button"
@@ -173,35 +157,9 @@ export function TopBar({
         </div>
       )}
 
-      <Dialog open={menuCandado} onOpenChange={setMenuCandado}>
-        <DialogHeader title="Empleados y ajustes" onClose={() => setMenuCandado(false)} />
-        <div className="flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={accederEmpleados}
-            className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors active:scale-[0.99]"
-          >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-              <Users className="h-4 w-4" />
-            </div>
-            <span className="text-sm font-medium">Gestionar Empleados</span>
-          </button>
-          <button
-            type="button"
-            onClick={accederAjustes}
-            className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors active:scale-[0.99]"
-          >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-              <Settings className="h-4 w-4" />
-            </div>
-            <span className="text-sm font-medium">Ajustes del negocio</span>
-          </button>
-        </div>
-      </Dialog>
-
       <Dialog open={pinDueno} onOpenChange={(o) => !o && setPinDueno(false)}>
-        <DialogHeader title="Acceso a Empleados" description="Pide el PIN del dueño" onClose={() => setPinDueno(false)} />
-        <SeleccionarEmpleado negocioId={data.business.id} soloRol={["dueno"]} onExito={handlePinDuenoExito} />
+        <DialogHeader title="Acceso a Empleados" description="Ingresa el PIN maestro del dueño" onClose={() => setPinDueno(false)} />
+        <PinDuenoForm negocioId={data.business.id} onExito={handlePinDuenoExito} onCancel={() => setPinDueno(false)} />
       </Dialog>
     </header>
   );

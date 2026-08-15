@@ -163,3 +163,56 @@ export async function verificarPin(negocioId: string, empleadoId: string, pin: s
   }
   return { ok: true, empleado: { id: data.empleado_id, nombre: data.nombre, rol: data.rol as RolEmpleado } };
 }
+
+/**
+ * PIN maestro de dueño (OPCIONAL) — vive en negocio_pin_dueno (ver
+ * supabase.sql), no en negocio_empleados: es el switch para volver a modo
+ * DUEÑO desde el selector de turno sin depender de tener un empleado con
+ * rol='dueno' dado de alta. Todo pasa por RPCs security definer que nunca
+ * exponen el hash al cliente.
+ */
+export async function pinDuenoConfigurado(negocioId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("pin_dueno_configurado", { p_negocio_id: negocioId });
+  if (error) {
+    console.error("No se pudo checar el PIN de dueño:", error);
+    return false;
+  }
+  return Boolean(data);
+}
+
+export async function setPinDueno(negocioId: string, pin: string): Promise<void> {
+  const { error } = await supabase.rpc("set_pin_dueno", { p_negocio_id: negocioId, p_pin: pin });
+  if (error) throw error;
+}
+
+export async function verificarPinDueno(negocioId: string, pin: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("verificar_pin_dueno", { p_negocio_id: negocioId, p_pin: pin });
+  if (error) {
+    console.error("No se pudo verificar el PIN de dueño:", error);
+    return false;
+  }
+  return Boolean(data);
+}
+
+export async function borrarPinDueno(negocioId: string): Promise<void> {
+  const { error } = await supabase.rpc("borrar_pin_dueno", { p_negocio_id: negocioId });
+  if (error) throw error;
+}
+
+/**
+ * "Olvidé mi PIN": manda un magic link al correo de la cuenta (la misma
+ * que ya está logueada — los empleados no tienen cuenta propia, solo PIN
+ * local, así que este correo es siempre el del dueño real). Al volver por
+ * /auth/callback (mismo mecanismo que el login con Google, ver
+ * app/auth/callback/route.ts) la sesión queda fresca y app/app/empleados
+ * detecta ?reset_pin=1 para borrar el PIN maestro — recién ahí, nunca
+ * antes, porque hasta ese momento no se reconfirmó la identidad del dueño.
+ */
+export async function solicitarResetPinDueno(email: string): Promise<void> {
+  const next = encodeURIComponent("/app/empleados?reset_pin=1");
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${next}` },
+  });
+  if (error) throw error;
+}

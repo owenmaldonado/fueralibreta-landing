@@ -18,7 +18,7 @@ import { ADMIN_EMAIL, exitImpersonation } from "@/lib/admin-data";
 import { BarberiaQuickAdd, BARBERIA_ACTIONS } from "@/components/quick-add/barberia-quick-add";
 import { FondaQuickAdd, FONDA_ACTIONS } from "@/components/quick-add/fonda-quick-add";
 import { AbarrotesQuickAdd, ABARROTES_ACTIONS } from "@/components/quick-add/abarrotes-quick-add";
-import { getEmpleadoActual } from "@/lib/empleados";
+import { getEmpleadoActual, pinDuenoConfigurado } from "@/lib/empleados";
 import type { EmpleadoActual } from "@/lib/types";
 
 // Segmentos de /app/{segmento} que SÍ son del dueño de un negocio (barbería/
@@ -69,11 +69,13 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   const [impersonating, setImpersonating] = React.useState<{ adminEmail: string; targetEmail: string } | null>(null);
   const [exiting, setExiting] = React.useState(false);
   // Multiusuario (modo PIN, login OPCIONAL por sesión — nunca por venta ni
-  // al abrir la app): un negocio real con al menos un empleado dado de
-  // alta ve el pill "Vendedor: Dueño"/"Atendiendo: X" en el header (ver
-  // TopBar/TurnoControl); un negocio sin ninguno (o demo) no ve nada
-  // nuevo, se comporta exacto igual que antes de esta feature.
-  const [hayEmpleados, setHayEmpleados] = React.useState<boolean>(false);
+  // al abrir la app): el pill "Dueño"/"Atendiendo: X" y el icono de
+  // Empleados en el header (ver TopBar/TurnoControl) son siempre visibles,
+  // sin importar si el negocio tiene empleados dados de alta. pinDuenoSet
+  // solo decide si volver a DUEÑO / entrar a Empleados pide el PIN maestro
+  // (ver lib/empleados.ts) — un negocio de 1 persona que nunca lo
+  // configura no ve ningún PIN pedido en ningún momento.
+  const [pinDuenoSet, setPinDuenoSet] = React.useState<boolean>(false);
   const [empleadoActual, setEmpleadoActualState] = React.useState<EmpleadoActual | null>(null);
 
   const esRutaSuperAdmin = !esRutaDeNegocio(pathname ?? "");
@@ -94,22 +96,10 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
     setEmpleadoActualState(getEmpleadoActual());
     const esNegocioReal = Boolean(session.business.ownerId);
     if (!esNegocioReal) {
-      setHayEmpleados(false);
+      setPinDuenoSet(false);
       return;
     }
-    supabase
-      .from("negocio_empleados")
-      .select("id", { count: "exact", head: true })
-      .eq("negocio_id", session.business.id)
-      .eq("activo", true)
-      .then(({ count, error }) => {
-        if (error) {
-          console.error("No se pudo checar si el negocio tiene empleados:", error);
-          setHayEmpleados(false);
-          return;
-        }
-        setHayEmpleados((count ?? 0) > 0);
-      });
+    pinDuenoConfigurado(session.business.id).then(setPinDuenoSet);
   }, [session]);
 
   async function handleExitImpersonation() {
@@ -219,8 +209,8 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
       <TopBar
         data={session}
         isAdmin={isAdmin}
-        hayEmpleados={hayEmpleados}
         empleadoActual={empleadoActual}
+        pinDuenoSet={pinDuenoSet}
         onSesionCambiada={setEmpleadoActualState}
       />
 

@@ -367,6 +367,94 @@ as $$
   update negocio_empleados set pin_hash = crypt(p_pin, gen_salt('bf')) where id = p_empleado_id;
 $$;
 
+-- PIN maestro de dueño (OPCIONAL): switch para "volver a DUEÑO" desde el
+-- selector de turno sin depender de tener un empleado con rol='dueno' en
+-- negocio_empleados (que ni existe si el dueño nunca pasó por el kiosko).
+-- Tabla APARTE de negocios a propósito, no una columna ahí: negocios tiene
+-- una policy de SELECT pública (is_active = true — la necesita /b/[slug]
+-- para visitantes anónimos), así que un pin_hash puesto ahí se filtraría a
+-- cualquiera que pida ese negocio por slug, aunque esté hasheado. Esta
+-- tabla nunca tiene policy de select/update/insert propia — RLS deniega
+-- todo por default, así que el hash SOLO se toca dentro de las funciones
+-- security definer de abajo, nunca directo desde el cliente.
+create table if not exists negocio_pin_dueno (
+  negocio_id uuid primary key references negocios(id) on delete cascade,
+  pin_hash text not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table negocio_pin_dueno enable row level security;
+
+-- El front (banner en Ajustes > Empleados y el selector de turno) solo
+-- necesita saber SI hay un PIN configurado, nunca el hash.
+create or replace function pin_dueno_configurado(p_negocio_id uuid)
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (select 1 from negocio_pin_dueno where negocio_id = p_negocio_id);
+$$;
+
+-- Alta/regenerar el PIN maestro. security definer porque negocio_pin_dueno
+-- no tiene policy propia (ver comentario arriba) — el chequeo de dueño se
+-- hace a mano adentro en vez de vía RLS.
+create or replace function set_pin_dueno(p_negocio_id uuid, p_pin text)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  if not is_negocio_owner(p_negocio_id) then
+    raise exception 'No autorizado.';
+  end if;
+  insert into negocio_pin_dueno (negocio_id, pin_hash, updated_at)
+  values (p_negocio_id, crypt(p_pin, gen_salt('bf')), now())
+  on conflict (negocio_id) do update set pin_hash = excluded.pin_hash, updated_at = now();
+end;
+$$;
+
+-- Verifica el PIN maestro contra el hash — nunca regresa ni expone el hash,
+-- solo un booleano. Sin chequeo de is_negocio_owner a propósito: quien
+-- llama esto normalmente está "atendiendo como" encargado/vendedor (rol NO
+-- dueño en la cookie fl_empleado), pero su sesión real de Supabase Auth
+-- (la única que existe — los empleados no tienen su propia cuenta, ver
+-- negocio_empleados) sigue siendo la del dueño; por eso igual solo puede
+-- pasar si p_negocio_id es un negocio del que esa cuenta es owner (lo
+-- exige negocio_pin_dueno.negocio_id -> negocios.id, y solo el dueño real
+-- pudo haber llegado a poner un pin_hash ahí en primer lugar).
+create or replace function verificar_pin_dueno(p_negocio_id uuid, p_pin text)
+returns boolean
+language plpgsql
+security definer
+as $$
+begin
+  return exists (
+    select 1 from negocio_pin_dueno
+    where negocio_id = p_negocio_id and pin_hash = crypt(p_pin, pin_hash)
+  );
+end;
+$$;
+
+-- "Olvidé mi PIN": borra el PIN maestro para que el banner de Ajustes >
+-- Empleados vuelva a invitar a configurar uno nuevo. Se llama después de
+-- que el dueño reconfirma su identidad por correo (ver
+-- solicitarResetPinDueno en lib/empleados.ts — magic link -> /auth/callback
+-- -> vuelve a /app/empleados?reset_pin=1 con sesión fresca), así que sí
+-- valida is_negocio_owner igual que set_pin_dueno.
+create or replace function borrar_pin_dueno(p_negocio_id uuid)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  if not is_negocio_owner(p_negocio_id) then
+    raise exception 'No autorizado.';
+  end if;
+  delete from negocio_pin_dueno where negocio_id = p_negocio_id;
+end;
+$$;
+
 -- ============================================================================
 -- BARBERÍA
 -- ============================================================================

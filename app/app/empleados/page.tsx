@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Pencil, Trash2, RefreshCw } from "lucide-react";
+import { Plus, Pencil, Trash2, RefreshCw, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -16,7 +17,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { supabase } from "@/lib/supabase";
-import { generarPinDisponible, pinEsObvio } from "@/lib/empleados";
+import { generarPinDisponible, pinEsObvio, pinDuenoConfigurado, setPinDueno, borrarPinDueno, solicitarResetPinDueno } from "@/lib/empleados";
 import type { Empleado, RolEmpleado } from "@/lib/types";
 
 const ROLES: { rol: RolEmpleado; label: string }[] = [
@@ -41,9 +42,34 @@ export default function EmpleadosPage() {
   const [empleados, setEmpleados] = React.useState<Empleado[] | null>(null);
   const [editando, setEditando] = React.useState<Empleado | "nuevo" | null>(null);
   const [borrando, setBorrando] = React.useState<Empleado | null>(null);
+  const [pinSet, setPinSet] = React.useState<boolean | null>(null);
 
   const negocioId = session?.business.id;
   const esNegocioReal = Boolean(session?.business.ownerId);
+
+  React.useEffect(() => {
+    if (!negocioId || !esNegocioReal) return;
+    pinDuenoConfigurado(negocioId).then(setPinSet);
+  }, [negocioId, esNegocioReal]);
+
+  // "Olvidé mi PIN" (ver PinDuenoBanner) manda por correo de vuelta aquí
+  // mismo con ?reset_pin=1 — la sesión ya está fresca (pasó por
+  // /auth/callback), así que este es el único momento en que se borra el
+  // PIN maestro sin haber tenido que escribirlo. Lee la URL directo en vez
+  // de useSearchParams() para no forzar un Suspense boundary en esta
+  // página (que hoy renderiza estática).
+  React.useEffect(() => {
+    if (!negocioId) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("reset_pin") !== "1") return;
+    borrarPinDueno(negocioId)
+      .then(() => {
+        toast.success("PIN maestro reiniciado. Configura uno nuevo cuando quieras.");
+        setPinSet(false);
+      })
+      .catch((err) => toast.error(err instanceof Error ? err.message : "No se pudo reiniciar el PIN."))
+      .finally(() => window.history.replaceState({}, "", "/app/empleados"));
+  }, [negocioId]);
 
   const cargar = React.useCallback(() => {
     if (!negocioId) return;
@@ -128,6 +154,8 @@ export default function EmpleadosPage() {
         }
       />
       <div className="flex flex-col gap-4 px-4 pb-6">
+        {negocioId && pinSet !== null && <PinDuenoBanner negocioId={negocioId} pinSet={pinSet} onCambio={() => setPinSet(true)} />}
+
         {limiteAlcanzado && (
           <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm text-foreground">
             Tu plan {plan.label} permite hasta {limite} {limite === 1 ? "persona" : "personas"} en negocio_empleados
@@ -177,6 +205,87 @@ export default function EmpleadosPage() {
         onConfirm={eliminar}
       />
     </>
+  );
+}
+
+/**
+ * PIN maestro de dueño (OPCIONAL): banner NO bloqueante. Sin PIN, invita a
+ * configurar uno; con PIN, muestra que ya quedó listo y ofrece "Olvidé mi
+ * PIN" (reset por correo, ver lib/empleados.ts solicitarResetPinDueno —
+ * manda un magic link a la cuenta ya logueada; al volver con sesión fresca
+ * esta misma página borra el PIN, ver el efecto de ?reset_pin=1 arriba).
+ */
+function PinDuenoBanner({ negocioId, pinSet, onCambio }: { negocioId: string; pinSet: boolean; onCambio: () => void }) {
+  const [pin, setPin] = React.useState("");
+  const [guardando, setGuardando] = React.useState(false);
+  const [enviandoReset, setEnviandoReset] = React.useState(false);
+
+  async function guardar() {
+    if (pin.length !== 4) return;
+    setGuardando(true);
+    try {
+      await setPinDueno(negocioId, pin);
+      toast.success("PIN maestro configurado.");
+      setPin("");
+      onCambio();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo guardar el PIN.");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  async function olvidePin() {
+    setEnviandoReset(true);
+    try {
+      const { data } = await supabase.auth.getUser();
+      const email = data.user?.email;
+      if (!email) throw new Error("No se encontró el correo de tu cuenta.");
+      await solicitarResetPinDueno(email);
+      toast.success(`Te enviamos un correo a ${email} para reiniciar tu PIN.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo enviar el correo.");
+    } finally {
+      setEnviandoReset(false);
+    }
+  }
+
+  if (pinSet) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 text-sm">
+        <span className="text-muted-foreground">PIN maestro configurado ✓</span>
+        <button
+          type="button"
+          onClick={olvidePin}
+          disabled={enviandoReset}
+          className="shrink-0 text-xs text-primary underline underline-offset-2 disabled:opacity-50"
+        >
+          {enviandoReset ? "Enviando..." : "Olvidé mi PIN"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
+      <p className="text-sm text-foreground">
+        Configura tu PIN maestro de dueño (opcional) — te deja volver a modo Dueño desde el selector de turno con un solo PIN.
+      </p>
+      <div className="flex items-center gap-2">
+        <Input
+          type="password"
+          inputMode="numeric"
+          maxLength={4}
+          value={pin}
+          onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+          placeholder="••••"
+          className="h-10 w-24 text-center tracking-[0.4em]"
+        />
+        <Button size="sm" disabled={pin.length !== 4 || guardando} onClick={guardar}>
+          {guardando ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar"}
+        </Button>
+      </div>
+    </div>
   );
 }
 

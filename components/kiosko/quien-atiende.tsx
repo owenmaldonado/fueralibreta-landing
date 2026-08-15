@@ -57,10 +57,16 @@ function limpiarIntentos(empleadoId: string) {
 export function SeleccionarEmpleado({
   negocioId,
   soloRol,
+  excluirRol,
+  extraAlInicio,
   onExito,
 }: {
   negocioId: string;
   soloRol?: RolEmpleado[];
+  /** Filtra roles FUERA de la lista — usado por TurnoControl para no duplicar la tarjeta sintética "Dueño" con un empleado rol='dueno' legacy. */
+  excluirRol?: RolEmpleado[];
+  /** Se renderiza antes de la lista, solo en la vista de lista (no mientras se escribe un PIN) — la tarjeta "Dueño" de TurnoControl vive aquí. */
+  extraAlInicio?: React.ReactNode;
   onExito: (empleado: EmpleadoActual) => void;
 }) {
   const [empleados, setEmpleados] = React.useState<Empleado[] | null>(null);
@@ -93,9 +99,9 @@ export function SeleccionarEmpleado({
           userId: (r.user_id as string) ?? undefined,
           createdAt: r.created_at as string,
         }));
-        setEmpleados(soloRol ? todos.filter((e) => soloRol.includes(e.rol)) : todos);
+        setEmpleados(todos.filter((e) => (!soloRol || soloRol.includes(e.rol)) && (!excluirRol || !excluirRol.includes(e.rol))));
       });
-  }, [negocioId, soloRol]);
+  }, [negocioId, soloRol, excluirRol]);
 
   React.useEffect(() => {
     if (!bloqueadoHasta) return;
@@ -182,14 +188,17 @@ export function SeleccionarEmpleado({
 
   return (
     <div className="flex flex-col gap-2">
+      {extraAlInicio}
       {empleados === null ? (
         <div className="flex justify-center py-6">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
       ) : empleados.length === 0 ? (
-        <p className="py-4 text-center text-sm text-muted-foreground">
-          {soloRol ? "No hay ningún dueño dado de alta todavía." : "No hay empleados dados de alta todavía."}
-        </p>
+        !extraAlInicio && (
+          <p className="py-4 text-center text-sm text-muted-foreground">
+            {soloRol ? "No hay ningún dueño dado de alta todavía." : "No hay empleados dados de alta todavía."}
+          </p>
+        )
       ) : (
         empleados.map((emp) => (
           <button
