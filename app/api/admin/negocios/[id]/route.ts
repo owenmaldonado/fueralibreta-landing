@@ -99,3 +99,33 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     );
   }
 }
+
+/**
+ * Elimina un negocio y todo lo que cuelgue de él. Antes esto era un
+ * supabase.from("negocios").delete() directo desde el cliente (ver
+ * lib/admin-data.ts) — con la sesión normal del admin (no service_role) y
+ * sin pasar primero por admin_delete_negocios_data(): cualquier tabla hija
+ * cuya policy RLS no le diera permiso de DELETE al admin (la mayoría solo
+ * dejan al propio dueño, vía is_negocio_owner()) bloqueaba el CASCADE a
+ * medio camino y Postgres devolvía "violates foreign key constraint"
+ * (409). Mismo arreglo que ya existe para el borrado de usuario completo
+ * (ver DELETE en app/api/admin/users/[id]/route.ts): correr la limpieza
+ * con service_role, que sí bypasea RLS en todas las tablas hijas.
+ */
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const { user, error, status } = await requireAdminUser();
+  if (!user) return NextResponse.json({ error }, { status });
+
+  try {
+    const admin = createSupabaseAdminClient();
+    const { error: cleanupError } = await admin.rpc("admin_delete_negocios_data", { p_negocio_ids: [params.id] });
+    if (cleanupError) throw cleanupError;
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("No se pudo eliminar el negocio:", params.id, err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "No se pudo eliminar el negocio." },
+      { status: 500 }
+    );
+  }
+}

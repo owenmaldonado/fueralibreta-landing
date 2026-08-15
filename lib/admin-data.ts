@@ -355,9 +355,20 @@ export async function fetchNegocioDetail(negocio: AdminNegocio): Promise<Negocio
   return { ...negocio, ...extra };
 }
 
+/**
+ * Antes esto era supabase.from("negocios").delete() directo con la sesión
+ * normal del admin: sin pasar por admin_delete_negocios_data() (que corre
+ * con service_role y sí bypasea RLS en cada tabla hija), el DELETE se
+ * topaba con la primera tabla cuya policy no le diera permiso al admin —
+ * la mayoría solo dejan al propio dueño — y Postgres abortaba el CASCADE a
+ * medias con "violates foreign key constraint" (409). Pasa por la misma
+ * ruta admin server-side que ya usa el borrado de usuario completo (ver
+ * DELETE en app/api/admin/negocios/[id]/route.ts).
+ */
 export async function deleteNegocio(negocioId: string): Promise<void> {
-  const { error } = await supabase.from("negocios").delete().eq("id", negocioId);
-  if (error) throw error;
+  const res = await fetch(`/api/admin/negocios/${negocioId}`, { method: "DELETE" });
+  const body = await parseJsonResponse(res);
+  if (!res.ok) throw new Error(body.error ?? "No se pudo eliminar el negocio.");
 }
 
 export async function toggleNegocioActive(negocioId: string, isActive: boolean): Promise<void> {
