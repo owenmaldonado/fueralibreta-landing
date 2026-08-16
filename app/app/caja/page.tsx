@@ -21,6 +21,7 @@ import { formatMoney, uid } from "@/lib/mock";
 import { aggregateTwoByRange, type RangoTiempo } from "@/lib/chart-buckets";
 import { camposEmpleado, permisosActuales } from "@/lib/empleados";
 import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
+import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
 import { cn } from "@/lib/utils";
 import type { CajaEntry } from "@/lib/types";
 
@@ -46,8 +47,8 @@ export default function CajaPage() {
   }, []);
 
   const { rows: ventasPendientesRows } = usePendingSalesQueue(session?.business.id);
-  const idsMovimientosPendientes = React.useMemo(
-    () => new Set(ventasPendientesRows.filter((r) => r.tipo === "barberia_caja").map((r) => r.id)),
+  const movimientosPendientesPorId = React.useMemo(
+    () => new Map(ventasPendientesRows.filter((r) => r.tipo === "barberia_caja").map((r) => [r.id, r] as const)),
     [ventasPendientesRows]
   );
 
@@ -151,12 +152,8 @@ export default function CajaPage() {
                     {new Date(m.fecha).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                     <CreditCard className="hidden h-3 w-3" />
                     · {m.metodo === "efectivo" ? "Efectivo" : "Transferencia"}
-                    {idsMovimientosPendientes.has(m.id) && (
-                      <span className="rounded-full bg-primary/15 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-widest text-primary">
-                        Por sincronizar
-                      </span>
-                    )}
                   </p>
+                  <PendingSaleStatus negocioId={session.business.id} fila={movimientosPendientesPorId.get(m.id)} />
                 </div>
                 <span className={cn("shrink-0 font-mono text-sm", m.tipo === "gasto" ? "text-destructive" : "text-foreground")}>
                   {m.tipo === "gasto" ? "-" : "+"}

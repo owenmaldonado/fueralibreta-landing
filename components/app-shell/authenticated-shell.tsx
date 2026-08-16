@@ -13,6 +13,7 @@ import { TopBar } from "./top-bar";
 import { BottomNav } from "./bottom-nav";
 import { Fab } from "./fab";
 import { OfflineSalesNotice } from "./offline-sales-notice";
+import { SalesSyncManager } from "./sales-sync-manager";
 import { Button } from "@/components/ui/button";
 import { waLink, NUMERO_CONTACTO } from "@/lib/mock";
 import { writePlanElegido } from "@/lib/demoPreview";
@@ -268,6 +269,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
         onSesionCambiada={handleSesionCambiada}
       />
       <OfflineSalesNotice />
+      <SalesSyncManager negocioId={business.id} demo={Boolean(business.demo)} />
 
       {impersonating && (
         <div className="sticky top-14 z-20 flex items-center justify-between gap-3 border-b border-purple-500/40 bg-purple-950/90 px-4 py-2.5 text-white">

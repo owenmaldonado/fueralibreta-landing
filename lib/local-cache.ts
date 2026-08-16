@@ -37,9 +37,20 @@ interface MetaRow {
  * se le pasa a update()) salvo para "barberia_cobro_cita", que es un patch
  * sobre una cita EXISTENTE (no crea una fila nueva). `id` es el mismo UUID
  * que ya trae ese registro (o el citaId, para cobro de cita) — así nunca
- * hay que reconciliar un id temporal con uno real al subir en la Parte 4.
+ * hay que reconciliar un id temporal con uno real al subir (Parte 4).
+ *
+ * `estado` (Parte 4, lib/sync-queue.ts) distingue DOS motivos muy distintos
+ * por los que una fila sigue en la cola:
+ * - "pendiente": nunca se intentó, o falló por RED (no hubo respuesta del
+ *   servidor) — se reintenta sola, en automático, al reconectar.
+ * - "error": el servidor SÍ respondió y rechazó el cambio (constraint, RLS,
+ *   etc.) — reintentar el mismo payload fallaría igual, así que se queda
+ *   quieta hasta que el dueño decida algo (Reintentar/Descartar manual en
+ *   el historial). Filas de la Parte 3 (de antes de este campo) no tienen
+ *   `estado` guardado — se tratan como "pendiente" al leerlas.
  */
 export type TipoVentaPendiente = "abarrotes_venta" | "barberia_caja" | "barberia_cobro_cita" | "fonda_pedido";
+export type EstadoVentaPendiente = "pendiente" | "error";
 
 export interface VentaPendienteRow {
   id: string;
@@ -48,6 +59,9 @@ export interface VentaPendienteRow {
   creadaEn: string;
   empleadoId?: string;
   empleadoNombreCache?: string;
+  estado?: EstadoVentaPendiente;
+  ultimoError?: string;
+  intentos?: number;
 }
 
 export class InventarioDB extends Dexie {
@@ -77,6 +91,13 @@ export class InventarioDB extends Dexie {
     // Dexie lo migra solo sin tocar las tablas ya existentes.
     this.version(2).stores({
       ventas_pendientes: "id",
+    });
+    // v3 (Parte 4): índice secundario por "estado" para poder leer solo las
+    // filas en error sin recorrer toda la cola — también aditivo, las filas
+    // ya guardadas (sin `estado`) se siguen leyendo bien, solo no aparecen
+    // en un .where("estado")... hasta que se les toque el campo.
+    this.version(3).stores({
+      ventas_pendientes: "id, estado",
     });
   }
 }
@@ -297,6 +318,26 @@ export async function limpiarCacheLocal(): Promise<void> {
   const puntero = leerPuntero();
   borrarPuntero();
   if (puntero) await borrarBaseDeNegocio(puntero.negocioId);
+}
+
+/**
+ * Parte 4 — tras subir una venta de abarrotes, descontar_stock_atomico()
+ * regresa el stock REAL ya reconciliado en el servidor (no el que el
+ * cliente había calculado optimista). Se escribe ese valor en el caché
+ * local del producto, para que el dispositivo quede con el número correcto
+ * en vez de su propio cálculo (relevante sobre todo si otro dispositivo
+ * también vendió el mismo producto offline).
+ */
+export async function actualizarStockLocal(negocioId: string, productoId: string, stock: number): Promise<void> {
+  if (!disponible()) return;
+  const db = new InventarioDB(negocioId);
+  try {
+    await db.grocery_productos.update(productoId, { stock });
+  } catch (err) {
+    console.error("[local-cache] no se pudo reconciliar el stock local:", err);
+  } finally {
+    db.close();
+  }
 }
 
 /** Para el indicador "Actualizado: hace X" del TopBar — no requiere userId, solo lee la base del negocio dado. */

@@ -23,6 +23,7 @@ import { usePlan } from "@/lib/planes";
 import { permisosActuales } from "@/lib/empleados";
 import { buscarEnCatalogoGlobal, aportarACatalogoGlobal, type CatalogoGlobalEntry } from "@/lib/catalogo-global";
 import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
+import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
 import { formatMoney, todayISO, uid } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 import type { GroceryProduct, GrocerySale, GrocerySaleItem } from "@/lib/types";
@@ -52,8 +53,8 @@ export default function InventarioPage() {
   }, []);
 
   const { rows: ventasPendientesRows } = usePendingSalesQueue(session?.business.id);
-  const idsVentasPendientes = React.useMemo(
-    () => new Set(ventasPendientesRows.filter((r) => r.tipo === "abarrotes_venta").map((r) => r.id)),
+  const ventasPendientesPorId = React.useMemo(
+    () => new Map(ventasPendientesRows.filter((r) => r.tipo === "abarrotes_venta").map((r) => [r.id, r] as const)),
     [ventasPendientesRows]
   );
 
@@ -217,14 +218,10 @@ export default function InventarioPage() {
               <div key={v.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{resumen}</p>
-                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {new Date(v.fecha).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                    {idsVentasPendientes.has(v.id) && (
-                      <span className="rounded-full bg-primary/15 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-widest text-primary">
-                        Por sincronizar
-                      </span>
-                    )}
                   </p>
+                  <PendingSaleStatus negocioId={session.business.id} fila={ventasPendientesPorId.get(v.id)} />
                 </div>
                 <span className="shrink-0 font-mono text-sm text-ledger">{formatMoney(v.total)}</span>
                 <div className="flex shrink-0 items-center gap-0.5">
