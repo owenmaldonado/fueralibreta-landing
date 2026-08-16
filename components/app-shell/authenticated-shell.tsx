@@ -109,10 +109,10 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   const online = useOnlineStatus();
 
   const esRutaSuperAdmin = !esRutaDeNegocio(pathname ?? "");
-  // El modo demo no tiene inventario/empleados reales que proteger —
-  // bloquearlo solo confundiría a un prospecto probando la demo con wifi
-  // inestable (ver mismo criterio en el guardia de update(), lib/session.ts).
-  const rutaBloqueadaSinConexion = !online && !session?.business.demo && esRutaBloqueadaSinConexion(pathname ?? "");
+  // Aplica también en modo demo (ver mismo criterio y motivo en el guardia
+  // de update(), lib/session.ts) — es la única forma de probar este
+  // bloqueo sin una cuenta real de Supabase.
+  const rutaBloqueadaSinConexion = !online && esRutaBloqueadaSinConexion(pathname ?? "");
 
   // Le pregunta al servidor si la cookie admin_impersonating (httpOnly) está
   // activa — el cliente no puede leerla directo. Solo importa mientras hay

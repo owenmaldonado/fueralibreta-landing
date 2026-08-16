@@ -627,11 +627,12 @@ export function useSession() {
     // llama lo marque explícitamente como un flujo de venta. Esto bloquea
     // TODA otra pantalla (alta de productos, ajustar stock, configuración,
     // reportes, empleados, etc.) desde un solo lugar, sin tener que tocar
-    // cada una — ver camposEmpleado()/los 5 flujos de venta marcados. Solo
-    // aplica a negocios reales (sourceRef "supabase"): el modo demo no
-    // tiene inventario/empleados de verdad que proteger, y bloquearlo
-    // confundiría a un prospecto probando la demo con wifi inestable.
-    if (sourceRef.current === "supabase" && !opciones?.ventaOffline && typeof navigator !== "undefined" && !navigator.onLine) {
+    // cada una — ver camposEmpleado()/los 5 flujos de venta marcados.
+    // Aplica también al modo demo a propósito: es la única forma de probar
+    // este bloqueo sin una cuenta real de Supabase (así se detectó que una
+    // excepción anterior para demo dejaba pasar todo en /app/gastos sin
+    // avisar — ver PR #68).
+    if (!opciones?.ventaOffline && typeof navigator !== "undefined" && !navigator.onLine) {
       toast.error("Sin conexión: solo puedes seguir vendiendo");
       return;
     }
