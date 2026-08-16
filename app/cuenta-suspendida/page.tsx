@@ -5,6 +5,7 @@ import { Lock } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { limpiarCacheLocal } from "@/lib/local-cache";
 import { waLink, NUMERO_CONTACTO } from "@/lib/mock";
 
 /**
@@ -16,6 +17,7 @@ import { waLink, NUMERO_CONTACTO } from "@/lib/mock";
  */
 export default function CuentaSuspendidaPage() {
   async function cerrarSesion() {
+    await limpiarCacheLocal();
     if (isSupabaseConfigured) await supabase.auth.signOut();
     window.location.href = "/login";
   }

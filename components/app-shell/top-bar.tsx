@@ -8,6 +8,7 @@ import { Search, LogOut, X, ShieldCheck, Users } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { clearDemoPreview } from "@/lib/demoPreview";
 import { clearEmpleadoActual } from "@/lib/empleados";
+import { limpiarCacheLocal } from "@/lib/local-cache";
 import { universalSearch } from "@/lib/search";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { PinDuenoForm } from "@/components/kiosko/pin-dueno";
@@ -42,6 +43,9 @@ export function TopBar({
   }
 
   async function logout() {
+    // Primero, y sin depender de la red: si otra persona usa este celular
+    // después, no debe poder ver el catálogo del negocio anterior.
+    await limpiarCacheLocal();
     clearDemoPreview();
     if (isSupabaseConfigured) {
       await supabase.auth.signOut();
@@ -129,7 +133,7 @@ export function TopBar({
               pinDuenoSet={Boolean(pinDuenoSet)}
               onSesionCambiada={(e) => onSesionCambiada?.(e)}
             />
-            <ConnectionStatus />
+            <ConnectionStatus negocioId={data.business.id} />
             <button
               type="button"
               onClick={() => setSearching(true)}
