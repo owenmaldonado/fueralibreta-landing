@@ -5,12 +5,18 @@
 // Cachea SOLO el shell de la app (HTML de navegación ya visitada + fallback
 // offline, JS/CSS/fuentes de /_next/static). Nunca cachea Supabase ni /api/*
 // — esas peticiones siempre van directo a la red, con o sin conexión.
-const CACHE_VERSION = "2026-08-16T14:18:26.870Z";
+const CACHE_VERSION = "2026-08-16T23:35:05.819Z";
 const PRECACHE = `fl-precache-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `fl-runtime-${CACHE_VERSION}`;
 const CURRENT_CACHES = new Set([PRECACHE, RUNTIME_CACHE]);
 
-const PRECACHE_URLS = ["/offline.html", "/icons/icon-192.png", "/icons/icon-512.png", "/manifest.webmanifest"];
+const PRECACHE_URLS = [
+  "/offline.html",
+  "/manifest.json",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "/icons/icon-maskable-512.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

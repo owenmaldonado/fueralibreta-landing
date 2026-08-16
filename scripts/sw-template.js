@@ -10,7 +10,13 @@ const PRECACHE = `fl-precache-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `fl-runtime-${CACHE_VERSION}`;
 const CURRENT_CACHES = new Set([PRECACHE, RUNTIME_CACHE]);
 
-const PRECACHE_URLS = ["/offline.html", "/icons/icon-192.png", "/icons/icon-512.png", "/manifest.webmanifest"];
+const PRECACHE_URLS = [
+  "/offline.html",
+  "/manifest.json",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "/icons/icon-maskable-512.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
