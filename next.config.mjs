@@ -37,6 +37,14 @@ const nextConfig = {
         source: "/(.*)",
         headers: SECURITY_HEADERS,
       },
+      {
+        // El navegador revisa bytes del SW en cada carga, pero solo si su
+        // propia caché HTTP no lo esconde primero — sin esto, un despliegue
+        // nuevo puede tardar hasta 24h en notarse (ver skipWaiting/clientsClaim
+        // en public/sw.js, que resuelven la otra mitad del problema).
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "no-cache" }],
+      },
     ];
   },
 };

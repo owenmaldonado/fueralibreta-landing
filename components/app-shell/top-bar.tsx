@@ -11,6 +11,7 @@ import { clearEmpleadoActual } from "@/lib/empleados";
 import { universalSearch } from "@/lib/search";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { PinDuenoForm } from "@/components/kiosko/pin-dueno";
+import { ConnectionStatus } from "./connection-status";
 import { TurnoControl } from "./turno-control";
 import type { TenantData, EmpleadoActual } from "@/lib/types";
 
@@ -128,6 +129,7 @@ export function TopBar({
               pinDuenoSet={Boolean(pinDuenoSet)}
               onSesionCambiada={(e) => onSesionCambiada?.(e)}
             />
+            <ConnectionStatus />
             <button
               type="button"
               onClick={() => setSearching(true)}
