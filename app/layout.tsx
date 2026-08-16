@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 
 import { ConsentBanner } from "@/components/ConsentBanner";
+import { RegisterServiceWorker } from "@/components/pwa/register-service-worker";
 
 import "./globals.css";
 
@@ -44,6 +45,10 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  themeColor: "#0f1115",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -57,6 +62,7 @@ export default function RootLayout({
         {children}
         <ConsentBanner />
         <Toaster theme="dark" richColors position="top-right" />
+        <RegisterServiceWorker />
       </body>
     </html>
   );
