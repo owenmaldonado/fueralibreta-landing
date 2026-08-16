@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { supabase, isSupabaseConfigured } from "./supabase";
 import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow, fetchVentaConItems, businessFromRow } from "./data";
@@ -616,9 +617,25 @@ export function useSession() {
     };
   }, [loadFromDemoPreview]);
 
-  const update = useCallback((updater: (prev: TenantData) => TenantData) => {
+  const update = useCallback((updater: (prev: TenantData) => TenantData, opciones?: { ventaOffline?: boolean }) => {
     const prev = sessionRef.current;
     if (!prev) return;
+
+    // Parte 3 de PWA — "solo se permite vender sin conexión" es una
+    // decisión de diseño, no un detalle: por defecto, cualquier update()
+    // sin red se rechaza (nada se aplica, ni en memoria) a menos que quien
+    // llama lo marque explícitamente como un flujo de venta. Esto bloquea
+    // TODA otra pantalla (alta de productos, ajustar stock, configuración,
+    // reportes, empleados, etc.) desde un solo lugar, sin tener que tocar
+    // cada una — ver camposEmpleado()/los 5 flujos de venta marcados. Solo
+    // aplica a negocios reales (sourceRef "supabase"): el modo demo no
+    // tiene inventario/empleados de verdad que proteger, y bloquearlo
+    // confundiría a un prospecto probando la demo con wifi inestable.
+    if (sourceRef.current === "supabase" && !opciones?.ventaOffline && typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error("Sin conexión: solo puedes seguir vendiendo");
+      return;
+    }
+
     const next = updater(prev);
     setSessionState(next);
 
@@ -631,9 +648,15 @@ export function useSession() {
       if (next.business.ownerId) {
         actualizarCacheTenant(next.business.ownerId, next);
       }
-      syncTenantDiff(prev, next).catch((err) => {
-        console.error("No se pudo guardar el cambio en Supabase:", err);
-      });
+      // Sin red, syncTenantDiff fallaría de todos modos (esto solo puede
+      // llegar aquí si opciones.ventaOffline dejó pasar una venta sin
+      // conexión) — la Parte 4 sube lo pendiente cuando regrese la señal,
+      // no tiene caso intentarlo ni ensuciar la consola con el error.
+      if (typeof navigator === "undefined" || navigator.onLine) {
+        syncTenantDiff(prev, next).catch((err) => {
+          console.error("No se pudo guardar el cambio en Supabase:", err);
+        });
+      }
     }
   }, []);
 

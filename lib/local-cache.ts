@@ -31,7 +31,26 @@ interface MetaRow {
   value: string;
 }
 
-class InventarioDB extends Dexie {
+/**
+ * Cola de ventas sin subir (Parte 3 de PWA) — una fila por venta/cobro
+ * hecho sin conexión. `payload` es el registro YA armado (mismo shape que
+ * se le pasa a update()) salvo para "barberia_cobro_cita", que es un patch
+ * sobre una cita EXISTENTE (no crea una fila nueva). `id` es el mismo UUID
+ * que ya trae ese registro (o el citaId, para cobro de cita) — así nunca
+ * hay que reconciliar un id temporal con uno real al subir en la Parte 4.
+ */
+export type TipoVentaPendiente = "abarrotes_venta" | "barberia_caja" | "barberia_cobro_cita" | "fonda_pedido";
+
+export interface VentaPendienteRow {
+  id: string;
+  tipo: TipoVentaPendiente;
+  payload: unknown;
+  creadaEn: string;
+  empleadoId?: string;
+  empleadoNombreCache?: string;
+}
+
+export class InventarioDB extends Dexie {
   negocio!: Table<Business, string>;
   grocery_productos!: Table<GroceryProduct, string>;
   fonda_platillos!: Table<Dish, string>;
@@ -40,6 +59,7 @@ class InventarioDB extends Dexie {
   clientes!: Table<BarberClient, string>;
   empleados!: Table<Empleado, string>;
   meta!: Table<MetaRow, string>;
+  ventas_pendientes!: Table<VentaPendienteRow, string>;
 
   constructor(negocioId: string) {
     super(`inventario_${negocioId}`);
@@ -52,6 +72,11 @@ class InventarioDB extends Dexie {
       clientes: "id",
       empleados: "id",
       meta: "key",
+    });
+    // v2 (Parte 3): agrega la cola de ventas pendientes — cambio aditivo,
+    // Dexie lo migra solo sin tocar las tablas ya existentes.
+    this.version(2).stores({
+      ventas_pendientes: "id",
     });
   }
 }
@@ -75,7 +100,7 @@ function conTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-function disponible(): boolean {
+export function disponible(): boolean {
   return typeof window !== "undefined" && typeof indexedDB !== "undefined";
 }
 

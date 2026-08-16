@@ -12,7 +12,8 @@ import { Button } from "@/components/ui/button";
 import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatMoney, todayISO } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
-import type { TenantData, OrderItem, Expense } from "@/lib/types";
+import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
+import type { TenantData, OrderItem, Expense, FondaOrder } from "@/lib/types";
 
 export const FONDA_ACTIONS: FabAction[] = [
   { key: "pedido", label: "Nuevo Pedido", icon: <ClipboardList className="h-4 w-4" /> },
@@ -24,7 +25,7 @@ interface Props {
   active: string | null;
   onClose: () => void;
   session: TenantData;
-  update: (fn: (prev: TenantData) => TenantData) => void;
+  update: (fn: (prev: TenantData) => TenantData, opciones?: { ventaOffline?: boolean }) => void;
 }
 
 const NOTA_CHIPS = ["Sin cebolla", "Sin chile", "Para llevar", "Extra salsa"];
@@ -115,24 +116,41 @@ function NuevoPedidoForm({
 
   function guardar() {
     if (!clienteNombre.trim() || items.length === 0) return;
-    update((prev) => {
-      const f = prev.fonda!;
-      const pedido = {
-        id: uid("ped"),
-        clienteNombre: clienteNombre.trim(),
-        fecha: todayISO(0),
-        hora,
-        horaEntrega,
-        items,
-        // "Cobrar ahora": venta directa, ya entregada, mismo flujo que
-        // abarrotera — no pasa por Pedidos pendientes. "Programar": sí va a
-        // pendientes, con la hora de entrega prometida si se puso.
-        estado: modo === "cobrar" ? ("entregado" as const) : ("pendiente" as const),
-        total,
+    const pedidoId = uid("ped");
+    let pedidoCreado: FondaOrder | null = null;
+    let negocioId = "";
+    update(
+      (prev) => {
+        const f = prev.fonda!;
+        const pedido: FondaOrder = {
+          id: pedidoId,
+          clienteNombre: clienteNombre.trim(),
+          fecha: todayISO(0),
+          hora,
+          horaEntrega,
+          items,
+          // "Cobrar ahora": venta directa, ya entregada, mismo flujo que
+          // abarrotera — no pasa por Pedidos pendientes. "Programar": sí va a
+          // pendientes, con la hora de entrega prometida si se puso.
+          estado: modo === "cobrar" ? ("entregado" as const) : ("pendiente" as const),
+          total,
+          ...camposEmpleado(),
+        };
+        pedidoCreado = pedido;
+        negocioId = prev.business.id;
+        return { ...prev, fonda: { ...f, pedidos: [pedido, ...f.pedidos] } };
+      },
+      { ventaOffline: true }
+    );
+    if (typeof navigator !== "undefined" && !navigator.onLine && pedidoCreado) {
+      encolarVentaPendiente({
+        id: pedidoId,
+        negocioId,
+        tipo: "fonda_pedido",
+        payload: pedidoCreado,
         ...camposEmpleado(),
-      };
-      return { ...prev, fonda: { ...f, pedidos: [pedido, ...f.pedidos] } };
-    });
+      }).catch((err) => console.error("No se pudo encolar la venta pendiente:", err));
+    }
     onClose();
   }
 

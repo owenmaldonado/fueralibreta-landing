@@ -3,14 +3,16 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Loader2, Lock, UserCog } from "lucide-react";
+import { Loader2, Lock, UserCog, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 
 import { useSession } from "@/lib/session";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { useOnlineStatus } from "@/lib/use-online-status";
 import { TopBar } from "./top-bar";
 import { BottomNav } from "./bottom-nav";
 import { Fab } from "./fab";
+import { OfflineSalesNotice } from "./offline-sales-notice";
 import { Button } from "@/components/ui/button";
 import { waLink, NUMERO_CONTACTO } from "@/lib/mock";
 import { writePlanElegido } from "@/lib/demoPreview";
@@ -54,6 +56,33 @@ function esRutaDeNegocio(pathname: string): boolean {
 }
 
 /**
+ * Parte 3 de PWA — "solo se permite vender sin conexión": estas rutas son
+ * 100% administración (alta de productos/platillos, ajustes, empleados,
+ * reportes, cobranza de fiados/apartados existentes) y nunca son el camino
+ * para cobrar una venta (eso vive en el FAB y en Agenda/Hoy, ver los 5
+ * flujos marcados con ventaOffline en lib/session.ts) — se bloquean por
+ * completo. Pantallas mixtas como /app/inventario, /app/productos,
+ * /app/caja o /app/pedidos NO están aquí a propósito: ahí vive vender de
+ * verdad, así que solo sus acciones administrativas se bloquean (el
+ * guardia central de update() ya se encarga, con un toast al guardar).
+ */
+const RUTAS_BLOQUEADAS_SIN_CONEXION = new Set([
+  "configuracion",
+  "empleados",
+  "gastos",
+  "clientes",
+  "fiados",
+  "apartados",
+  "frutas-verdura",
+  "menu",
+]);
+
+function esRutaBloqueadaSinConexion(pathname: string): boolean {
+  const segmento = pathname.split("/")[2];
+  return RUTAS_BLOQUEADAS_SIN_CONEXION.has(segmento ?? "");
+}
+
+/**
  * Shell del negocio logueado: TopBar + banner de demo + FAB + BottomNav,
  * envolviendo el contenido de cada pantalla (children). Se usa tanto en
  * app/app/layout.tsx (para /app/*) como en <App /> (para "/" cuando ya hay
@@ -77,8 +106,13 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   // configura no ve ningún PIN pedido en ningún momento.
   const [pinDuenoSet, setPinDuenoSet] = React.useState<boolean>(false);
   const [empleadoActual, setEmpleadoActualState] = React.useState<EmpleadoActual | null>(null);
+  const online = useOnlineStatus();
 
   const esRutaSuperAdmin = !esRutaDeNegocio(pathname ?? "");
+  // El modo demo no tiene inventario/empleados reales que proteger —
+  // bloquearlo solo confundiría a un prospecto probando la demo con wifi
+  // inestable (ver mismo criterio en el guardia de update(), lib/session.ts).
+  const rutaBloqueadaSinConexion = !online && !session?.business.demo && esRutaBloqueadaSinConexion(pathname ?? "");
 
   // Le pregunta al servidor si la cookie admin_impersonating (httpOnly) está
   // activa — el cliente no puede leerla directo. Solo importa mientras hay
@@ -233,6 +267,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
         pinDuenoSet={pinDuenoSet}
         onSesionCambiada={handleSesionCambiada}
       />
+      <OfflineSalesNotice />
 
       {impersonating && (
         <div className="sticky top-14 z-20 flex items-center justify-between gap-3 border-b border-purple-500/40 bg-purple-950/90 px-4 py-2.5 text-white">
@@ -265,7 +300,23 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
         </div>
       )}
 
-      <div className="mx-auto max-w-md">{children}</div>
+      <div className="mx-auto max-w-md">
+        {rutaBloqueadaSinConexion ? (
+          <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary">
+              <WifiOff className="h-7 w-7 text-muted-foreground" />
+            </div>
+            <div>
+              <h2 className="font-display text-lg font-bold">No disponible sin conexión</h2>
+              <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+                Sin señal solo puedes seguir vendiendo. Esta pantalla vuelve a estar disponible en cuanto regrese la conexión.
+              </p>
+            </div>
+          </div>
+        ) : (
+          children
+        )}
+      </div>
 
       <Fab actions={actions} onSelect={setQuickAdd} />
 

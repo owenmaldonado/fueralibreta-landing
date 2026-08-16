@@ -15,7 +15,8 @@ import { EmptyState } from "@/components/dashboards/empty-state";
 import { CobrarCitaDialog } from "@/components/dashboards/cobrar-cita-dialog";
 import { useSession } from "@/lib/session";
 import { formatMoney, mensajeRecordatorioCita, todayISO, waLink } from "@/lib/mock";
-import { getEmpleadoActual } from "@/lib/empleados";
+import { getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
+import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import type { Appointment, BarberiaData } from "@/lib/types";
 
 type Modo = "hoy" | "manana" | "semanal" | "fecha";
@@ -64,10 +65,30 @@ export default function AgendaPage() {
   }
 
   function marcarListoConMetodo(id: string, metodo: "efectivo" | "transferencia") {
-    update((prev) => {
-      const b = prev.barberia!;
-      return { ...prev, barberia: { ...b, citas: b.citas.map((c) => (c.id === id ? { ...c, estado: "listo" as const, metodo } : c)) } };
-    });
+    let negocioId = "";
+    update(
+      (prev) => {
+        const b = prev.barberia!;
+        negocioId = prev.business.id;
+        return {
+          ...prev,
+          barberia: {
+            ...b,
+            citas: b.citas.map((c) => (c.id === id ? { ...c, estado: "listo" as const, metodo, ...camposEmpleado() } : c)),
+          },
+        };
+      },
+      { ventaOffline: true }
+    );
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      encolarVentaPendiente({
+        id,
+        negocioId,
+        tipo: "barberia_cobro_cita",
+        payload: { citaId: id, metodo },
+        ...camposEmpleado(),
+      }).catch((err) => console.error("No se pudo encolar la venta pendiente:", err));
+    }
     setCobrando(null);
   }
 

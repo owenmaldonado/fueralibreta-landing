@@ -2,11 +2,13 @@
 
 import * as React from "react";
 import { ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { SeleccionarEmpleado, ROL_LABEL } from "@/components/kiosko/quien-atiende";
 import { PinDuenoForm } from "@/components/kiosko/pin-dueno";
+import { useOnlineStatus } from "@/lib/use-online-status";
 import type { EmpleadoActual } from "@/lib/types";
 
 /**
@@ -36,6 +38,7 @@ export function TurnoControl({
   const [open, setOpen] = React.useState(false);
   const [eligiendo, setEligiendo] = React.useState(false);
   const [pidiendoPinDueno, setPidiendoPinDueno] = React.useState(false);
+  const online = useOnlineStatus();
 
   function cerrar() {
     setOpen(false);
@@ -86,6 +89,14 @@ export function TurnoControl({
       <button
         type="button"
         onClick={() => {
+          // Cambiar de turno siempre implica verificar un PIN contra
+          // Supabase (ver SeleccionarEmpleado/PinDuenoForm) — sin conexión
+          // se bloquea con aviso claro en vez de abrir un selector que de
+          // todos modos no va a poder verificar nada (Parte 3 de PWA).
+          if (!online) {
+            toast.error("Sin conexión: no puedes cambiar de turno");
+            return;
+          }
           setEligiendo(false);
           setOpen(true);
         }}

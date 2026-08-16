@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
 import { formatMoney, formatHora12 } from "@/lib/mock";
 import { getEmpleadoActual, permisosActuales } from "@/lib/empleados";
+import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
 import { cn } from "@/lib/utils";
 import type { FondaOrder } from "@/lib/types";
 
@@ -38,6 +39,12 @@ export default function PedidosPage() {
   React.useEffect(() => {
     setPuedeBorrar(permisosActuales().borrarVentas);
   }, []);
+
+  const { rows: ventasPendientesRows } = usePendingSalesQueue(session?.business.id);
+  const idsPedidosPendientes = React.useMemo(
+    () => new Set(ventasPendientesRows.filter((r) => r.tipo === "fonda_pedido").map((r) => r.id)),
+    [ventasPendientesRows]
+  );
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -95,8 +102,13 @@ export default function PedidosPage() {
             <div key={p.id} className="rounded-2xl border border-border bg-card p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold">
+                  <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold">
                     {formatHora12(p.hora)} · {p.clienteNombre}
+                    {idsPedidosPendientes.has(p.id) && (
+                      <span className="rounded-full bg-primary/15 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-widest text-primary">
+                        Por sincronizar
+                      </span>
+                    )}
                   </p>
                   {p.horaEntrega && (
                     <p className="mt-0.5 text-xs font-medium text-primary">Entrega: {formatHora12(p.horaEntrega)}</p>
