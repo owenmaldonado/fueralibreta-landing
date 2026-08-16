@@ -47,6 +47,7 @@ export async function encolarVentaPendiente(params: {
         creadaEn: new Date().toISOString(),
         empleadoId: params.empleadoId,
         empleadoNombreCache: params.empleadoNombreCache,
+        estado: "pendiente",
       });
       if (params.productosActualizados) {
         await db.grocery_productos.bulkPut(params.productosActualizados);
@@ -55,6 +56,60 @@ export async function encolarVentaPendiente(params: {
     avisarCambio();
   } catch (err) {
     console.error("[offline-sales-queue] no se pudo encolar la venta pendiente:", err);
+  } finally {
+    db.close();
+  }
+}
+
+/** Filas de la Parte 3 (antes de que existiera `estado`) se tratan como "pendiente". */
+function normalizarFila(row: VentaPendienteRow): VentaPendienteRow {
+  return row.estado ? row : { ...row, estado: "pendiente" };
+}
+
+/** Marca una fila como fallida por un rechazo REAL del servidor (no de red)
+ * — se queda en la cola hasta que el dueño la reintente o la descarte a mano. */
+export async function marcarVentaComoError(negocioId: string, id: string, mensaje: string): Promise<void> {
+  if (!disponible()) return;
+  const db = new InventarioDB(negocioId);
+  try {
+    const actual = await db.ventas_pendientes.get(id);
+    await db.ventas_pendientes.update(id, {
+      estado: "error",
+      ultimoError: mensaje,
+      intentos: (actual?.intentos ?? 0) + 1,
+    });
+    avisarCambio();
+  } catch (err) {
+    console.error("[offline-sales-queue] no se pudo marcar la venta como error:", err);
+  } finally {
+    db.close();
+  }
+}
+
+/** "Reintentar" manual desde el historial — vuelve a "pendiente" para que el próximo ciclo de sync la tome. */
+export async function reintentarVentaPendiente(negocioId: string, id: string): Promise<void> {
+  if (!disponible()) return;
+  const db = new InventarioDB(negocioId);
+  try {
+    await db.ventas_pendientes.update(id, { estado: "pendiente", ultimoError: undefined });
+    avisarCambio();
+  } catch (err) {
+    console.error("[offline-sales-queue] no se pudo reintentar la venta:", err);
+  } finally {
+    db.close();
+  }
+}
+
+/** Sale de la cola — al subir con éxito, o por "Descartar" manual (única
+ * forma en que una venta desaparece sin haberse sincronizado). */
+export async function eliminarVentaPendiente(negocioId: string, id: string): Promise<void> {
+  if (!disponible()) return;
+  const db = new InventarioDB(negocioId);
+  try {
+    await db.ventas_pendientes.delete(id);
+    avisarCambio();
+  } catch (err) {
+    console.error("[offline-sales-queue] no se pudo quitar la venta de la cola:", err);
   } finally {
     db.close();
   }
@@ -77,7 +132,8 @@ export async function leerVentasPendientes(negocioId: string): Promise<VentaPend
   if (!disponible()) return [];
   const db = new InventarioDB(negocioId);
   try {
-    return await db.ventas_pendientes.toArray();
+    const filas = await db.ventas_pendientes.toArray();
+    return filas.map(normalizarFila);
   } catch (err) {
     console.error("[offline-sales-queue] no se pudo leer la cola:", err);
     return [];

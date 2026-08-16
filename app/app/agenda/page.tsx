@@ -16,7 +16,8 @@ import { CobrarCitaDialog } from "@/components/dashboards/cobrar-cita-dialog";
 import { useSession } from "@/lib/session";
 import { formatMoney, mensajeRecordatorioCita, todayISO, waLink } from "@/lib/mock";
 import { getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
-import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
+import { encolarVentaPendiente, usePendingSalesQueue, type VentaPendienteRow } from "@/lib/offline-sales-queue";
+import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
 import type { Appointment, BarberiaData } from "@/lib/types";
 
 type Modo = "hoy" | "manana" | "semanal" | "fecha";
@@ -37,10 +38,17 @@ export default function AgendaPage() {
   const [cancelando, setCancelando] = React.useState<Appointment | null>(null);
   const [motivo, setMotivo] = React.useState("");
 
+  const { rows: ventasPendientesRows } = usePendingSalesQueue(session?.business.id);
+  const citasPendientesPorId = React.useMemo(
+    () => new Map(ventasPendientesRows.filter((r) => r.tipo === "barberia_cobro_cita").map((r) => [r.id, r] as const)),
+    [ventasPendientesRows]
+  );
+
   if (!ready || !session) return <LoadingBlock />;
 
   const data = session.barberia!;
   const negocioNombre = session.business.nombre;
+  const negocioId = session.business.id;
 
   /** "Cancelar cita" siempre deja constancia de quién y por qué — mismo patrón que Pedidos (fonda). */
   function confirmarCancelacion() {
@@ -131,7 +139,15 @@ export default function AgendaPage() {
       )}
 
       {modo === "semanal" ? (
-        <SemanaView data={data} onCobrar={setCobrando} onMover={setMoviendo} onCancelar={setCancelando} negocioNombre={negocioNombre} />
+        <SemanaView
+          data={data}
+          onCobrar={setCobrando}
+          onMover={setMoviendo}
+          onCancelar={setCancelando}
+          negocioNombre={negocioNombre}
+          negocioId={negocioId}
+          pendientesPorId={citasPendientesPorId}
+        />
       ) : (
         <DiaView
           data={data}
@@ -140,6 +156,8 @@ export default function AgendaPage() {
           onMover={setMoviendo}
           onCancelar={setCancelando}
           negocioNombre={negocioNombre}
+          negocioId={negocioId}
+          pendientesPorId={citasPendientesPorId}
         />
       )}
 
@@ -169,6 +187,8 @@ function DiaView({
   onMover,
   onCancelar,
   negocioNombre,
+  negocioId,
+  pendientesPorId,
 }: {
   data: BarberiaData;
   fecha: string;
@@ -176,6 +196,8 @@ function DiaView({
   onMover: (c: Appointment) => void;
   onCancelar: (c: Appointment) => void;
   negocioNombre: string;
+  negocioId: string;
+  pendientesPorId: Map<string, VentaPendienteRow>;
 }) {
   const citas = data.citas.filter((c) => c.fecha === fecha && c.estado !== "cancelada").sort((a, b) => a.hora.localeCompare(b.hora));
 
@@ -185,7 +207,16 @@ function DiaView({
         <EmptyState texto="Sin citas para este día" />
       ) : (
         citas.map((c) => (
-          <CitaRow key={c.id} cita={c} onCobrar={onCobrar} onMover={onMover} onCancelar={onCancelar} negocioNombre={negocioNombre} />
+          <CitaRow
+            key={c.id}
+            cita={c}
+            onCobrar={onCobrar}
+            onMover={onMover}
+            onCancelar={onCancelar}
+            negocioNombre={negocioNombre}
+            negocioId={negocioId}
+            fila={pendientesPorId.get(c.id)}
+          />
         ))
       )}
     </div>
@@ -198,12 +229,16 @@ function SemanaView({
   onMover,
   onCancelar,
   negocioNombre,
+  negocioId,
+  pendientesPorId,
 }: {
   data: BarberiaData;
   onCobrar: (c: Appointment) => void;
   onMover: (c: Appointment) => void;
   onCancelar: (c: Appointment) => void;
   negocioNombre: string;
+  negocioId: string;
+  pendientesPorId: Map<string, VentaPendienteRow>;
 }) {
   // Lunes a domingo de la semana de calendario en curso (misma definición
   // que "Semanal" en la gráfica de Gastos/Caja), no un rolling de 7 días
@@ -242,6 +277,8 @@ function SemanaView({
                     onMover={onMover}
                     onCancelar={onCancelar}
                     negocioNombre={negocioNombre}
+                    negocioId={negocioId}
+                    fila={pendientesPorId.get(c.id)}
                   />
                 ))}
               </div>
@@ -258,12 +295,16 @@ function CitaRow({
   onMover,
   onCancelar,
   negocioNombre,
+  negocioId,
+  fila,
 }: {
   cita: Appointment;
   onCobrar: (c: Appointment) => void;
   onMover: (c: Appointment) => void;
   onCancelar: (c: Appointment) => void;
   negocioNombre: string;
+  negocioId: string;
+  fila?: VentaPendienteRow;
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
@@ -273,6 +314,7 @@ function CitaRow({
         <p className="text-xs text-muted-foreground">
           {c.servicioNombre} · {formatMoney(c.precio)}
         </p>
+        <PendingSaleStatus negocioId={negocioId} fila={fila} />
       </div>
       {c.estado === "pendiente" ? (
         <Button size="sm" variant="ledger" onClick={() => onCobrar(c)}>
