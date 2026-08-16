@@ -310,4 +310,13 @@ export interface TenantData {
   abarrotes?: AbarrotesData;
 }
 
-export type SessionUpdater = (fn: (prev: TenantData) => TenantData) => void;
+/**
+ * ventaOffline: true — ÚNICA forma de que update() aplique un cambio
+ * cuando no hay conexión (ver lib/session.ts). Sin ella, sin red, update()
+ * rechaza el cambio con un toast en vez de aplicarlo — "solo puedes seguir
+ * vendiendo" es una decisión de diseño explícita (Parte 3 de PWA), no un
+ * detalle de implementación: cualquier pantalla nueva que llame update()
+ * queda bloqueada sin red por defecto, a menos que sea uno de los flujos de
+ * venta explícitamente marcados.
+ */
+export type SessionUpdater = (fn: (prev: TenantData) => TenantData, opciones?: { ventaOffline?: boolean }) => void;

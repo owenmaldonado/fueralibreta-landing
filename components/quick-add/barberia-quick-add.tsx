@@ -16,6 +16,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { FabAction } from "@/components/app-shell/fab";
 import { uid, todayISO } from "@/lib/mock";
 import { cn } from "@/lib/utils";
+import { camposEmpleado } from "@/lib/empleados";
+import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import type { TenantData, CajaEntry, BarberClient, InventoryProduct } from "@/lib/types";
 
 export const BARBERIA_ACTIONS: FabAction[] = [
@@ -30,7 +32,7 @@ interface Props {
   active: string | null;
   onClose: () => void;
   session: TenantData;
-  update: (fn: (prev: TenantData) => TenantData) => void;
+  update: (fn: (prev: TenantData) => TenantData, opciones?: { ventaOffline?: boolean }) => void;
 }
 
 export function BarberiaQuickAdd({ active, onClose, session, update }: Props) {
@@ -307,18 +309,39 @@ function CajaForm({
 
   function guardar() {
     if (!puedeGuardar) return;
-    update((prev) => {
-      const b = prev.barberia!;
-      const entry: CajaEntry = {
-        id: uid("caja"),
-        tipo,
-        concepto: concepto.trim() || (tipo === "venta" ? "Venta" : "Gasto"),
-        monto: montoNum,
-        metodo,
-        fecha: new Date().toISOString(),
-      };
-      return { ...prev, barberia: { ...b, caja: [entry, ...b.caja] } };
-    });
+    const entryId = uid("caja");
+    const esVenta = tipo === "venta";
+    let entryCreada: CajaEntry | null = null;
+    let negocioId = "";
+    update(
+      (prev) => {
+        const b = prev.barberia!;
+        const entry: CajaEntry = {
+          id: entryId,
+          tipo,
+          concepto: concepto.trim() || (tipo === "venta" ? "Venta" : "Gasto"),
+          monto: montoNum,
+          metodo,
+          fecha: new Date().toISOString(),
+          ...camposEmpleado(),
+        };
+        entryCreada = entry;
+        negocioId = prev.business.id;
+        return { ...prev, barberia: { ...b, caja: [entry, ...b.caja] } };
+      },
+      // Solo "venta" cuenta como vender — "gasto" queda bloqueado sin
+      // conexión igual que cualquier otra pantalla de administración.
+      esVenta ? { ventaOffline: true } : undefined
+    );
+    if (esVenta && typeof navigator !== "undefined" && !navigator.onLine && entryCreada) {
+      encolarVentaPendiente({
+        id: entryId,
+        negocioId,
+        tipo: "barberia_caja",
+        payload: entryCreada,
+        ...camposEmpleado(),
+      }).catch((err) => console.error("No se pudo encolar la venta pendiente:", err));
+    }
     onClose();
   }
 

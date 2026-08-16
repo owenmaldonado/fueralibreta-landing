@@ -15,6 +15,7 @@ import { BarcodeScanner } from "@/components/barcode-scanner";
 import { uid, formatMoney } from "@/lib/mock";
 import { usePlan } from "@/lib/planes";
 import { camposEmpleado } from "@/lib/empleados";
+import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import type { TenantData, GroceryProduct, GrocerySale } from "@/lib/types";
 
 const EMOJI_POR_CATEGORIA: Record<string, string> = {
@@ -60,7 +61,7 @@ interface VentaCartProps {
   open: boolean;
   data: NonNullable<TenantData["abarrotes"]>;
   onClose: () => void;
-  update: (fn: (prev: TenantData) => TenantData) => void;
+  update: (fn: (prev: TenantData) => TenantData, opciones?: { ventaOffline?: boolean }) => void;
 }
 
 /**
@@ -192,33 +193,57 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
 
   function cobrar() {
     if (!puedeCobrar) return;
-    update((prev) => {
-      const a = prev.abarrotes!;
-      const venta: GrocerySale = {
-        id: uid("sale"),
-        items: cart.map((l) => ({
-          id: uid("saleitem"),
-          productoId: l.productoId ?? "",
-          productoNombre: l.productoNombre,
-          cantidad: l.cantidad,
-          precioUnitario: l.precioUnitario,
-          subtotal: l.cantidad * l.precioUnitario,
-          // Snapshot del costo AL COBRAR — la ganancia de esta venta no debe
-          // moverse si el costo del producto se edita después. "Venta
-          // rápida" (sin productoId, no está en el inventario) no tiene
-          // costo conocido: 0, se cuenta el precio completo como ganancia.
-          costoUnitario: (l.productoId && a.productos.find((p) => p.id === l.productoId)?.costo) || 0,
-        })),
-        total,
-        fecha: new Date().toISOString(),
+    const ventaId = uid("sale");
+    let ventaCreada: GrocerySale | null = null;
+    let productosActualizados: GroceryProduct[] = [];
+    let negocioId = "";
+    update(
+      (prev) => {
+        const a = prev.abarrotes!;
+        const venta: GrocerySale = {
+          id: ventaId,
+          items: cart.map((l) => ({
+            id: uid("saleitem"),
+            productoId: l.productoId ?? "",
+            productoNombre: l.productoNombre,
+            cantidad: l.cantidad,
+            precioUnitario: l.precioUnitario,
+            subtotal: l.cantidad * l.precioUnitario,
+            // Snapshot del costo AL COBRAR — la ganancia de esta venta no debe
+            // moverse si el costo del producto se edita después. "Venta
+            // rápida" (sin productoId, no está en el inventario) no tiene
+            // costo conocido: 0, se cuenta el precio completo como ganancia.
+            costoUnitario: (l.productoId && a.productos.find((p) => p.id === l.productoId)?.costo) || 0,
+          })),
+          total,
+          fecha: new Date().toISOString(),
+          ...camposEmpleado(),
+        };
+        const productos = a.productos.map((p) => {
+          const linea = cart.find((l) => l.productoId === p.id);
+          return linea ? { ...p, stock: Math.max(0, p.stock - linea.cantidad) } : p;
+        });
+        ventaCreada = venta;
+        productosActualizados = productos;
+        negocioId = prev.business.id;
+        return { ...prev, abarrotes: { ...a, ventas: [venta, ...a.ventas], productos } };
+      },
+      { ventaOffline: true }
+    );
+    // Sin red: además de aplicarse en memoria (arriba), queda en la cola
+    // local para no perderse en un reload y para el contador del TopBar —
+    // con stock ya descontado en el mismo caché, así no se puede vender dos
+    // veces el mismo producto sin señal.
+    if (typeof navigator !== "undefined" && !navigator.onLine && ventaCreada) {
+      encolarVentaPendiente({
+        id: ventaId,
+        negocioId,
+        tipo: "abarrotes_venta",
+        payload: ventaCreada,
+        productosActualizados,
         ...camposEmpleado(),
-      };
-      const productos = a.productos.map((p) => {
-        const linea = cart.find((l) => l.productoId === p.id);
-        return linea ? { ...p, stock: Math.max(0, p.stock - linea.cantidad) } : p;
-      });
-      return { ...prev, abarrotes: { ...a, ventas: [venta, ...a.ventas], productos } };
-    });
+      }).catch((err) => console.error("No se pudo encolar la venta pendiente:", err));
+    }
     onClose();
   }
 

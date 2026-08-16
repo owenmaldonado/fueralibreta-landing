@@ -20,6 +20,7 @@ import { useSession } from "@/lib/session";
 import { formatMoney, uid } from "@/lib/mock";
 import { aggregateTwoByRange, type RangoTiempo } from "@/lib/chart-buckets";
 import { camposEmpleado, permisosActuales } from "@/lib/empleados";
+import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
 import { cn } from "@/lib/utils";
 import type { CajaEntry } from "@/lib/types";
 
@@ -43,6 +44,12 @@ export default function CajaPage() {
   React.useEffect(() => {
     setPuedeBorrar(permisosActuales().borrarVentas);
   }, []);
+
+  const { rows: ventasPendientesRows } = usePendingSalesQueue(session?.business.id);
+  const idsMovimientosPendientes = React.useMemo(
+    () => new Set(ventasPendientesRows.filter((r) => r.tipo === "barberia_caja").map((r) => r.id)),
+    [ventasPendientesRows]
+  );
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -140,10 +147,15 @@ export default function CajaPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{m.concepto}</p>
-                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                     {new Date(m.fecha).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                     <CreditCard className="hidden h-3 w-3" />
                     · {m.metodo === "efectivo" ? "Efectivo" : "Transferencia"}
+                    {idsMovimientosPendientes.has(m.id) && (
+                      <span className="rounded-full bg-primary/15 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-widest text-primary">
+                        Por sincronizar
+                      </span>
+                    )}
                   </p>
                 </div>
                 <span className={cn("shrink-0 font-mono text-sm", m.tipo === "gasto" ? "text-destructive" : "text-foreground")}>
