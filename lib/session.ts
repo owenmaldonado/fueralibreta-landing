@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase, isSupabaseConfigured } from "./supabase";
 import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow, fetchVentaConItems, businessFromRow } from "./data";
 import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
+import { leerCacheLocal, sincronizarCacheLocalEnSegundoPlano } from "./local-cache";
 import { todayISO } from "./mock";
 import type { Appointment, Business, GrocerySale, TenantData } from "./types";
 
@@ -424,6 +425,30 @@ export function useSession() {
       }
 
       console.log("[session] resolveForUser arrancó para", userId);
+
+      // Local-first (Parte 2 de PWA, ver lib/local-cache.ts): si hay un
+      // catálogo cacheado de una sesión anterior de ESTE userId, lo pinta de
+      // inmediato sin esperar la red — más rápido con buena señal, y lo
+      // único que hay sin señal. No se espera (fire-and-forget): el fetch
+      // real de abajo sigue su curso normal y, si gana la carrera (llega
+      // primero, típico con buena señal), huboExito ya está en true y este
+      // pintado se descarta solo. Si el fetch real falla (offline), este
+      // caché es lo que evita caer a la demo/onboarding con datos reales
+      // guardados en el dispositivo.
+      let huboExito = false;
+      let pintadoDesdeCache = false;
+      if (cachedTenant?.userId !== userId) {
+        leerCacheLocal(userId)
+          .then((cache) => {
+            if (cancelled || huboExito || !cache) return;
+            pintadoDesdeCache = true;
+            sourceRef.current = "supabase";
+            setSessionState(cache.tenant);
+            setReady(true);
+          })
+          .catch((err) => console.error("[session] no se pudo pintar desde el catálogo local:", err));
+      }
+
       try {
         let tenant: TenantData | null;
         if (cachedTenant?.userId === userId) {
@@ -460,6 +485,10 @@ export function useSession() {
           sourceRef.current = "supabase";
           setSessionState(tenant);
           cachedTenant = { userId, tenant };
+          huboExito = true;
+          // Refresca el catálogo local (productos/precios, clientes,
+          // empleados) en segundo plano — nunca bloquea lo de arriba.
+          sincronizarCacheLocalEnSegundoPlano(userId, tenant);
           if (tenant.business.tipo === "barberia") {
             try {
               escucharCitasEnVivo(tenant.business.id);
@@ -494,10 +523,14 @@ export function useSession() {
           // punto de creación es más simple y no tiene esa carrera.
           sourceRef.current = null;
           setSessionState(null);
+          huboExito = true;
         }
       } catch (err) {
         console.error("[session] ERROR — no se pudo cargar el negocio desde Supabase:", err);
-        loadFromDemoPreview();
+        // Si el catálogo local ya pintó datos reales (offline, ver arriba),
+        // no los pisamos con la demo/null — el usuario se queda viendo su
+        // negocio real, aunque desactualizado, en vez de rebotar a demo.
+        if (!pintadoDesdeCache) loadFromDemoPreview();
       } finally {
         if (!cancelled) setReady(true);
       }
