@@ -16,10 +16,10 @@ export function AbarrotesDashboard({ session, update }: { session: TenantData; u
   const data = session.abarrotes!;
   const hoy = todayISO(0);
   const [cerrandoDia, setCerrandoDia] = React.useState(false);
-  const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy());
+  const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy(session.business.id));
 
   function ignorar(id: string) {
-    ignorarAvisoHoy(id);
+    ignorarAvisoHoy(session.business.id, id);
     setIgnorados((prev) => new Set(prev).add(id));
   }
 

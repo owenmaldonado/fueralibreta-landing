@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ShoppingCart, PackagePlus, HandCoins, Receipt, CalendarClock, ScanLine } from "lucide-react";
+import { ShoppingCart, PackagePlus, HandCoins, Receipt, ScanLine } from "lucide-react";
 
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
@@ -13,14 +13,16 @@ import { VentaCart } from "@/components/abarrotes/venta-cart";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatMoney, todayISO } from "@/lib/mock";
-import type { TenantData, Expense, GroceryProduct, Apartado } from "@/lib/types";
+import type { TenantData, Expense, GroceryProduct } from "@/lib/types";
 
-// Mismo orden que NAV_ABARROTES en components/app-shell/bottom-nav.tsx: Fiados antes de Apartados.
+// "Nuevo apartado" ya no vive aquí — Frutas y Verdura (tab propio en
+// bottom-nav, con su propio "+ Nuevo") le ganó prioridad en este FAB.
+// Apartados existentes se siguen viendo/editando/abonando desde
+// /app/apartados, solo ya no se dan de alta desde este acceso rápido.
 export const ABARROTES_ACTIONS: FabAction[] = [
   { key: "venta", label: "Nueva Venta", icon: <ShoppingCart className="h-4 w-4" /> },
   { key: "producto", label: "Producto", icon: <PackagePlus className="h-4 w-4" /> },
   { key: "fiado", label: "Fiado", icon: <HandCoins className="h-4 w-4" /> },
-  { key: "apartado", label: "Nuevo apartado", icon: <CalendarClock className="h-4 w-4" /> },
   { key: "gasto", label: "Gasto", icon: <Receipt className="h-4 w-4" /> },
 ];
 
@@ -42,9 +44,6 @@ export function AbarrotesQuickAdd({ active, onClose, session, update }: Props) {
       <VentaCart open={active === "venta"} data={data} onClose={onClose} update={update} />
       <Sheet open={active === "producto"} onOpenChange={(o) => !o && onClose()}>
         <NuevoProductoForm onClose={onClose} update={update} />
-      </Sheet>
-      <Sheet open={active === "apartado"} onOpenChange={(o) => !o && onClose()}>
-        <NuevoApartadoForm onClose={onClose} update={update} />
       </Sheet>
       <Sheet open={active === "fiado"} onOpenChange={(o) => !o && onClose()}>
         <NuevoFiadoForm onClose={onClose} update={update} />
@@ -248,75 +247,6 @@ function NuevoFiadoForm({ onClose, update }: { onClose: () => void; update: Prop
       <SheetFooter>
         <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>
           Guardar fiado
-        </Button>
-      </SheetFooter>
-    </>
-  );
-}
-
-function NuevoApartadoForm({ onClose, update }: { onClose: () => void; update: Props["update"] }) {
-  const [clienteNombre, setClienteNombre] = React.useState("");
-  const [telefono, setTelefono] = React.useState("");
-  const [producto, setProducto] = React.useState("");
-  const [total, setTotal] = React.useState("");
-  const [abonado, setAbonado] = React.useState("");
-  const [fechaLimite, setFechaLimite] = React.useState(todayISO(14));
-
-  const puedeGuardar = clienteNombre.trim().length > 1 && producto.trim().length > 1 && Number(total) > 0;
-
-  function guardar() {
-    if (!puedeGuardar) return;
-    update((prev) => {
-      const a = prev.abarrotes!;
-      const apartado: Apartado = {
-        id: uid("apartado"),
-        clienteNombre: clienteNombre.trim(),
-        telefono: telefono.trim(),
-        producto: producto.trim(),
-        total: Number(total),
-        abonado: Math.min(Number(total), Number(abonado) || 0),
-        fechaLimite,
-        entregado: false,
-      };
-      return { ...prev, abarrotes: { ...a, apartados: [apartado, ...a.apartados] } };
-    });
-    onClose();
-  }
-
-  return (
-    <>
-      <SheetHeader title="Nuevo apartado" onClose={onClose} />
-      <div className="flex flex-col gap-4">
-        <div className="space-y-1.5">
-          <Label>Cliente</Label>
-          <Input autoFocus value={clienteNombre} onChange={(e) => setClienteNombre(e.target.value)} placeholder="Nombre del cliente" />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Teléfono</Label>
-          <Input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="331 000 0000" />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Producto</Label>
-          <Input value={producto} onChange={(e) => setProducto(e.target.value)} placeholder="Ej. Despensa navideña" />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label>Total</Label>
-            <Input type="number" inputMode="decimal" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="$0" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Abono inicial</Label>
-            <Input type="number" inputMode="decimal" value={abonado} onChange={(e) => setAbonado(e.target.value)} placeholder="$0" />
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <Label>Fecha límite</Label>
-          <Input type="date" value={fechaLimite} onChange={(e) => setFechaLimite(e.target.value)} />
-        </div>
-      </div>
-      <SheetFooter>
-        <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>
-          Guardar apartado
         </Button>
       </SheetFooter>
     </>

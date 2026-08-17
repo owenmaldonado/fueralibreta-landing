@@ -193,7 +193,7 @@ export function mensajeRecordatorioCita(
  * invitar a alguien que no tiene ninguna cita próxima a que agende una.
  */
 export function mensajeRecordatorioInactivo(nombreCliente: string): string {
-  return `Ey ${nombreCliente}!, ya tienes tiempo sin venir, ¿quieres agendar de nuevo? 💈`;
+  return `¡Ey ${nombreCliente}! Ya tienes rato sin venir 💈 ¿Quieres agendar de nuevo?`;
 }
 
 export const NUMERO_CONTACTO = "3329098631";

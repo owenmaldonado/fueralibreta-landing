@@ -18,11 +18,15 @@ import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Tabs } from "@/components/ui/tabs";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
+import { VentaForm } from "@/components/abarrotes/venta-form";
 import { useSession } from "@/lib/session";
 import { formatMoney, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
 import { aggregateByRange, filterByRango, type RangoTiempo } from "@/lib/chart-buckets";
+import { permisosActuales } from "@/lib/empleados";
+import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
 import { cn } from "@/lib/utils";
-import type { Expense, TenantData, FondaOrder } from "@/lib/types";
+import type { Expense, TenantData, FondaOrder, GrocerySale } from "@/lib/types";
 
 const RANGO_TABS = [
   { value: "semanal", label: "Semanal" },
@@ -63,10 +67,27 @@ export default function GastosPage() {
   const [borrando, setBorrando] = React.useState<Expense | null>(null);
   const [editandoVenta, setEditandoVenta] = React.useState<FondaOrder | null>(null);
   const [borrandoVenta, setBorrandoVenta] = React.useState<FondaOrder | null>(null);
+  const [editandoVentaAbarrotes, setEditandoVentaAbarrotes] = React.useState<GrocerySale | null>(null);
+  const [borrandoVentaAbarrotes, setBorrandoVentaAbarrotes] = React.useState<GrocerySale | null>(null);
   const [rango, setRango] = React.useState<RangoTiempo>("semanal");
   const [chartTab, setChartTab] = React.useState<ChartTab>("todos");
   const anioActual = new Date().getFullYear();
   const [anioSeleccionado, setAnioSeleccionado] = React.useState(anioActual);
+  // Multiusuario: un rol "vendedor" no puede borrar ventas — se resuelve en
+  // un efecto (permisosActuales lee una cookie) para no desalinear el
+  // primer render del servidor con el del cliente. Mismo patrón que
+  // Inventario, de donde se movió esta lista (ver VentaForm).
+  const [puedeBorrarVentas, setPuedeBorrarVentas] = React.useState(true);
+
+  React.useEffect(() => {
+    setPuedeBorrarVentas(permisosActuales().borrarVentas);
+  }, []);
+
+  const { rows: ventasPendientesRows } = usePendingSalesQueue(session?.business.id);
+  const ventasPendientesPorId = React.useMemo(
+    () => new Map(ventasPendientesRows.filter((r) => r.tipo === "abarrotes_venta").map((r) => [r.id, r] as const)),
+    [ventasPendientesRows]
+  );
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -210,11 +231,8 @@ export default function GastosPage() {
     setBorrando(null);
   }
 
-  // Editar/eliminar una venta desde este panel solo aplica a pedidos de
-  // Fondita (concepto/monto/hora encajan directo con FondaOrder). Las
-  // ventas de Abarrotes ya tienen su propio editor completo en Inventario
-  // > Ventas (con items y recálculo de total), así que aquí se quedan de
-  // solo lectura para no duplicar ese flujo con uno más simple/menos fiel.
+  // Editar/eliminar una venta de Fondita (concepto/monto/hora encajan
+  // directo con FondaOrder).
   function abrirEditarVenta(id: string) {
     const pedido = session!.fonda!.pedidos.find((p) => p.id === id);
     if (pedido) setEditandoVenta(pedido);
@@ -230,6 +248,27 @@ export default function GastosPage() {
       return { ...prev, fonda: { ...f, pedidos: f.pedidos.filter((p) => p.id !== borrandoVenta.id) } };
     });
     setBorrandoVenta(null);
+  }
+
+  // Editar/eliminar una venta de Abarrotes (items + recálculo de total,
+  // ver VentaForm) — antes vivía en Inventario > Ventas, se movió aquí
+  // para que todo lo de "Ventas" quede en un solo lugar. El stock no se
+  // ajusta automáticamente (mismo comportamiento de siempre).
+  function abrirEditarVentaAbarrotes(id: string) {
+    const venta = session!.abarrotes!.ventas.find((v) => v.id === id);
+    if (venta) setEditandoVentaAbarrotes(venta);
+  }
+  function abrirBorrarVentaAbarrotes(id: string) {
+    const venta = session!.abarrotes!.ventas.find((v) => v.id === id);
+    if (venta) setBorrandoVentaAbarrotes(venta);
+  }
+  function eliminarVentaAbarrotes() {
+    if (!borrandoVentaAbarrotes) return;
+    update((prev) => {
+      const a = prev.abarrotes!;
+      return { ...prev, abarrotes: { ...a, ventas: a.ventas.filter((v) => v.id !== borrandoVentaAbarrotes.id) } };
+    });
+    setBorrandoVentaAbarrotes(null);
   }
 
   return (
@@ -407,6 +446,9 @@ export default function GastosPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{v.label}</p>
                   <p className="text-xs text-muted-foreground">{formatFechaCorta(v.fecha)}</p>
+                  {modulo === "abarrotes" && (
+                    <PendingSaleStatus negocioId={session.business.id} fila={ventasPendientesPorId.get(v.id)} />
+                  )}
                 </div>
                 <span className="shrink-0 font-mono text-sm text-ledger">+{formatMoney(v.monto)}</span>
                 {modulo === "fonda" && (
@@ -425,6 +467,26 @@ export default function GastosPage() {
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
+                  </div>
+                )}
+                {modulo === "abarrotes" && (
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <button
+                      onClick={() => abrirEditarVentaAbarrotes(v.id)}
+                      aria-label="Editar venta"
+                      className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    {puedeBorrarVentas && (
+                      <button
+                        onClick={() => abrirBorrarVentaAbarrotes(v.id)}
+                        aria-label="Eliminar venta"
+                        className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -535,6 +597,20 @@ export default function GastosPage() {
         description={`Se borrará el pedido de ${borrandoVenta?.clienteNombre ?? ""} por ${borrandoVenta ? formatMoney(borrandoVenta.total) : ""}.`}
         onClose={() => setBorrandoVenta(null)}
         onConfirm={eliminarVenta}
+      />
+
+      <Sheet open={!!editandoVentaAbarrotes} onOpenChange={(o) => !o && setEditandoVentaAbarrotes(null)}>
+        {editandoVentaAbarrotes && (
+          <VentaForm venta={editandoVentaAbarrotes} onClose={() => setEditandoVentaAbarrotes(null)} update={update} />
+        )}
+      </Sheet>
+
+      <ConfirmDialog
+        open={!!borrandoVentaAbarrotes}
+        title="Eliminar venta"
+        description={`Se borrará esta venta por ${borrandoVentaAbarrotes ? formatMoney(borrandoVentaAbarrotes.total) : ""}. El stock no se ajusta automáticamente.`}
+        onClose={() => setBorrandoVentaAbarrotes(null)}
+        onConfirm={eliminarVentaAbarrotes}
       />
     </>
   );

@@ -20,10 +20,10 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
   const hoy = todayISO(0);
   const [cobrando, setCobrando] = React.useState<Appointment | null>(null);
   const [cerrandoTurno, setCerrandoTurno] = React.useState(false);
-  const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy());
+  const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy(business.id));
 
   function ignorar(id: string) {
-    ignorarAvisoHoy(id);
+    ignorarAvisoHoy(business.id, id);
     setIgnorados((prev) => new Set(prev).add(id));
   }
 
