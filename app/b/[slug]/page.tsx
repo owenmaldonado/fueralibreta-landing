@@ -15,9 +15,39 @@ import { getAvailableSlots } from "@/lib/agenda";
 import { fetchNegocioBySlug, fetchPublicBookingData, submitPublicCita, type PublicBookingData } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { readDemoPreview, writeDemoPreview } from "@/lib/demoPreview";
-import { formatMoney, todayISO, waLink, whatsappDe } from "@/lib/mock";
+import { formatMoney, toISODate, todayISO, waLink, whatsappDe } from "@/lib/mock";
 import { nombreSchema, telefonoSchema } from "@/lib/validation";
 import type { Business, Appointment } from "@/lib/types";
+
+// Lun-Dom en vez del Dom-Sáb de JS Date.getDay() — solo para el orden en
+// que se pintan los chips; `dow` sigue siendo el índice nativo (0=Dom) que
+// espera Date.getDay().
+const DIAS_SEMANA_UI = [
+  { label: "Lun", dow: 1 },
+  { label: "Mar", dow: 2 },
+  { label: "Mié", dow: 3 },
+  { label: "Jue", dow: 4 },
+  { label: "Vie", dow: 5 },
+  { label: "Sáb", dow: 6 },
+  { label: "Dom", dow: 0 },
+] as const;
+
+/** Próxima fecha (hoy o después) que cae en ese día de la semana. */
+function proximaFechaParaDia(dow: number): string {
+  const hoy = new Date();
+  const delta = (dow - hoy.getDay() + 7) % 7;
+  const d = new Date(hoy);
+  d.setDate(d.getDate() + delta);
+  return toISODate(d);
+}
+
+function formatFechaLarga(fechaISO: string): string {
+  return new Date(`${fechaISO}T00:00:00`).toLocaleDateString("es-MX", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+}
 
 export default function ReservaPublicaPage() {
   const params = useParams<{ slug: string }>();
@@ -271,16 +301,25 @@ export default function ReservaPublicaPage() {
             >
               Mañana
             </Chip>
-            <Chip
-              selected={fecha === todayISO(2)}
-              onClick={() => {
-                setFecha(todayISO(2));
-                setHora(null);
-              }}
-            >
-              Pasado mañana
-            </Chip>
           </ChipGroup>
+          <ChipGroup>
+            {DIAS_SEMANA_UI.map((d) => {
+              const fechaDia = proximaFechaParaDia(d.dow);
+              return (
+                <Chip
+                  key={d.dow}
+                  selected={fecha === fechaDia}
+                  onClick={() => {
+                    setFecha(fechaDia);
+                    setHora(null);
+                  }}
+                >
+                  {d.label}
+                </Chip>
+              );
+            })}
+          </ChipGroup>
+          <p className="text-xs capitalize text-muted-foreground">{formatFechaLarga(fecha)}</p>
         </div>
 
         <div className="space-y-2">

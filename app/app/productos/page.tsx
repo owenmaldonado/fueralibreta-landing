@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { Stepper } from "@/components/ui/stepper";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -223,6 +224,7 @@ function ProductoRow({
           <p className="truncate text-sm font-medium">{producto.nombre}</p>
           <p className={cn("text-xs", bajo ? "font-medium text-primary" : "text-muted-foreground")}>
             Stock {producto.stock} · mínimo {producto.minimo}
+            {producto.eliminarEnCero && " · auto-elimina en 0"}
           </p>
         </div>
         <Stepper value={producto.stock} onChange={(v) => ajustarStock(v - producto.stock)} />
@@ -259,6 +261,7 @@ function ProductoForm({
   const [nombre, setNombre] = React.useState(producto?.nombre ?? "");
   const [stock, setStock] = React.useState(String(producto?.stock ?? 1));
   const [minimo, setMinimo] = React.useState(String(producto?.minimo ?? 3));
+  const [eliminarEnCero, setEliminarEnCero] = React.useState(producto?.eliminarEnCero ?? false);
 
   const puedeGuardar = nombre.trim().length > 1;
 
@@ -272,12 +275,14 @@ function ProductoForm({
           barberia: {
             ...b,
             productos: b.productos.map((p) =>
-              p.id === producto.id ? { ...p, nombre: nombre.trim(), stock: Number(stock) || 0, minimo: Number(minimo) || 0 } : p
+              p.id === producto.id
+                ? { ...p, nombre: nombre.trim(), stock: Number(stock) || 0, minimo: Number(minimo) || 0, eliminarEnCero }
+                : p
             ),
           },
         };
       }
-      const nuevo = { id: uid("prod"), nombre: nombre.trim(), stock: Number(stock) || 0, minimo: Number(minimo) || 0 };
+      const nuevo = { id: uid("prod"), nombre: nombre.trim(), stock: Number(stock) || 0, minimo: Number(minimo) || 0, eliminarEnCero };
       return { ...prev, barberia: { ...b, productos: [nuevo, ...b.productos] } };
     });
     onClose();
@@ -300,6 +305,13 @@ function ProductoForm({
             <Label>Mínimo</Label>
             <Input type="number" inputMode="numeric" value={minimo} onChange={(e) => setMinimo(e.target.value)} />
           </div>
+        </div>
+        <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+          <div>
+            <p className="text-sm font-medium">Auto-eliminar cuando llegue a 0</p>
+            <p className="text-xs text-muted-foreground">En vez de dejarlo en stock 0</p>
+          </div>
+          <Switch checked={eliminarEnCero} onCheckedChange={setEliminarEnCero} />
         </div>
       </div>
       <SheetFooter>

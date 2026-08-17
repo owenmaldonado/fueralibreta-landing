@@ -59,6 +59,7 @@ export function businessFromRow(row: Row): Business {
     plan: normalizarPlan(row.plan as string | null | undefined),
     precioCustom: row.precio_custom != null ? Number(row.precio_custom) : null,
     esFundador: (row.es_fundador as boolean) ?? false,
+    diasRecordatorio: row.dias_recordatorio != null ? Number(row.dias_recordatorio) : 28,
   };
 }
 
@@ -247,6 +248,7 @@ const productoBarberiaFromRow = (r: Row): InventoryProduct => ({
   nombre: r.nombre as string,
   stock: r.stock as number,
   minimo: r.minimo as number,
+  eliminarEnCero: (r.eliminar_en_cero as boolean) ?? false,
 });
 const productoBarberiaToRow = (p: InventoryProduct, negocioId: string): Row => ({
   id: p.id,
@@ -254,6 +256,7 @@ const productoBarberiaToRow = (p: InventoryProduct, negocioId: string): Row => (
   nombre: p.nombre,
   stock: p.stock,
   minimo: p.minimo,
+  eliminar_en_cero: p.eliminarEnCero ?? false,
 });
 
 async function fetchBarberiaData(negocioId: string): Promise<BarberiaData> {
@@ -983,11 +986,15 @@ export async function syncTenantDiff(prev: TenantData, next: TenantData): Promis
 
   // A diferencia de barberia/fonda/abarrotes (sub-objetos con listas que se
   // diffean campo por campo), `business` vive directo en la fila `negocios`
-  // — los únicos campos editables desde /app hoy son whatsapp y telefono
-  // (Configuración > Perfil), así que solo esos se comparan y sincronizan.
+  // — los únicos campos editables desde /app hoy son whatsapp, telefono y
+  // diasRecordatorio (Configuración > General), así que solo esos se
+  // comparan y sincronizan.
   const businessChanges: Row = {};
   if (prev.business.whatsapp !== next.business.whatsapp) businessChanges.whatsapp = next.business.whatsapp ?? null;
   if (prev.business.telefono !== next.business.telefono) businessChanges.telefono = next.business.telefono;
+  if (prev.business.diasRecordatorio !== next.business.diasRecordatorio) {
+    businessChanges.dias_recordatorio = next.business.diasRecordatorio ?? 28;
+  }
   if (Object.keys(businessChanges).length > 0) {
     const { error } = await supabase.from("negocios").update(businessChanges).eq("id", negocioId);
     if (error) throw error;

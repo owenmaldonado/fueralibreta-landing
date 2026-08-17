@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
 import { Stepper } from "@/components/ui/stepper";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -385,17 +384,19 @@ function CajaForm({
   );
 }
 
-const MOTIVOS = ["Vendido", "Uso en servicio", "Se acabó / Merma", "Otro"] as const;
+const MOTIVOS = ["Vendido", "Uso en servicio", "Merma", "Otro"] as const;
 
 /**
  * Descuenta stock de varios productos a la vez (venta, uso en servicio,
  * merma...) en vez de editar uno por uno desde Productos. Motivo es solo
  * para que quien lo usa recuerde por qué — no hay tabla de movimientos de
- * inventario todavía, así que no se guarda en ningún lado, solo ayuda a
- * decidir la cantidad. Un producto que llega a 0 y tiene el toggle
- * encendido se elimina en vez de quedar en stock 0 — todo en un solo
- * update(), que ya sincroniza a Supabase (UPDATE o DELETE según el caso)
- * igual que cualquier otro cambio de productos en esta app.
+ * inventario todavía, así que no se guarda en ningún lado, solo queda como
+ * contexto de la confirmación. Un producto que llega a 0 se elimina en vez
+ * de quedar en stock 0 SOLO si tiene su propio switch "Auto-eliminar cuando
+ * llegue a 0" prendido (ver ProductoForm en app/app/productos/page.tsx) —
+ * ya no es un toggle de este modal, es una propiedad del producto. Todo en
+ * un solo update(), que ya sincroniza a Supabase (UPDATE o DELETE según el
+ * caso) igual que cualquier otro cambio de productos en esta app.
  */
 function ConsumoForm({
   data,
@@ -408,8 +409,7 @@ function ConsumoForm({
 }) {
   const [seleccionados, setSeleccionados] = React.useState<Set<string>>(new Set());
   const [motivo, setMotivo] = React.useState<(typeof MOTIVOS)[number]>("Vendido");
-  const [cantidad, setCantidad] = React.useState(1);
-  const [eliminarSiLlegaCero, setEliminarSiLlegaCero] = React.useState(false);
+  const [cantidades, setCantidades] = React.useState<Record<string, number>>({});
   const [confirmando, setConfirmando] = React.useState(false);
 
   function toggleSeleccion(id: string, checked: boolean) {
@@ -419,10 +419,15 @@ function ConsumoForm({
       else next.delete(id);
       return next;
     });
+    if (checked) setCantidades((prev) => (prev[id] ? prev : { ...prev, [id]: 1 }));
+  }
+
+  function cantidadDe(id: string): number {
+    return cantidades[id] ?? 1;
   }
 
   function stockResultante(p: InventoryProduct): number {
-    return Math.max(0, p.stock - cantidad);
+    return Math.max(0, p.stock - cantidadDe(p.id));
   }
 
   const puedeDescontar = seleccionados.size > 0;
@@ -437,7 +442,7 @@ function ConsumoForm({
           return acc;
         }
         const nuevoStock = stockResultante(p);
-        if (nuevoStock === 0 && eliminarSiLlegaCero) return acc; // se omite = se elimina
+        if (nuevoStock === 0 && p.eliminarEnCero) return acc; // se omite = se elimina
         acc.push({ ...p, stock: nuevoStock });
         return acc;
       }, []);
@@ -455,24 +460,11 @@ function ConsumoForm({
           <Label>Motivo</Label>
           <ChipGroup>
             {MOTIVOS.map((m) => (
-              <Chip key={m} selected={motivo === m} onClick={() => setMotivo(m)}>
+              <Chip key={m} selected={motivo === m} onClick={() => setMotivo(m)} className="px-3 py-1.5 text-xs">
                 {m}
               </Chip>
             ))}
           </ChipGroup>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Cantidad a descontar (por producto)</Label>
-          <Stepper value={cantidad} onChange={setCantidad} min={1} />
-        </div>
-
-        <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-          <div>
-            <p className="text-sm font-medium">Eliminar si llega a 0</p>
-            <p className="text-xs text-muted-foreground">En vez de dejarlo en stock 0</p>
-          </div>
-          <Switch checked={eliminarSiLlegaCero} onCheckedChange={setEliminarSiLlegaCero} />
         </div>
 
         <div className="space-y-1.5">
@@ -481,31 +473,41 @@ function ConsumoForm({
             {data.productos.map((p) => {
               const marcado = seleccionados.has(p.id);
               const nuevoStock = stockResultante(p);
-              const seEliminara = marcado && nuevoStock === 0 && eliminarSiLlegaCero;
+              const seEliminara = marcado && nuevoStock === 0 && p.eliminarEnCero;
               return (
-                <label
+                <div
                   key={p.id}
                   className={cn(
                     "flex items-center gap-3 rounded-xl border p-3 transition-colors",
                     marcado ? "border-primary/40 bg-primary/5" : "border-border bg-card"
                   )}
                 >
-                  <Checkbox checked={marcado} onCheckedChange={(v) => toggleSeleccion(p.id, v)} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{p.nombre}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Stock actual: {p.stock}
-                      {marcado && (
-                        <>
-                          {" → "}
-                          <span className={seEliminara ? "font-medium text-destructive" : "font-medium text-foreground"}>
-                            {seEliminara ? "se elimina" : nuevoStock}
-                          </span>
-                        </>
-                      )}
-                    </p>
-                  </div>
-                </label>
+                  <label className="flex min-w-0 flex-1 items-center gap-3">
+                    <Checkbox checked={marcado} onCheckedChange={(v) => toggleSeleccion(p.id, v)} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{p.nombre}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Stock actual: {p.stock}
+                        {marcado && (
+                          <>
+                            {" → "}
+                            <span className={seEliminara ? "font-medium text-destructive" : "font-medium text-foreground"}>
+                              {seEliminara ? "se elimina" : nuevoStock}
+                            </span>
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  </label>
+                  {marcado && (
+                    <Stepper
+                      value={cantidadDe(p.id)}
+                      onChange={(v) => setCantidades((prev) => ({ ...prev, [p.id]: v }))}
+                      min={1}
+                      className="shrink-0"
+                    />
+                  )}
+                </div>
               );
             })}
           </div>
@@ -520,7 +522,7 @@ function ConsumoForm({
       <ConfirmDialog
         open={confirmando}
         title="Descontar productos"
-        description={`¿Seguro? Se descontará ${cantidad} de ${seleccionados.size} producto${seleccionados.size === 1 ? "" : "s"} (${motivo.toLowerCase()})${eliminarSiLlegaCero ? " — los que lleguen a 0 se eliminan del inventario" : ""}.`}
+        description={`¿Seguro? Se descontará de ${seleccionados.size} producto${seleccionados.size === 1 ? "" : "s"} (${motivo.toLowerCase()}).`}
         confirmLabel="Descontar"
         tone="ledger"
         onClose={() => setConfirmando(false)}
