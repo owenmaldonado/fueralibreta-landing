@@ -63,6 +63,8 @@ export interface Business {
   precioCustom: number | null;
   /** Insignia de "Fundador" (marketing/trato especial) — admin-only, mismo trato que `plan`. */
   esFundador: boolean;
+  /** Días sin venir a partir de los cuales Clientes marca a alguien para recordatorio (badge + mensaje de WhatsApp distinto). Configurable en Configuración > General; 28 si no se ha configurado. */
+  diasRecordatorio?: number;
 }
 
 // ---------- Barbería ----------
@@ -138,6 +140,8 @@ export interface InventoryProduct {
   nombre: string;
   stock: number;
   minimo: number;
+  /** Si al descontar stock (Consumir / Eliminar del inventario) llega a 0, elimina el producto en vez de dejarlo en stock 0. Se configura por producto (Nuevo/editar producto), OFF por defecto. */
+  eliminarEnCero: boolean;
 }
 
 // ---------- Fonda ----------

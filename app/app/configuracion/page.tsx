@@ -17,7 +17,7 @@ import { formatMoney, todayISO, toISODate, uid } from "@/lib/mock";
 import type { Business, HorarioDia } from "@/lib/types";
 
 const SECTIONS = [
-  { value: "perfil", label: "Perfil" },
+  { value: "perfil", label: "General" },
   { value: "horario", label: "Horario" },
   { value: "excepciones", label: "Excepciones" },
   { value: "servicios", label: "Servicios" },
@@ -28,6 +28,15 @@ export default function ConfiguracionPage() {
   const [tab, setTab] = React.useState("horario");
   const [addExcepcion, setAddExcepcion] = React.useState(false);
   const [addServicio, setAddServicio] = React.useState(false);
+
+  // El card "Servicios" de Más (ver app/app/mas/page.tsx) linkea directo
+  // aquí con ?tab=servicios — lee la URL a mano en vez de useSearchParams()
+  // por el mismo motivo que app/app/empleados/page.tsx: no forzar un
+  // Suspense boundary en esta página.
+  React.useEffect(() => {
+    const tabParam = new URLSearchParams(window.location.search).get("tab");
+    if (tabParam && SECTIONS.some((s) => s.value === tabParam)) setTab(tabParam);
+  }, []);
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -139,9 +148,12 @@ export default function ConfiguracionPage() {
   );
 }
 
+const DIAS_RECORDATORIO_DEFAULT = 28;
+
 function PerfilSection({ business, update }: { business: Business; update: ReturnType<typeof useSession>["update"] }) {
   const [whatsapp, setWhatsapp] = React.useState(business.whatsapp ?? "");
   const [telefono, setTelefono] = React.useState(business.telefono ?? "");
+  const [diasRecordatorio, setDiasRecordatorio] = React.useState(String(business.diasRecordatorio ?? DIAS_RECORDATORIO_DEFAULT));
 
   // Si update() sincroniza con Supabase en segundo plano y falla, session
   // vuelve a su valor previo — hay que reflejarlo aquí también, no solo en
@@ -149,14 +161,22 @@ function PerfilSection({ business, update }: { business: Business; update: Retur
   React.useEffect(() => {
     setWhatsapp(business.whatsapp ?? "");
     setTelefono(business.telefono ?? "");
-  }, [business.whatsapp, business.telefono]);
+    setDiasRecordatorio(String(business.diasRecordatorio ?? DIAS_RECORDATORIO_DEFAULT));
+  }, [business.whatsapp, business.telefono, business.diasRecordatorio]);
 
-  const cambiado = whatsapp.trim() !== (business.whatsapp ?? "") || telefono.trim() !== (business.telefono ?? "");
+  const cambiado =
+    whatsapp.trim() !== (business.whatsapp ?? "") ||
+    telefono.trim() !== (business.telefono ?? "") ||
+    Number(diasRecordatorio) !== (business.diasRecordatorio ?? DIAS_RECORDATORIO_DEFAULT);
 
   function guardar() {
     const nuevoWhatsapp = whatsapp.trim();
     const nuevoTelefono = telefono.trim();
-    update((prev) => ({ ...prev, business: { ...prev.business, whatsapp: nuevoWhatsapp || undefined, telefono: nuevoTelefono } }));
+    const nuevoDias = Number(diasRecordatorio) || DIAS_RECORDATORIO_DEFAULT;
+    update((prev) => ({
+      ...prev,
+      business: { ...prev.business, whatsapp: nuevoWhatsapp || undefined, telefono: nuevoTelefono, diasRecordatorio: nuevoDias },
+    }));
   }
 
   return (
@@ -185,6 +205,19 @@ function PerfilSection({ business, update }: { business: Business; update: Retur
           placeholder="331 000 0000"
         />
         <p className="text-xs text-muted-foreground">Ya no se pide al crear tu cuenta — es solo por si algún día lo necesitas para recuperar el acceso.</p>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Días para recordatorio</Label>
+        <Input
+          type="number"
+          inputMode="numeric"
+          value={diasRecordatorio}
+          onChange={(e) => setDiasRecordatorio(e.target.value)}
+          placeholder="28"
+        />
+        <p className="text-xs text-muted-foreground">
+          En Clientes, quien tenga más de estos días sin venir se marca con un aviso para recordarle que agende de nuevo.
+        </p>
       </div>
       <Button size="lg" disabled={!cambiado} onClick={guardar} className="self-start">
         Guardar

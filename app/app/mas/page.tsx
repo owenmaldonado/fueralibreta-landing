@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Boxes, Settings, ChevronRight, ArrowRight, Copy, Check, MessageCircle, History, Users } from "lucide-react";
+import { Boxes, Settings, ChevronRight, ArrowRight, Copy, Check, MessageCircle, History, Users, Scissors } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -17,8 +17,14 @@ const LINKS = [
   { href: "/app/empleados", label: "Empleados", desc: "Multiusuario con PIN", icon: Users },
 ];
 
+// Orden pensado para que lo más usado en el día a día quede arriba: Servicios
+// (duplicado del tab de Configuración, ver app/app/configuracion/page.tsx)
+// queda primero porque hoy solo se llega a él entrando a Configuración.
 const LINKS_BARBERIA = [
-  ...LINKS,
+  { href: "/app/configuracion?tab=servicios", label: "Servicios", desc: "Cortes, precios y duración", icon: Scissors },
+  { href: "/app/productos", label: "Productos", desc: "Inventario de insumos", icon: Boxes },
+  { href: "/app/configuracion", label: "Configuración", desc: "Horarios, excepciones y servicios", icon: Settings },
+  { href: "/app/empleados", label: "Empleados", desc: "Multiusuario con PIN", icon: Users },
   { href: "/app/historial", label: "Historial", desc: "Citas de días anteriores", icon: History },
 ];
 

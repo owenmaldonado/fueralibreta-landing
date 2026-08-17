@@ -9,12 +9,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetHeader } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
-import { daysSince, formatMoney, statsVisitasCliente, waLink } from "@/lib/mock";
+import { daysSince, formatMoney, mensajeRecordatorioInactivo, statsVisitasCliente, waLink } from "@/lib/mock";
 import type { BarberClient } from "@/lib/types";
+
+const DIAS_RECORDATORIO_DEFAULT = 28;
 
 export default function ClientesPage() {
   const { session, ready, update } = useSession();
@@ -24,6 +27,7 @@ export default function ClientesPage() {
   if (!ready || !session) return <LoadingBlock />;
 
   const data = session.barberia!;
+  const diasRecordatorio = session.business.diasRecordatorio ?? DIAS_RECORDATORIO_DEFAULT;
   const filtrados = data.clientes
     .filter((c) => c.nombre.toLowerCase().includes(q.toLowerCase()) || c.telefono.includes(q))
     .map((c) => ({ ...c, ...statsVisitasCliente(data.citas, c.id) }))
@@ -48,7 +52,8 @@ export default function ClientesPage() {
         ) : (
           filtrados.map((c) => {
             const dias = daysSince(c.ultimaVisita);
-            const alerta = dias !== null && dias >= 30;
+            const alerta = dias !== null && dias >= diasRecordatorio;
+            const mensajeWa = alerta ? mensajeRecordatorioInactivo(c.nombre) : `Hola ${c.nombre}, ¿cómo estás?`;
             return (
               <button
                 key={c.id}
@@ -59,8 +64,11 @@ export default function ClientesPage() {
                   {c.nombre.slice(0, 1).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{c.nombre}</p>
-                  <p className={`text-xs ${alerta ? "font-medium text-primary" : "text-muted-foreground"}`}>
+                  <div className="flex items-center gap-2">
+                    <p className="truncate text-sm font-medium">{c.nombre}</p>
+                    {alerta && <Badge className="shrink-0">Hace {dias}d</Badge>}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
                     {dias === null ? "Nunca ha venido" : `Hace ${dias} días · ${c.visitas} visitas`}
                   </p>
                 </div>
@@ -69,7 +77,7 @@ export default function ClientesPage() {
                     role="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      window.open(waLink(c.telefono, `Hola ${c.nombre}, ¿cómo estás?`), "_blank");
+                      window.open(waLink(c.telefono, mensajeWa), "_blank");
                     }}
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ledger hover:bg-secondary"
                   >
@@ -87,6 +95,7 @@ export default function ClientesPage() {
           <ClienteDetalle
             cliente={seleccionado}
             citas={data.citas.filter((c) => c.clienteId === seleccionado.id)}
+            diasRecordatorio={diasRecordatorio}
             onClose={() => setSeleccionado(null)}
             update={update}
           />
@@ -99,14 +108,19 @@ export default function ClientesPage() {
 function ClienteDetalle({
   cliente,
   citas,
+  diasRecordatorio,
   onClose,
   update,
 }: {
   cliente: BarberClient;
   citas: { id: string; fecha: string; hora: string; servicioNombre: string; precio: number }[];
+  diasRecordatorio: number;
   onClose: () => void;
   update: ReturnType<typeof useSession>["update"];
 }) {
+  const dias = daysSince(cliente.ultimaVisita);
+  const alerta = dias !== null && dias >= diasRecordatorio;
+  const mensajeWa = alerta ? mensajeRecordatorioInactivo(cliente.nombre) : `Hola ${cliente.nombre}, ¿cómo estás?`;
   const [nombre, setNombre] = React.useState(cliente.nombre);
   const [telefono, setTelefono] = React.useState(cliente.telefono);
   const [notas, setNotas] = React.useState(cliente.notas ?? "");
@@ -154,7 +168,7 @@ function ClienteDetalle({
 
         {cliente.telefono && (
           <Button asChild size="lg" variant="ledger">
-            <a href={waLink(cliente.telefono, `Hola ${cliente.nombre}, ¿cómo estás?`)} target="_blank" rel="noreferrer">
+            <a href={waLink(cliente.telefono, mensajeWa)} target="_blank" rel="noreferrer">
               <MessageCircle className="h-4 w-4" /> Enviar WhatsApp
             </a>
           </Button>

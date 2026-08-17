@@ -186,6 +186,16 @@ export function mensajeRecordatorioCita(
   return `Hola ${c.clienteNombre}! Te esperamos en tu cita de ${c.servicioNombre} ${cuando} a las ${c.hora} en ${negocioNombre}. ¡Nos vemos pronto! ✨`;
 }
 
+/**
+ * Mensaje para el badge de "cliente con tiempo sin venir" en Clientes (ver
+ * Configuración > General > Días para recordatorio) — a diferencia de
+ * mensajeRecordatorioCita (que es para una cita ya agendada), este es para
+ * invitar a alguien que no tiene ninguna cita próxima a que agende una.
+ */
+export function mensajeRecordatorioInactivo(nombreCliente: string): string {
+  return `Ey ${nombreCliente}!, ya tienes tiempo sin venir, ¿quieres agendar de nuevo? 💈`;
+}
+
 export const NUMERO_CONTACTO = "3329098631";
 export const WA_CONTACTO = waLink(NUMERO_CONTACTO, "Hola, quiero información de Fuera Libreta");
 
@@ -290,9 +300,9 @@ function emptyBarberiaData(): BarberiaData {
     citas: [],
     caja: [],
     productos: [
-      { id: uid("prod"), nombre: "Gel", stock: 8, minimo: 3 },
-      { id: uid("prod"), nombre: "Cera", stock: 5, minimo: 3 },
-      { id: uid("prod"), nombre: "Shampoo", stock: 4, minimo: 4 },
+      { id: uid("prod"), nombre: "Gel", stock: 8, minimo: 3, eliminarEnCero: false },
+      { id: uid("prod"), nombre: "Cera", stock: 5, minimo: 3, eliminarEnCero: false },
+      { id: uid("prod"), nombre: "Shampoo", stock: 4, minimo: 4, eliminarEnCero: false },
     ],
   };
 }
