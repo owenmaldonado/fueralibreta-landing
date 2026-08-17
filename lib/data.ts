@@ -358,6 +358,8 @@ const itemToRow = (it: OrderItem, pedidoId: string): Row => ({
   cantidad: it.cantidad,
   nota: it.nota ?? null,
   variante_nombre: it.varianteNombre ?? null,
+  precio_unitario: it.precioUnitario ?? null,
+  costo_unitario: it.costoUnitario ?? null,
 });
 
 const gastoFromRow = (r: Row): Expense => ({
@@ -424,6 +426,8 @@ async function fetchFondaData(negocioId: string): Promise<FondaData> {
         cantidad: it.cantidad as number,
         nota: (it.nota as string) ?? undefined,
         varianteNombre: (it.variante_nombre as string) ?? undefined,
+        precioUnitario: it.precio_unitario != null ? Number(it.precio_unitario) : undefined,
+        costoUnitario: it.costo_unitario != null ? Number(it.costo_unitario) : undefined,
       })),
   }));
 

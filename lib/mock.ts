@@ -366,20 +366,38 @@ export function tenantFromDemo(demo: TenantData, overrides: { nombre: string; te
   // Los `?? []` son por si fl_demo_preview viene de una versión vieja del
   // esquema con algún arreglo faltante — nunca debe tronar la creación del
   // negocio real, en el peor caso ese catálogo queda vacío.
+  //
+  // IDs frescos para cada entidad copiada (id: uid(...) en vez de reusar el
+  // de la demo): el catálogo de la demo es solo una plantilla, no la fuente
+  // real — reusar sus ids tal cual hacía que dos llamadas a esta función con
+  // el MISMO fl_demo_preview (doble submit de "Crear mi negocio", un retry
+  // tras un error de red, etc.) insertaran el mismo id de servicio/platillo/
+  // producto para DOS negocios distintos, chocando con la primary key global
+  // de esas tablas (barberia_servicios_pkey y análogas) sin importar que
+  // negocio_id fuera diferente. Con ids nuevos en cada llamada, hasta un
+  // doble submit genuino queda inofensivo (a lo más crea dos negocios, nunca
+  // truena por PK).
   if (demo.barberia) {
     data.barberia = {
       ...emptyBarberiaData(),
-      servicios: demo.barberia.servicios ?? [],
-      productos: demo.barberia.productos ?? [],
+      servicios: (demo.barberia.servicios ?? []).map((s) => ({ ...s, id: uid("srv") })),
+      productos: (demo.barberia.productos ?? []).map((p) => ({ ...p, id: uid("prod") })),
     };
   }
   if (demo.fonda) {
-    data.fonda = { ...emptyFondaData(), platillos: demo.fonda.platillos ?? [] };
+    data.fonda = {
+      ...emptyFondaData(),
+      platillos: (demo.fonda.platillos ?? []).map((p) => ({
+        ...p,
+        id: uid("dish"),
+        variantes: p.variantes?.map((v) => ({ ...v, id: uid("var") })),
+      })),
+    };
   }
   if (demo.abarrotes) {
     data.abarrotes = {
       ...emptyAbarrotesData(),
-      productos: (demo.abarrotes.productos ?? []).map((p) => ({ ...p, lotes: [] })),
+      productos: (demo.abarrotes.productos ?? []).map((p) => ({ ...p, id: uid("gp"), lotes: [] })),
     };
   }
   return data;

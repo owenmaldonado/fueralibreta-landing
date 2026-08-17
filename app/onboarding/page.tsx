@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, ArrowRight, Loader2, Scissors, ShoppingBasket, UtensilsCrossed, PartyPopper } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, Loader2, Scissors, ShoppingBasket, UtensilsCrossed, PartyPopper, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,6 +91,14 @@ export default function OnboardingPage() {
   const [tipo, setTipo] = React.useState<BusinessType | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  // Guardia sincrónica contra doble submit (doble tap, Enter + click casi
+  // juntos): `creating` es estado de React y puede tardar un render en
+  // reflejarse en el botón, suficiente para que un segundo click dispare
+  // otra creación con el mismo fl_demo_preview antes de que el primero
+  // termine. Con ids frescos (ver tenantFromDemo en lib/mock.ts) eso ya no
+  // truena, pero igual crearía dos negocios de más — este ref corta el
+  // segundo intento antes de que llegue a Supabase.
+  const creandoRef = React.useRef(false);
 
   const runCheck = React.useCallback(async () => {
     setChecking(true);
@@ -163,7 +171,8 @@ export default function OnboardingPage() {
   // cual — "en blanco" es de actividad (sin citas/pedidos/ventas de ejemplo),
   // no de catálogo.
   async function crearDesdeDemo() {
-    if (!demoTenant || !userId || nombre.trim().length < 2) return;
+    if (!demoTenant || !userId || nombre.trim().length < 2 || creandoRef.current) return;
+    creandoRef.current = true;
     setCreating(true);
     setError(null);
     try {
@@ -176,6 +185,7 @@ export default function OnboardingPage() {
       logCreateError("No se pudo crear el negocio desde la demo:", err);
       setError(mensajeErrorReal(err));
       setCreating(false);
+      creandoRef.current = false;
     }
   }
 
@@ -183,7 +193,8 @@ export default function OnboardingPage() {
   // hace falta preguntar el tipo de negocio, porque no hay otra fuente. El
   // dueño ya se sacó del perfil de Google — no se vuelve a preguntar.
   async function createBusinessAndGo() {
-    if (!tipo || !userId || nombre.trim().length < 2) return;
+    if (!tipo || !userId || nombre.trim().length < 2 || creandoRef.current) return;
+    creandoRef.current = true;
     setCreating(true);
     setError(null);
     try {
@@ -196,6 +207,7 @@ export default function OnboardingPage() {
       logCreateError("No se pudo crear el negocio:", err);
       setError(mensajeErrorReal(err));
       setCreating(false);
+      creandoRef.current = false;
     }
   }
 
@@ -234,10 +246,19 @@ export default function OnboardingPage() {
         </div>
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight">¡Listo, {demoTenant.business.dueno}!</h1>
-          <p className="mt-2 max-w-xs text-sm text-muted-foreground">
-            7 días gratis, con el mismo catálogo que armaste en la demo ya cargado — pero privado y tuyo, sin las
-            citas/ventas de ejemplo.
-          </p>
+          <p className="mt-2 max-w-xs text-sm text-muted-foreground">7 días gratis. Así arranca tu negocio nuevo:</p>
+          <ul className="mt-3 w-full max-w-xs space-y-1.5 text-left text-sm">
+            <li className="flex items-start gap-2">
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-ledger" />
+              <span>
+                Tus productos/servicios y precios de la demo, copiados — <span className="font-medium text-foreground">privados y tuyos</span>
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <X className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              <span>Las citas/ventas de ejemplo NO se copian — arrancas en blanco</span>
+            </li>
+          </ul>
         </div>
 
         {creating ? (

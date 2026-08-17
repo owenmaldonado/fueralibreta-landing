@@ -103,7 +103,15 @@ function NuevoPedidoForm({
     const notaTexto = [...notas, comentario.trim()].filter(Boolean).join(", ");
     setItems((prev) => [
       ...prev,
-      { id: uid("it"), platilloId: dish.id, platilloNombre: dish.nombre, cantidad: qty, nota: notaTexto || undefined },
+      {
+        id: uid("it"),
+        platilloId: dish.id,
+        platilloNombre: dish.nombre,
+        cantidad: qty,
+        nota: notaTexto || undefined,
+        precioUnitario: dish.precio,
+        costoUnitario: dish.costo,
+      },
     ]);
     setConfigurando(null);
   }

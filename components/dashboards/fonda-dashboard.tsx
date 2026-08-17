@@ -165,6 +165,8 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
             platilloNombre: platillo.nombre,
             cantidad: 1,
             varianteNombre: variante?.valor,
+            precioUnitario: precio,
+            costoUnitario: platillo.costo,
           },
         ],
         estado: "entregado",
