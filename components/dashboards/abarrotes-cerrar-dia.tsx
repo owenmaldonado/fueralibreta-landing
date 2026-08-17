@@ -90,8 +90,15 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
 
   const productosRelevantes = data.productos.filter((p) => !p.isVolatile && (p.stock < 3 || vendidosPorProducto.has(p.id)));
 
+  // Lo que DEBERÍA haber en la caja: lo vendido, más lo que ya había de
+  // fondo, menos lo que se gastó — no solo "efectivo vs ventas" (eso
+  // ignoraba fondo inicial y gastos, mostrando faltantes reales como si
+  // "sobrara" dinero).
+  const fondoInicialNum = fondoInicial.trim() === "" ? 0 : Number(fondoInicial) || 0;
+  const gastoNum = gastoMonto.trim() === "" ? 0 : Number(gastoMonto) || 0;
+  const esperado = ventasHoyTotal + fondoInicialNum - gastoNum;
   const efectivoValido = efectivoReal.trim() !== "" && !isNaN(Number(efectivoReal)) && Number(efectivoReal) >= 0;
-  const diferencia = efectivoValido ? Number(efectivoReal) - ventasHoyTotal : null;
+  const diferencia = efectivoValido ? Number(efectivoReal) - esperado : null;
 
   function resetYCerrar() {
     setPaso(1);
@@ -114,7 +121,7 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
         ventas_calculadas: ventasHoyTotal,
         efectivo_real: efectivoNum,
         gastos: gastoMonto.trim() === "" ? null : Number(gastoMonto),
-        diferencia: efectivoNum - ventasHoyTotal,
+        diferencia: efectivoNum - esperado,
         empleado_id: camposEmpleado().empleadoId ?? null,
         empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
       });
@@ -211,7 +218,15 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
             <div className="space-y-1.5">
               <Label>¿Efectivo real en mano?</Label>
               <Input type="number" inputMode="decimal" autoFocus value={efectivoReal} onChange={(e) => setEfectivoReal(e.target.value)} placeholder="$0" />
-              {diferencia != null && <p className="px-1 text-xs text-muted-foreground">{mensajeDiferencia(diferencia)}</p>}
+              {diferencia != null && (
+                <p
+                  className={`px-1 text-xs font-medium ${
+                    diferencia === 0 ? "text-ledger" : diferencia < 0 ? "text-destructive" : "text-muted-foreground"
+                  }`}
+                >
+                  {mensajeDiferencia(diferencia)}
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>¿Gastaste hoy?</Label>

@@ -46,7 +46,7 @@ export function formatMoney(n: number): string {
 export function mensajeDiferencia(dif: number): string {
   if (dif < 0) return `🔴 Te faltan ${formatMoney(-dif)}`;
   if (dif > 0) return `🔵 Te sobran ${formatMoney(dif)}`;
-  return "🟢 Ya cuadró ✅";
+  return "🟢 ¡Cuadra perfecto! ✅";
 }
 
 /** "2024-01-01T12:00:00Z" -> "Hace 2h". Para mostrar última actividad en el panel de admin. */
