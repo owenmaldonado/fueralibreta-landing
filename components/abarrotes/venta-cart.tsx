@@ -253,33 +253,25 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
     <div className="fixed inset-0 z-[100] flex flex-col bg-background">
       {paso === "grid" ? (
         <>
-          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Cerrar"
-              className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            >
-              <X className="h-5 w-5" />
-            </button>
-            <h1 className="font-display text-lg font-bold">Nueva venta</h1>
-            <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setScanning(true)}
-                aria-label="Escanear"
-                className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                onClick={onClose}
+                aria-label="Cerrar"
+                className="shrink-0 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
               >
-                <ScanLine className="h-5 w-5" />
+                <X className="h-5 w-5" />
               </button>
-              <button
-                type="button"
-                onClick={() => setRapidaOpen(true)}
-                aria-label="Venta rápida"
-                className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              >
-                <Zap className="h-5 w-5" />
-              </button>
+              <h1 className="font-display text-lg font-bold">Nueva venta</h1>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button onClick={() => setScanning(true)} className="gap-1.5">
+                <ScanLine className="h-5 w-5" /> Escanear
+              </Button>
+              <Button variant="secondary" onClick={() => setRapidaOpen(true)} className="gap-1.5">
+                <Zap className="h-5 w-5" /> Venta rápida
+              </Button>
             </div>
           </div>
 

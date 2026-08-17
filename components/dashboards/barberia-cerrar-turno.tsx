@@ -94,8 +94,16 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
     return Array.from(mapa, ([nombre, monto]) => ({ nombre, monto }));
   }, [citasHoyListo]);
 
+  // Lo que DEBERÍA haber en la caja: lo vendido, más lo que ya había de
+  // fondo, menos lo que se gastó — no solo "efectivo vs ventas" (eso
+  // ignoraba fondo inicial y gastos, mostrando faltantes reales como si
+  // "sobrara" dinero). Los gastos de material del paso 2 no cuentan aquí:
+  // todavía no existen cuando se muestra esta diferencia, en el paso 1.
+  const fondoInicialNum = fondoInicial.trim() === "" ? 0 : Number(fondoInicial) || 0;
+  const gastoPaso1Num = gastoMonto.trim() === "" ? 0 : Number(gastoMonto) || 0;
+  const esperado = ventasHoyTotal + fondoInicialNum - gastoPaso1Num;
   const efectivoValido = efectivoReal.trim() !== "" && !isNaN(Number(efectivoReal)) && Number(efectivoReal) >= 0;
-  const diferencia = efectivoValido ? Number(efectivoReal) - ventasHoyTotal : null;
+  const diferencia = efectivoValido ? Number(efectivoReal) - esperado : null;
 
   function resetYCerrar() {
     setPaso(1);
@@ -195,7 +203,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
         ventas_calculadas: ventasHoyTotal,
         efectivo_real: efectivoNum,
         gastos: gastoPaso1 || null,
-        diferencia: efectivoNum - ventasHoyTotal,
+        diferencia: efectivoNum - esperado,
         propinas_total: propinasNum,
         gastos_material: gastosMaterialTotal,
         empleado_id: camposEmpleado().empleadoId ?? null,
@@ -252,7 +260,15 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
                 onChange={(e) => setEfectivoReal(e.target.value)}
                 placeholder="$0"
               />
-              {diferencia != null && <p className="px-1 text-xs text-muted-foreground">{mensajeDiferencia(diferencia)}</p>}
+              {diferencia != null && (
+                <p
+                  className={`px-1 text-xs font-medium ${
+                    diferencia === 0 ? "text-ledger" : diferencia < 0 ? "text-destructive" : "text-muted-foreground"
+                  }`}
+                >
+                  {mensajeDiferencia(diferencia)}
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>¿Gastaste hoy?</Label>
