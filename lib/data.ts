@@ -360,6 +360,8 @@ const itemToRow = (it: OrderItem, pedidoId: string): Row => ({
   variante_nombre: it.varianteNombre ?? null,
   precio_unitario: it.precioUnitario ?? null,
   costo_unitario: it.costoUnitario ?? null,
+  extra_concepto: it.extraConcepto ?? null,
+  extra_monto: it.extraMonto ?? null,
 });
 
 const gastoFromRow = (r: Row): Expense => ({
@@ -428,6 +430,8 @@ async function fetchFondaData(negocioId: string): Promise<FondaData> {
         varianteNombre: (it.variante_nombre as string) ?? undefined,
         precioUnitario: it.precio_unitario != null ? Number(it.precio_unitario) : undefined,
         costoUnitario: it.costo_unitario != null ? Number(it.costo_unitario) : undefined,
+        extraConcepto: (it.extra_concepto as string) ?? undefined,
+        extraMonto: it.extra_monto != null ? Number(it.extra_monto) : undefined,
       })),
   }));
 
@@ -487,6 +491,9 @@ export async function fetchPedidosPendientes(negocioId: string): Promise<FondaOr
         platilloNombre: it.platillo_nombre as string,
         cantidad: it.cantidad as number,
         nota: (it.nota as string) ?? undefined,
+        varianteNombre: (it.variante_nombre as string) ?? undefined,
+        extraConcepto: (it.extra_concepto as string) ?? undefined,
+        extraMonto: it.extra_monto != null ? Number(it.extra_monto) : undefined,
       })),
   }));
 }

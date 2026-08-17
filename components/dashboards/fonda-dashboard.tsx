@@ -238,6 +238,11 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
                         {it.cantidad}× {it.platilloNombre}
                         {it.varianteNombre && ` c/ ${it.varianteNombre}`}
                         {it.nota && <span className="ml-1 font-medium text-destructive">· {it.nota}</span>}
+                        {it.extraMonto != null && (
+                          <span className="ml-1 font-medium text-primary">
+                            · +{formatMoney(it.extraMonto)} {it.extraConcepto}
+                          </span>
+                        )}
                       </li>
                     ))}
                   </ul>

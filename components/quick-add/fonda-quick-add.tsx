@@ -74,11 +74,26 @@ function NuevoPedidoForm({
   const [qty, setQty] = React.useState(1);
   const [notas, setNotas] = React.useState<Set<string>>(new Set());
   const [comentario, setComentario] = React.useState("");
+  const [varianteId, setVarianteId] = React.useState<string | null>(null);
+  const [extraConcepto, setExtraConcepto] = React.useState("");
+  const [extraMontoInput, setExtraMontoInput] = React.useState("");
 
   const disponibles = data.platillos.filter((p) => p.activoHoy);
+  const dishConfigurando = configurando ? data.platillos.find((p) => p.id === configurando) : undefined;
+  const variantesDisponibles = (dishConfigurando?.variantes ?? []).filter((v) => v.disponible);
+  // Un platillo con variantes (ej. proteína carne/pollo/bistec) no vende sin
+  // elegir una — mismo requisito que la Venta rápida de Hoy (ver
+  // onTapPlatillo en fonda-dashboard.tsx), para no guardar un pedido
+  // ambiguo de qué se sirvió.
+  const puedeAgregarItem = configurando != null && (variantesDisponibles.length === 0 || varianteId != null);
+  // precio_unitario ya trae la variante horneada desde que se agregó el
+  // item (ver agregarItem) — el fallback a dish.precio solo cubre items de
+  // antes de ese snapshot. extraMonto se suma UNA VEZ por línea, no se
+  // multiplica por cantidad (es un cargo plano, ej. envase para llevar).
   const total = items.reduce((acc, it) => {
     const dish = data.platillos.find((p) => p.id === it.platilloId);
-    return acc + (dish?.precio ?? 0) * it.cantidad;
+    const precio = it.precioUnitario ?? dish?.precio ?? 0;
+    return acc + precio * it.cantidad + (it.extraMonto ?? 0);
   }, 0);
 
   function abrirConfig(platilloId: string) {
@@ -86,6 +101,9 @@ function NuevoPedidoForm({
     setQty(1);
     setNotas(new Set());
     setComentario("");
+    setVarianteId(null);
+    setExtraConcepto("");
+    setExtraMontoInput("");
   }
 
   function toggleNota(n: string) {
@@ -97,10 +115,12 @@ function NuevoPedidoForm({
   }
 
   function agregarItem() {
-    if (!configurando) return;
+    if (!configurando || !puedeAgregarItem) return;
     const dish = data.platillos.find((p) => p.id === configurando);
     if (!dish) return;
+    const varianteElegida = variantesDisponibles.find((v) => v.id === varianteId);
     const notaTexto = [...notas, comentario.trim()].filter(Boolean).join(", ");
+    const extraMonto = Number(extraMontoInput) || 0;
     setItems((prev) => [
       ...prev,
       {
@@ -109,8 +129,11 @@ function NuevoPedidoForm({
         platilloNombre: dish.nombre,
         cantidad: qty,
         nota: notaTexto || undefined,
-        precioUnitario: dish.precio,
+        varianteNombre: varianteElegida?.valor,
+        precioUnitario: dish.precio + (varianteElegida?.precioExtra ?? 0),
         costoUnitario: dish.costo,
+        extraConcepto: extraMonto > 0 ? extraConcepto.trim() || "Extra" : undefined,
+        extraMonto: extraMonto > 0 ? extraMonto : undefined,
       },
     ]);
     setConfigurando(null);
@@ -210,12 +233,27 @@ function NuevoPedidoForm({
           </ChipGroup>
         </div>
 
-        {configurando && (
+        {configurando && dishConfigurando && (
           <div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">{data.platillos.find((p) => p.id === configurando)?.nombre}</p>
+              <p className="text-sm font-medium">{dishConfigurando.nombre}</p>
               <Stepper value={qty} onChange={setQty} min={1} />
             </div>
+
+            {variantesDisponibles.length > 0 && (
+              <div className="mt-3 space-y-1.5">
+                <Label>¿Con qué?</Label>
+                <ChipGroup>
+                  {variantesDisponibles.map((v) => (
+                    <Chip key={v.id} selected={varianteId === v.id} onClick={() => setVarianteId(v.id)}>
+                      {v.valor}
+                      {v.precioExtra > 0 ? ` +$${v.precioExtra}` : ""}
+                    </Chip>
+                  ))}
+                </ChipGroup>
+              </div>
+            )}
+
             <div className="mt-3 space-y-1.5">
               <Label>Nota rápida</Label>
               <ChipGroup>
@@ -232,7 +270,28 @@ function NuevoPedidoForm({
               placeholder="Comentario opcional"
               className="mt-3"
             />
-            <Button className="mt-3 w-full" size="sm" onClick={agregarItem}>
+
+            <div className="mt-3 space-y-1.5">
+              <Label>Extras +$</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={extraConcepto}
+                  onChange={(e) => setExtraConcepto(e.target.value)}
+                  placeholder="Concepto (opcional)"
+                  className="flex-1"
+                />
+                <Input
+                  value={extraMontoInput}
+                  onChange={(e) => setExtraMontoInput(e.target.value)}
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="+$0"
+                  className="w-20 shrink-0"
+                />
+              </div>
+            </div>
+
+            <Button className="mt-3 w-full" size="sm" disabled={!puedeAgregarItem} onClick={agregarItem}>
               Agregar al pedido
             </Button>
           </div>
@@ -247,8 +306,14 @@ function NuevoPedidoForm({
                   <div>
                     <p>
                       {it.cantidad}× {it.platilloNombre}
+                      {it.varianteNombre && ` c/ ${it.varianteNombre}`}
                     </p>
                     {it.nota && <p className="text-xs font-medium text-destructive">{it.nota}</p>}
+                    {it.extraMonto != null && (
+                      <p className="text-xs font-medium text-primary">
+                        +{formatMoney(it.extraMonto)} · {it.extraConcepto}
+                      </p>
+                    )}
                   </div>
                   <button onClick={() => quitarItem(it.id)} className="text-muted-foreground hover:text-destructive">
                     <X className="h-4 w-4" />
