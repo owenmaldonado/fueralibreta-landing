@@ -4,13 +4,9 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, LogOut, X, ShieldCheck, Users } from "lucide-react";
-import { toast } from "sonner";
 
-import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { clearDemoPreview } from "@/lib/demoPreview";
 import { clearEmpleadoActual } from "@/lib/empleados";
-import { limpiarCacheLocal } from "@/lib/local-cache";
-import { contarVentasPendientes } from "@/lib/offline-sales-queue";
+import { cerrarSesion } from "@/lib/logout";
 import { universalSearch } from "@/lib/search";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { PinDuenoForm } from "@/components/kiosko/pin-dueno";
@@ -46,23 +42,7 @@ export function TopBar({
   }
 
   async function logout() {
-    // Ventas sin subir: no se puede cerrar sesión todavía — se perderían
-    // (viven solo en este dispositivo hasta que la Parte 4 las suba).
-    const pendientes = await contarVentasPendientes(data.business.id);
-    if (pendientes > 0) {
-      toast.error(
-        `Tienes ${pendientes} ${pendientes === 1 ? "venta" : "ventas"} por sincronizar, conéctate a internet antes de salir`
-      );
-      return;
-    }
-    // Primero, y sin depender de la red: si otra persona usa este celular
-    // después, no debe poder ver el catálogo del negocio anterior.
-    await limpiarCacheLocal();
-    clearDemoPreview();
-    if (isSupabaseConfigured) {
-      await supabase.auth.signOut();
-    }
-    router.push("/login");
+    await cerrarSesion(data.business.id, (href) => router.push(href));
   }
 
   // Icono de Empleados del header: siempre visible. Si ya está atendiendo

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2 } from "lucide-react";
 
@@ -59,9 +60,9 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-10 bg-background px-6 text-center">
       <div>
-        <span className="font-display text-3xl font-bold tracking-tight">
+        <Link href="/" className="font-display text-3xl font-bold tracking-tight">
           FUERA<span className="text-primary">LIBRETA</span>
-        </span>
+        </Link>
         <p className="mt-2 text-sm text-muted-foreground">Entra para administrar tu negocio</p>
       </div>
 
