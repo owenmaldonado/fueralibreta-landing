@@ -40,14 +40,20 @@ export async function middleware(req: NextRequest) {
       try {
         const empleado = JSON.parse(cookieEmpleado);
         if (empleado?.rol && empleado.rol !== "dueno") {
-          // ?bloqueado=dueno: antes este redirect era mudo — un empleado (o
-          // una cookie fl_empleado vieja/colgada en un dispositivo que el
-          // dueño cree que ya usa en modo Dueño) que picaba Configuración
-          // simplemente "rebotaba a Hoy" sin explicación, indistinguible de
-          // un bug. AuthenticatedShell lee este query param y muestra un
-          // toast explicando por qué, en vez de un bounce silencioso.
+          // ?bloqueado=dueno&destino=<ruta pedida>: antes este redirect era
+          // mudo — un empleado (o una cookie fl_empleado vieja/colgada en
+          // OTRA pestaña de este mismo navegador, que el dueño de esta
+          // pestaña ni sabe que existe — las cookies son por navegador, no
+          // por pestaña, así que la sesión "Dueño" que se ve aquí puede no
+          // coincidir con lo que el middleware lee) que picaba
+          // Configuración simplemente "rebotaba a Hoy" sin explicación,
+          // indistinguible de un bug. AuthenticatedShell lee estos query
+          // params y muestra un toast con botón "Cambiar a modo Dueño" que
+          // limpia la cookie y regresa derecho a `destino`, en vez de un
+          // bounce mudo que dejaba al dueño real varado en Hoy.
           const destino = new URL("/app/inicio", url.origin);
           destino.searchParams.set("bloqueado", "dueno");
+          destino.searchParams.set("destino", url.pathname);
           return NextResponse.redirect(destino);
         }
       } catch {
