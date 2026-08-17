@@ -14,7 +14,7 @@ import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { CobrarCitaDialog } from "@/components/dashboards/cobrar-cita-dialog";
 import { useSession } from "@/lib/session";
-import { formatMoney, mensajeRecordatorioCita, todayISO, waLink } from "@/lib/mock";
+import { formatHora12, formatMoney, mensajeRecordatorioCita, todayISO, waLink } from "@/lib/mock";
 import { getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente, usePendingSalesQueue, type VentaPendienteRow } from "@/lib/offline-sales-queue";
 import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
@@ -165,7 +165,11 @@ export default function AgendaPage() {
       <CobrarCitaDialog cita={cobrando} onClose={() => setCobrando(null)} onConfirmar={marcarListoConMetodo} />
 
       <Dialog open={!!cancelando} onOpenChange={(o) => !o && setCancelando(null)}>
-        <DialogHeader title="Cancelar cita" description={`${cancelando?.clienteNombre} · ${cancelando?.hora}`} onClose={() => setCancelando(null)} />
+        <DialogHeader
+          title="Cancelar cita"
+          description={`${cancelando?.clienteNombre} · ${cancelando ? formatHora12(cancelando.hora) : ""}`}
+          onClose={() => setCancelando(null)}
+        />
         <Input autoFocus value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo (opcional)" />
         <DialogFooter>
           <Button variant="outline" onClick={() => setCancelando(null)}>
@@ -308,7 +312,7 @@ function CitaRow({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-      <div className="w-14 shrink-0 font-mono text-sm text-primary">{c.hora}</div>
+      <div className="w-16 shrink-0 font-mono text-sm text-primary">{formatHora12(c.hora)}</div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{c.clienteNombre}</p>
         <p className="text-xs text-muted-foreground">
@@ -330,7 +334,7 @@ function CitaRow({
                 {
                   label: "WhatsApp",
                   onClick: () =>
-                    window.open(waLink(c.clienteTelefono, `Hola ${c.clienteNombre}, te confirmamos tu cita a las ${c.hora}`), "_blank"),
+                    window.open(waLink(c.clienteTelefono, `Hola ${c.clienteNombre}, te confirmamos tu cita a las ${formatHora12(c.hora)}`), "_blank"),
                 },
                 {
                   label: "Enviar recordatorio",

@@ -183,7 +183,7 @@ export function mensajeRecordatorioCita(
     c.fecha === todayISO(0)
       ? "hoy"
       : `el ${new Date(`${c.fecha}T00:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}`;
-  return `Hola ${c.clienteNombre}! Te esperamos en tu cita de ${c.servicioNombre} ${cuando} a las ${c.hora} en ${negocioNombre}. ¡Nos vemos pronto! ✨`;
+  return `Hola ${c.clienteNombre}! Te esperamos en tu cita de ${c.servicioNombre} ${cuando} a las ${formatHora12(c.hora)} en ${negocioNombre}. ¡Nos vemos pronto! ✨`;
 }
 
 /**

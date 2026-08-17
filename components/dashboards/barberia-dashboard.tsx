@@ -8,7 +8,7 @@ import { ActionCard } from "./action-card";
 import { EmptyState } from "./empty-state";
 import { CobrarCitaDialog } from "./cobrar-cita-dialog";
 import { CerrarTurnoSheet } from "./barberia-cerrar-turno";
-import { daysSince, formatMoney, statsVisitasCliente, todayISO, waLink } from "@/lib/mock";
+import { daysSince, formatHora12, formatMoney, statsVisitasCliente, todayISO, waLink } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import { avisosIgnoradosHoy, ignorarAvisoHoy } from "@/lib/dismissed-alerts";
@@ -89,7 +89,7 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
           <ActionCard
             level="red"
             title={`Tienes ${citasHoy.length} cita${citasHoy.length > 1 ? "s" : ""} hoy`}
-            subtitle={citasHoy.map((c) => `${c.hora} ${c.clienteNombre}`).join(" · ")}
+            subtitle={citasHoy.map((c) => `${formatHora12(c.hora)} ${c.clienteNombre}`).join(" · ")}
             actions={[{ label: "Ir", href: "/app/agenda" }]}
           />
         )}
@@ -142,7 +142,7 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
                 <div key={c.id} className="flex items-center justify-between rounded-xl border border-border bg-card p-3">
                   <div>
                     <p className="text-sm font-medium">
-                      {c.hora} · {c.clienteNombre}
+                      {formatHora12(c.hora)} · {c.clienteNombre}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {c.servicioNombre} · {formatMoney(c.precio)}

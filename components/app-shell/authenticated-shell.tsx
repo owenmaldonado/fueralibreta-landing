@@ -123,6 +123,25 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   // inestable (ver mismo criterio en el guardia de update(), lib/session.ts).
   const rutaBloqueadaSinConexion = !online && !session?.business.demo && esRutaBloqueadaSinConexion(pathname ?? "");
 
+  // ?bloqueado=dueno en /app/inicio: el middleware acaba de rebotar aquí
+  // porque la ruta pedida (Configuración/Empleados) es solo para el dueño y
+  // esta cookie está en modo empleado — ver RUTAS_SOLO_DUENO en
+  // middleware.ts. Sin este aviso, ese bounce se sentía como que el botón
+  // "no hacía nada"/regresaba a la pantalla principal sin explicación. Se
+  // lee la URL a mano (no useSearchParams()) por el mismo motivo que
+  // app/app/configuracion/page.tsx: no forzar un Suspense boundary aquí.
+  // router.replace() limpia el query param para que un refresh no repita el
+  // toast.
+  React.useEffect(() => {
+    if (pathname !== "/app/inicio") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("bloqueado") !== "dueno") return;
+    toast.error("Esa sección es solo para el dueño — cambia a modo Dueño para entrar");
+    params.delete("bloqueado");
+    const resto = params.toString();
+    router.replace(resto ? `/app/inicio?${resto}` : "/app/inicio");
+  }, [pathname, router]);
+
   // Le pregunta al servidor si la cookie admin_impersonating (httpOnly) está
   // activa — el cliente no puede leerla directo. Solo importa mientras hay
   // sesión de negocio cargada, así que va después del gate de ready/session.

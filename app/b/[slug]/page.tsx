@@ -15,7 +15,7 @@ import { getAvailableSlots } from "@/lib/agenda";
 import { fetchNegocioBySlug, fetchPublicBookingData, submitPublicCita, type PublicBookingData } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { readDemoPreview, writeDemoPreview } from "@/lib/demoPreview";
-import { formatMoney, toISODate, todayISO, waLink, whatsappDe } from "@/lib/mock";
+import { formatHora12, formatMoney, toISODate, todayISO, waLink, whatsappDe } from "@/lib/mock";
 import { nombreSchema, telefonoSchema } from "@/lib/validation";
 import type { Business, Appointment } from "@/lib/types";
 
@@ -218,7 +218,7 @@ export default function ReservaPublicaPage() {
         <div>
           <h1 className="font-display text-xl font-bold">¡Cita agendada!</h1>
           <p className="mt-2 max-w-xs text-sm text-muted-foreground">
-            {confirmada.servicio} el {confirmada.fecha} a las {confirmada.hora} en {business.nombre}.
+            {confirmada.servicio} el {confirmada.fecha} a las {formatHora12(confirmada.hora)} en {business.nombre}.
           </p>
         </div>
         {numeroWhatsapp ? (
@@ -226,7 +226,7 @@ export default function ReservaPublicaPage() {
             <Link
               href={waLink(
                 numeroWhatsapp,
-                `Hola, acabo de agendar una cita de ${confirmada.servicio} en ${business.nombre} para el ${confirmada.fecha} a las ${confirmada.hora}. ¡Confirmo!`
+                `Hola, acabo de agendar una cita de ${confirmada.servicio} en ${business.nombre} para el ${confirmada.fecha} a las ${formatHora12(confirmada.hora)}. ¡Confirmo!`
               )}
             >
               <MessageCircle className="h-4 w-4" /> Confirmar por WhatsApp
@@ -330,7 +330,7 @@ export default function ReservaPublicaPage() {
             <ChipGroup>
               {slots.map((s) => (
                 <Chip key={s} selected={hora === s} onClick={() => setHora(s)}>
-                  {s}
+                  {formatHora12(s)}
                 </Chip>
               ))}
             </ChipGroup>

@@ -10,7 +10,7 @@ import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Stepper } from "@/components/ui/stepper";
 import { Button } from "@/components/ui/button";
 import type { FabAction } from "@/components/app-shell/fab";
-import { uid, formatMoney, todayISO } from "@/lib/mock";
+import { uid, formatHora12, formatMoney, todayISO } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import type { TenantData, OrderItem, Expense, FondaOrder } from "@/lib/types";
@@ -187,7 +187,7 @@ function NuevoPedidoForm({
 
   return (
     <>
-      <SheetHeader title="Nuevo pedido" description={`Hora: ${hora}`} onClose={onClose} />
+      <SheetHeader title="Nuevo pedido" description={`Hora: ${formatHora12(hora)}`} onClose={onClose} />
       <div className="flex flex-col gap-4">
         <div className="space-y-1.5">
           <Label>Cliente</Label>

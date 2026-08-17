@@ -40,7 +40,15 @@ export async function middleware(req: NextRequest) {
       try {
         const empleado = JSON.parse(cookieEmpleado);
         if (empleado?.rol && empleado.rol !== "dueno") {
-          return NextResponse.redirect(new URL("/app/inicio", url.origin));
+          // ?bloqueado=dueno: antes este redirect era mudo — un empleado (o
+          // una cookie fl_empleado vieja/colgada en un dispositivo que el
+          // dueño cree que ya usa en modo Dueño) que picaba Configuración
+          // simplemente "rebotaba a Hoy" sin explicación, indistinguible de
+          // un bug. AuthenticatedShell lee este query param y muestra un
+          // toast explicando por qué, en vez de un bounce silencioso.
+          const destino = new URL("/app/inicio", url.origin);
+          destino.searchParams.set("bloqueado", "dueno");
+          return NextResponse.redirect(destino);
         }
       } catch {
         // Cookie corrupta/vieja: no bloquea, se comporta como si no hubiera empleado activo.
