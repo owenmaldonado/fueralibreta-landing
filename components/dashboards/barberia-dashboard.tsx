@@ -11,6 +11,7 @@ import { CerrarTurnoSheet } from "./barberia-cerrar-turno";
 import { daysSince, formatMoney, statsVisitasCliente, todayISO, waLink } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
+import { avisosIgnoradosHoy, ignorarAvisoHoy } from "@/lib/dismissed-alerts";
 import type { Appointment, TenantData, SessionUpdater } from "@/lib/types";
 
 export function BarberiaDashboard({ session, update }: { session: TenantData; update: SessionUpdater }) {
@@ -19,6 +20,12 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
   const hoy = todayISO(0);
   const [cobrando, setCobrando] = React.useState<Appointment | null>(null);
   const [cerrandoTurno, setCerrandoTurno] = React.useState(false);
+  const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy());
+
+  function ignorar(id: string) {
+    ignorarAvisoHoy(id);
+    setIgnorados((prev) => new Set(prev).add(id));
+  }
 
   const citasHoy = data.citas
     .filter((c) => c.fecha === hoy && c.estado === "pendiente")
@@ -29,11 +36,12 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
     .filter((c) => {
       const d = daysSince(c.ultimaVisita);
       return d !== null && d >= 28;
-    });
+    })
+    .filter((c) => !ignorados.has(`alerta-${c.id}`));
 
   const hoyMMDD = new Date().toISOString().slice(5, 10);
   const cumples = data.clientes.filter((c) => c.cumpleanos === hoyMMDD);
-  const productosBajos = data.productos.filter((p) => p.stock <= p.minimo);
+  const productosBajos = data.productos.filter((p) => p.stock <= p.minimo && !ignorados.has(`bajo-${p.id}`));
 
   const nada = citasHoy.length === 0 && clientesAlerta.length === 0 && cumples.length === 0 && productosBajos.length === 0;
 
@@ -112,10 +120,17 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
                 ),
               },
             ]}
+            onDismiss={() => ignorar(`alerta-${c.id}`)}
           />
         ))}
         {productosBajos.map((p) => (
-          <ActionCard key={p.id} level="yellow" title={`Quedan ${p.stock} ${p.nombre}`} actions={[{ label: "Ir", href: "/app/mas" }]} />
+          <ActionCard
+            key={p.id}
+            level="yellow"
+            title={`Quedan ${p.stock} ${p.nombre}`}
+            actions={[{ label: "Ir", href: "/app/mas" }]}
+            onDismiss={() => ignorar(`bajo-${p.id}`)}
+          />
         ))}
         {nada && <EmptyState />}
 

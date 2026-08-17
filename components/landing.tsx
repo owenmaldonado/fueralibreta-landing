@@ -102,9 +102,9 @@ export function Landing() {
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-border/60 bg-background/85 backdrop-blur">
         <div className="container flex h-16 items-center justify-between gap-4">
-          <span className="font-display text-lg font-bold tracking-tight">
+          <Link href="/" className="font-display text-lg font-bold tracking-tight">
             FUERA<span className="text-primary">LIBRETA</span>
-          </span>
+          </Link>
           <nav className="hidden items-center gap-8 font-mono text-xs uppercase tracking-widest text-muted-foreground md:flex">
             <Link href="#servicios" className="transition-colors hover:text-foreground">
               Servicios
