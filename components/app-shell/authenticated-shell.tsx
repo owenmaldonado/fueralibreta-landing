@@ -14,6 +14,7 @@ import { BottomNav } from "./bottom-nav";
 import { Fab } from "./fab";
 import { OfflineSalesNotice } from "./offline-sales-notice";
 import { SalesSyncManager } from "./sales-sync-manager";
+import { SplashScreen } from "./splash-screen";
 import { Button } from "@/components/ui/button";
 import { waLink, NUMERO_CONTACTO } from "@/lib/mock";
 import { writePlanElegido } from "@/lib/demoPreview";
@@ -203,11 +204,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   }
 
   if (!ready || !session) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </main>
-    );
+    return <SplashScreen />;
   }
 
   if (banned) {

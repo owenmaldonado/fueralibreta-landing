@@ -69,6 +69,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es-MX" className="dark">
+      <head>
+        {/* El SplashScreen del arranque (ver authenticated-shell.tsx) usa este
+            ícono a 120px — precargarlo evita el medio segundo de logo
+            borroso/placeholder mientras el navegador lo descarga y decodifica
+            recién al pintar la pantalla. */}
+        <link rel="preload" as="image" href="/icons/icon-maskable-512.png" />
+      </head>
       <body
         className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
