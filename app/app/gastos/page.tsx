@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/dashboards/empty-state";
 import { TrendBarChart } from "@/components/dashboards/trend-bar-chart";
 import { TrendLineChart } from "@/components/dashboards/trend-line-chart";
 import { PlanGate } from "@/components/dashboards/plan-gate";
+import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -25,6 +26,7 @@ import { formatMoney, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
 import { aggregateByRange, filterByRango, type RangoTiempo } from "@/lib/chart-buckets";
 import { permisosActuales } from "@/lib/empleados";
 import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
+import { usePlan } from "@/lib/planes";
 import { cn } from "@/lib/utils";
 import type { Expense, TenantData, FondaOrder, GrocerySale } from "@/lib/types";
 
@@ -62,6 +64,7 @@ function formatFechaCorta(fecha: string): string {
 /** Página compartida por Fonda y Abarrotes: ambas guardan gastos con la misma forma. */
 export default function GastosPage() {
   const { session, ready, update } = useSession();
+  const plan = usePlan();
   const [addOpen, setAddOpen] = React.useState(false);
   const [editando, setEditando] = React.useState<Expense | null>(null);
   const [borrando, setBorrando] = React.useState<Expense | null>(null);
@@ -366,39 +369,44 @@ export default function GastosPage() {
           </ChipGroup>
         )}
         <PlanGate feature="graficas">
-          {chartTab === "gastos" && (
-            <TrendBarChart data={serieGastos} bars={[{ key: "value", name: "Gastado", color: COLOR_GASTOS }]} emptyText="Sin gastos en este periodo" />
-          )}
-          {chartTab === "ventas" && (
-            <TrendBarChart data={serieVentas} bars={[{ key: "value", name: "Ventas", color: COLOR_VENTAS }]} emptyText="Sin ventas en este periodo" />
-          )}
-          {chartTab === "ganancias" && (
-            <TrendBarChart
-              data={serieGananciaBruta}
-              bars={[{ key: "value", name: "Ganancia", color: COLOR_GANANCIA }]}
-              emptyText="Sin ganancia en este periodo"
-            />
-          )}
-          {chartTab === "todos" && (
-            <TrendLineChart
-              data={serieVentas.map((v, i) => ({
-                label: v.label,
-                ventas: v.value,
-                gastos: serieGastos[i]?.value ?? 0,
-                ganancia: serieGananciaNeta[i]?.value ?? 0,
-              }))}
-              // Antes Fondita no tenía costo por platillo, así que su
-              // "ganancia real" era idéntica a ventas - gastos (línea sin
-              // información nueva) y se omitía. Ahora que Dish.costo existe
-              // (opcional), gananciaPorVenta ya resta el costo de los
-              // platillos que sí lo tienen — se muestra igual que en
-              // Abarrotes, pero solo en cuanto al menos un platillo tiene
-              // costo puesto (si no, sería solo -gastos disfrazado de
-              // "ganancia", el mismo número engañoso que ya evitamos arriba).
-              gananciaLabel={modulo === "abarrotes" || algunPlatilloConCosto ? "Ganancia real" : undefined}
-              emptyText="Sin ventas ni gastos en este periodo"
-            />
-          )}
+          <BloqueoPlan
+            activo={!(modulo === "abarrotes" && rango !== "semanal" && plan.giroAbarrotes.grafica !== "anual")}
+            texto="Gráfica mensual y anual disponible en Pro y Pro+"
+          >
+            {chartTab === "gastos" && (
+              <TrendBarChart data={serieGastos} bars={[{ key: "value", name: "Gastado", color: COLOR_GASTOS }]} emptyText="Sin gastos en este periodo" />
+            )}
+            {chartTab === "ventas" && (
+              <TrendBarChart data={serieVentas} bars={[{ key: "value", name: "Ventas", color: COLOR_VENTAS }]} emptyText="Sin ventas en este periodo" />
+            )}
+            {chartTab === "ganancias" && (
+              <TrendBarChart
+                data={serieGananciaBruta}
+                bars={[{ key: "value", name: "Ganancia", color: COLOR_GANANCIA }]}
+                emptyText="Sin ganancia en este periodo"
+              />
+            )}
+            {chartTab === "todos" && (
+              <TrendLineChart
+                data={serieVentas.map((v, i) => ({
+                  label: v.label,
+                  ventas: v.value,
+                  gastos: serieGastos[i]?.value ?? 0,
+                  ganancia: serieGananciaNeta[i]?.value ?? 0,
+                }))}
+                // Antes Fondita no tenía costo por platillo, así que su
+                // "ganancia real" era idéntica a ventas - gastos (línea sin
+                // información nueva) y se omitía. Ahora que Dish.costo existe
+                // (opcional), gananciaPorVenta ya resta el costo de los
+                // platillos que sí lo tienen — se muestra igual que en
+                // Abarrotes, pero solo en cuanto al menos un platillo tiene
+                // costo puesto (si no, sería solo -gastos disfrazado de
+                // "ganancia", el mismo número engañoso que ya evitamos arriba).
+                gananciaLabel={modulo === "abarrotes" || algunPlatilloConCosto ? "Ganancia real" : undefined}
+                emptyText="Sin ventas ni gastos en este periodo"
+              />
+            )}
+          </BloqueoPlan>
         </PlanGate>
       </div>
 
@@ -471,13 +479,15 @@ export default function GastosPage() {
                 )}
                 {modulo === "abarrotes" && (
                   <div className="flex shrink-0 items-center gap-0.5">
-                    <button
-                      onClick={() => abrirEditarVentaAbarrotes(v.id)}
-                      aria-label="Editar venta"
-                      className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
+                    {plan.giroAbarrotes.editor && (
+                      <button
+                        onClick={() => abrirEditarVentaAbarrotes(v.id)}
+                        aria-label="Editar venta"
+                        className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                     {puedeBorrarVentas && (
                       <button
                         onClick={() => abrirBorrarVentaAbarrotes(v.id)}

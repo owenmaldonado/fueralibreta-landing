@@ -152,7 +152,9 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     if (excludeSelf) list = list.filter((n) => n.ownerId !== currentUserId);
     if (orgQuery.trim()) {
       const needle = orgQuery.trim().toLowerCase();
-      list = list.filter((n) => n.nombre.toLowerCase().includes(needle) || n.ownerEmail?.toLowerCase().includes(needle));
+      list = list.filter(
+        (n) => n.nombre.toLowerCase().includes(needle) || n.ownerEmail?.toLowerCase().includes(needle) || n.id.toLowerCase().includes(needle)
+      );
     }
     if (orgPlanFilter !== "todos") list = list.filter((n) => pasaFiltroPlan(n, orgPlanFilter));
     return list;
@@ -190,7 +192,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     }
   }
 
-  async function handleSetNegocioTrial(negocioId: string, dias: 7 | 14, nombre: string) {
+  async function handleSetNegocioTrial(negocioId: string, dias: 7 | 14 | 30, nombre: string) {
     try {
       await updateNegocioTrial(negocioId, dias);
       toast.success(`${nombre}: trial extendido ${dias} días.`);
@@ -254,7 +256,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     handleSetNegocioPlan(negocio.id, plan, negocio.nombre);
   }
 
-  function handleSetTrialDeUsuario(p: AdminProfile, dias: 7 | 14) {
+  function handleSetTrialDeUsuario(p: AdminProfile, dias: 7 | 14 | 30) {
     const negocio = resolveNegocioDeUsuario(p);
     if (!negocio) {
       toast.error(`${p.email ?? "Este usuario"} todavía no tiene un negocio.`);
@@ -487,7 +489,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 <Input
                   value={orgQuery}
                   onChange={(e) => setOrgQuery(e.target.value)}
-                  placeholder="Buscar negocio o dueño..."
+                  placeholder="Buscar negocio, dueño o ID..."
                   className="pl-9"
                 />
               </div>

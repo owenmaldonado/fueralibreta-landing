@@ -13,7 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import { useSession } from "@/lib/session";
+import { usePlan } from "@/lib/planes";
 import { supabase } from "@/lib/supabase";
 import { formatMoney, uid, todayISO } from "@/lib/mock";
 import type { Dish, DishVariant } from "@/lib/types";
@@ -171,6 +173,7 @@ function PlatilloForm({
   onClose: () => void;
   update: ReturnType<typeof useSession>["update"];
 }) {
+  const plan = usePlan();
   const [nombre, setNombre] = React.useState(platillo.nombre);
   const [precio, setPrecio] = React.useState(String(platillo.precio));
   const [categoria, setCategoria] = React.useState(platillo.categoria);
@@ -253,33 +256,35 @@ function PlatilloForm({
         </div>
         <div className="space-y-1.5">
           <Label>Variantes (ej. proteína: Pollo/Bistec)</Label>
-          {variantes.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {variantes.map((v) => (
-                <div key={v.id} className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
-                  <span className="flex-1 text-sm font-medium">{v.valor}</span>
-                  <span className="font-mono text-xs text-muted-foreground">{v.precioExtra > 0 ? `+${formatMoney(v.precioExtra)}` : "sin costo extra"}</span>
-                  <Switch checked={v.disponible} onCheckedChange={() => toggleDisponibleVariante(v.id)} />
-                  <button onClick={() => quitarVariante(v.id)} className="text-muted-foreground hover:text-destructive">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+          <BloqueoPlan activo={plan.giroFonda.variantes} texto="Variantes de platillo disponible en Pro y Pro+">
+            {variantes.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {variantes.map((v) => (
+                  <div key={v.id} className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+                    <span className="flex-1 text-sm font-medium">{v.valor}</span>
+                    <span className="font-mono text-xs text-muted-foreground">{v.precioExtra > 0 ? `+${formatMoney(v.precioExtra)}` : "sin costo extra"}</span>
+                    <Switch checked={v.disponible} onCheckedChange={() => toggleDisponibleVariante(v.id)} />
+                    <button onClick={() => quitarVariante(v.id)} className="text-muted-foreground hover:text-destructive">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-2 flex items-end gap-2">
+              <div className="flex-1 space-y-1.5">
+                <Label>Valor</Label>
+                <Input value={nuevoValor} onChange={(e) => setNuevoValor(e.target.value)} placeholder="Ej. Pollo" />
+              </div>
+              <div className="w-24 space-y-1.5">
+                <Label>Extra</Label>
+                <Input type="number" inputMode="decimal" value={nuevoPrecioExtra} onChange={(e) => setNuevoPrecioExtra(e.target.value)} placeholder="$0" />
+              </div>
+              <Button type="button" variant="outline" size="icon" onClick={agregarVariante} aria-label="Agregar variante">
+                <Plus className="h-4 w-4" />
+              </Button>
             </div>
-          )}
-          <div className="flex items-end gap-2">
-            <div className="flex-1 space-y-1.5">
-              <Label>Valor</Label>
-              <Input value={nuevoValor} onChange={(e) => setNuevoValor(e.target.value)} placeholder="Ej. Pollo" />
-            </div>
-            <div className="w-24 space-y-1.5">
-              <Label>Extra</Label>
-              <Input type="number" inputMode="decimal" value={nuevoPrecioExtra} onChange={(e) => setNuevoPrecioExtra(e.target.value)} placeholder="$0" />
-            </div>
-            <Button type="button" variant="outline" size="icon" onClick={agregarVariante} aria-label="Agregar variante">
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
+          </BloqueoPlan>
         </div>
       </div>
       <SheetFooter>

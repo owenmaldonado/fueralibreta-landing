@@ -10,10 +10,12 @@ import { StatTile } from "./stat-tile";
 import { CerrarDiaSheet } from "./abarrotes-cerrar-dia";
 import { formatMoney, fechaCalendarioLocal, todayISO, waLink } from "@/lib/mock";
 import { avisosIgnoradosHoy, ignorarAvisoHoy } from "@/lib/dismissed-alerts";
+import { usePlan } from "@/lib/planes";
 import type { TenantData, SessionUpdater } from "@/lib/types";
 
 export function AbarrotesDashboard({ session, update }: { session: TenantData; update: SessionUpdater }) {
   const data = session.abarrotes!;
+  const plan = usePlan();
   const hoy = todayISO(0);
   const [cerrandoDia, setCerrandoDia] = React.useState(false);
   const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy(session.business.id));
@@ -77,7 +79,11 @@ export function AbarrotesDashboard({ session, update }: { session: TenantData; u
             key={f.id}
             level="yellow"
             title={`${f.clienteNombre} debe ${formatMoney(f.saldo)}`}
-            actions={[{ label: "WhatsApp", href: waLink(f.telefono, `Hola ${f.clienteNombre}, te recuerdo tu saldo de $${f.saldo}`) }]}
+            actions={[
+              plan.giroAbarrotes.recordatorio
+                ? { label: "WhatsApp", href: waLink(f.telefono, `Hola ${f.clienteNombre}, te recuerdo tu saldo de $${f.saldo}`) }
+                : { label: "Ver planes", href: "/planes" },
+            ]}
             onDismiss={() => ignorar(`fiado-${f.id}`)}
           />
         ))}
