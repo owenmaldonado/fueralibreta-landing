@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { Tabs } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,12 @@ const SECTIONS = [
   { value: "excepciones", label: "Excepciones" },
   { value: "servicios", label: "Servicios" },
 ];
+
+// data.horario llega de Supabase con select("*") sin ORDER BY — el orden
+// físico de fila no está garantizado (menos aún tras un upsert), así que
+// "Lun, Mar, Mié..." no es confiable directo del arreglo. Se ordena aquí
+// solo para el render, sin tocar cómo se guarda ni se lee.
+const ORDEN_DIAS: HorarioDia["dia"][] = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
 export default function ConfiguracionPage() {
   const { session, ready, update } = useSession();
@@ -73,20 +80,35 @@ export default function ConfiguracionPage() {
       {tab === "perfil" && <PerfilSection business={session.business} update={update} />}
 
       {tab === "horario" && (
-        <div className="flex flex-col gap-2 px-4 pb-6">
-          {data.horario.map((h) => (
-            <div key={h.dia} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-              <span className="w-10 shrink-0 text-sm font-medium">{h.dia}</span>
-              <Switch checked={h.abierto} onCheckedChange={(v) => actualizarDia(h.dia, { abierto: v })} />
-              {h.abierto ? (
-                <div className="flex flex-1 items-center gap-2">
-                  <Input type="time" value={h.inicio} onChange={(e) => actualizarDia(h.dia, { inicio: e.target.value })} className="h-9" />
-                  <span className="text-xs text-muted-foreground">a</span>
-                  <Input type="time" value={h.fin} onChange={(e) => actualizarDia(h.dia, { fin: e.target.value })} className="h-9" />
-                </div>
-              ) : (
-                <span className="flex-1 text-sm text-muted-foreground">Cerrado</span>
-              )}
+        <div className="flex flex-col gap-2 px-4 pb-24">
+          {[...data.horario].sort((a, b) => ORDEN_DIAS.indexOf(a.dia) - ORDEN_DIAS.indexOf(b.dia)).map((h) => (
+            <div key={h.dia} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:gap-3">
+              <div className="flex items-center gap-3">
+                <span className="w-10 shrink-0 text-sm font-medium">{h.dia}</span>
+                <Switch checked={h.abierto} onCheckedChange={(v) => actualizarDia(h.dia, { abierto: v })} />
+                {!h.abierto && (
+                  <Badge variant="outline" className="shrink-0">
+                    Cerrado
+                  </Badge>
+                )}
+              </div>
+              <div className="flex flex-1 items-center gap-2">
+                <Input
+                  type="time"
+                  value={h.inicio}
+                  onChange={(e) => actualizarDia(h.dia, { inicio: e.target.value })}
+                  disabled={!h.abierto}
+                  className="h-9 min-w-0 w-full flex-1 text-sm"
+                />
+                <span className="w-4 shrink-0 text-center text-xs text-muted-foreground">a</span>
+                <Input
+                  type="time"
+                  value={h.fin}
+                  onChange={(e) => actualizarDia(h.dia, { fin: e.target.value })}
+                  disabled={!h.abierto}
+                  className="h-9 min-w-0 w-full flex-1 text-sm"
+                />
+              </div>
             </div>
           ))}
         </div>
