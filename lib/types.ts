@@ -180,6 +180,10 @@ export interface OrderItem {
   precioUnitario?: number;
   /** Costo del platillo AL MOMENTO de crear el pedido — mismo snapshot que costoUnitario en abarrotes_sale_items, por item de Fondita. Ausente = el platillo no tenía costo puesto en ese momento (esa venta cuenta $0 de margen, no se le inventa uno con el costo de hoy). */
   costoUnitario?: number;
+  /** Concepto del cargo extra de esta línea (ej. "Para llevar"), aparte de `nota` (comentario libre) — se muestra junto al monto en el ticket. */
+  extraConcepto?: string;
+  /** Cargo extra plano de esta línea (ej. envase para llevar) — se suma UNA VEZ al total de la línea, no se multiplica por `cantidad`. */
+  extraMonto?: number;
 }
 
 export type OrderStatus = "pendiente" | "entregado" | "cancelado";
