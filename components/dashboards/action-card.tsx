@@ -35,13 +35,13 @@ export function ActionCard({
           onClick={onDismiss}
           aria-label="Ocultar por hoy"
           title="Ocultar por hoy"
-          className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          className="absolute -right-2.5 -top-2.5 flex h-7 w-7 items-center justify-center rounded-full border border-[#ef4444]/30 bg-[rgba(239,68,68,0.15)] text-[#ef4444] shadow-sm transition-colors hover:bg-[rgba(239,68,68,0.3)]"
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="h-4 w-4" />
         </button>
       )}
       <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", dot)} />
-      <div className={cn("min-w-0 flex-1", onDismiss && "pr-5")}>
+      <div className="min-w-0 flex-1">
         <p className="text-sm font-medium leading-snug">{title}</p>
         {subtitle && <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</p>}
       </div>

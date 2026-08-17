@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, ScanLine, Plus, Minus, Pencil, Trash2 } from "lucide-react";
+import { Search, ScanLine, Plus, Pencil, Trash2 } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -11,27 +11,21 @@ import { Switch } from "@/components/ui/switch";
 import { Stepper } from "@/components/ui/stepper";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Button } from "@/components/ui/button";
-import { Tabs } from "@/components/ui/tabs";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import { VentaCart } from "@/components/abarrotes/venta-cart";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
-import { permisosActuales } from "@/lib/empleados";
 import { buscarEnCatalogoGlobal, aportarACatalogoGlobal, type CatalogoGlobalEntry } from "@/lib/catalogo-global";
-import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
-import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
 import { formatMoney, todayISO, uid } from "@/lib/mock";
 import { cn } from "@/lib/utils";
-import type { GroceryProduct, GrocerySale, GrocerySaleItem } from "@/lib/types";
+import type { GroceryProduct } from "@/lib/types";
 
 export default function InventarioPage() {
   const { session, ready, update } = useSession();
   const plan = usePlan();
-  const [tab, setTab] = React.useState("productos");
   const [q, setQ] = React.useState("");
   const [scanning, setScanning] = React.useState(false);
   const [ventaOpen, setVentaOpen] = React.useState(false);
@@ -41,22 +35,6 @@ export default function InventarioPage() {
   const [addOpen, setAddOpen] = React.useState(false);
   const [editando, setEditando] = React.useState<GroceryProduct | null>(null);
   const [borrando, setBorrando] = React.useState<GroceryProduct | null>(null);
-  const [editandoVenta, setEditandoVenta] = React.useState<GrocerySale | null>(null);
-  const [borrandoVenta, setBorrandoVenta] = React.useState<GrocerySale | null>(null);
-  // Multiusuario: un rol "vendedor" no puede borrar ventas — se resuelve en
-  // un efecto (permisosActuales lee una cookie) para no desalinear el
-  // primer render del servidor con el del cliente.
-  const [puedeBorrarVentas, setPuedeBorrarVentas] = React.useState(true);
-
-  React.useEffect(() => {
-    setPuedeBorrarVentas(permisosActuales().borrarVentas);
-  }, []);
-
-  const { rows: ventasPendientesRows } = usePendingSalesQueue(session?.business.id);
-  const ventasPendientesPorId = React.useMemo(
-    () => new Map(ventasPendientesRows.filter((r) => r.tipo === "abarrotes_venta").map((r) => [r.id, r] as const)),
-    [ventasPendientesRows]
-  );
 
   if (!ready || !session) return <LoadingBlock />;
 
@@ -68,7 +46,6 @@ export default function InventarioPage() {
     (p) => p.nombre.toLowerCase().includes(q.toLowerCase()) || p.codigo.includes(q)
   );
   const tocoLimiteProductos = plan.limiteAlcanzado("max_productos", productosInventario.length);
-  const ventas = [...data.ventas].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   function handleScan(codigo: string) {
     setScanning(false);
@@ -95,15 +72,6 @@ export default function InventarioPage() {
     setBorrando(null);
   }
 
-  function eliminarVenta() {
-    if (!borrandoVenta) return;
-    update((prev) => {
-      const a = prev.abarrotes!;
-      return { ...prev, abarrotes: { ...a, ventas: a.ventas.filter((v) => v.id !== borrandoVenta.id) } };
-    });
-    setBorrandoVenta(null);
-  }
-
   return (
     <>
       <div className="sticky top-14 z-10 bg-background px-4 pt-3">
@@ -127,127 +95,69 @@ export default function InventarioPage() {
         }
       />
 
-      <div className="px-4 pb-3">
-        <Tabs
-          value={tab}
-          onValueChange={setTab}
-          tabs={[
-            { value: "productos", label: "Productos" },
-            { value: "ventas", label: `Ventas · ${ventas.length}` },
-          ]}
-        />
+      <div className="flex items-center gap-2 px-4 pt-3 pb-3">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto o código..." className="pl-9" />
+        </div>
+        <Button
+          size="icon"
+          variant="outline"
+          onClick={() => setAddOpen(true)}
+          disabled={tocoLimiteProductos}
+          aria-label="Agregar producto"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
       </div>
 
-      {tab === "productos" ? (
-        <>
-          <div className="flex items-center gap-2 px-4 pb-3">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto o código..." className="pl-9" />
-            </div>
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => setAddOpen(true)}
-              disabled={tocoLimiteProductos}
-              aria-label="Agregar producto"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
+      {tocoLimiteProductos && (
+        <div className="mx-4 mb-3 rounded-xl border border-dashed border-border bg-card px-4 py-3 text-center">
+          <p className="text-sm font-medium">Llegaste al límite de {plan.limites.max_productos} productos de tu plan {plan.label}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Sube de plan desde /admin para agregar más.</p>
+        </div>
+      )}
 
-          {tocoLimiteProductos && (
-            <div className="mx-4 mb-3 rounded-xl border border-dashed border-border bg-card px-4 py-3 text-center">
-              <p className="text-sm font-medium">Llegaste al límite de {plan.limites.max_productos} productos de tu plan {plan.label}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Sube de plan desde /admin para agregar más.</p>
-            </div>
-          )}
-
-          <div className="flex flex-col gap-2 px-4 pb-6">
-            {filtrados.length === 0 ? (
-              <EmptyState texto="Sin productos" />
-            ) : (
-              filtrados.map((p) => {
-                const bajo = p.stock <= p.minimo;
-                const utilidad = p.precio - p.costo;
-                return (
-                  <div key={p.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-                    <button onClick={() => setAjustar(p)} className="min-w-0 flex-1 text-left">
-                      <p className="truncate text-sm font-medium">{p.nombre}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {p.categoria} · {formatMoney(p.precio)} <span className="text-ledger">+{formatMoney(utilidad)}</span>
-                        {p.controlCaducidad && " · con caducidad"}
-                      </p>
-                    </button>
-                    <button onClick={() => setAjustar(p)} className={cn("shrink-0 font-mono text-sm", bajo ? "font-semibold text-primary" : "text-muted-foreground")}>
-                      {p.stock}
-                    </button>
-                    <div className="flex shrink-0 items-center gap-0.5">
-                      <button
-                        onClick={() => setEditando(p)}
-                        aria-label="Editar producto"
-                        className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setBorrando(p)}
-                        aria-label="Eliminar producto"
-                        className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </>
-      ) : (
-        <div className="flex flex-col gap-2 px-4 pb-6">
-          {ventas.length === 0 ? (
-            <EmptyState texto="Sin ventas registradas" />
-          ) : (
-            ventas.map((v) => {
-              const resumen =
-                v.items.length === 1
-                  ? `${v.items[0].cantidad} ${v.items[0].productoNombre}`
-                  : `${v.items.reduce((acc, it) => acc + it.cantidad, 0)} piezas · ${v.items.length} productos`;
-              return (
-              <div key={v.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{resumen}</p>
+      <div className="flex flex-col gap-2 px-4 pb-6">
+        {filtrados.length === 0 ? (
+          <EmptyState texto="Sin productos" />
+        ) : (
+          filtrados.map((p) => {
+            const bajo = p.stock <= p.minimo;
+            const utilidad = p.precio - p.costo;
+            return (
+              <div key={p.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+                <button onClick={() => setAjustar(p)} className="min-w-0 flex-1 text-left">
+                  <p className="truncate text-sm font-medium">{p.nombre}</p>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(v.fecha).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    {p.categoria} · {formatMoney(p.precio)} <span className="text-ledger">+{formatMoney(utilidad)}</span>
+                    {p.controlCaducidad && " · con caducidad"}
                   </p>
-                  <PendingSaleStatus negocioId={session.business.id} fila={ventasPendientesPorId.get(v.id)} />
-                </div>
-                <span className="shrink-0 font-mono text-sm text-ledger">{formatMoney(v.total)}</span>
+                </button>
+                <button onClick={() => setAjustar(p)} className={cn("shrink-0 font-mono text-sm", bajo ? "font-semibold text-primary" : "text-muted-foreground")}>
+                  {p.stock}
+                </button>
                 <div className="flex shrink-0 items-center gap-0.5">
                   <button
-                    onClick={() => setEditandoVenta(v)}
-                    aria-label="Editar venta"
+                    onClick={() => setEditando(p)}
+                    aria-label="Editar producto"
                     className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
-                  {puedeBorrarVentas && (
-                    <button
-                      onClick={() => setBorrandoVenta(v)}
-                      aria-label="Eliminar venta"
-                      className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setBorrando(p)}
+                    aria-label="Eliminar producto"
+                    className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
-              );
-            })
-          )}
-        </div>
-      )}
+            );
+          })
+        )}
+      </div>
 
       {scanning && <BarcodeScanner onScan={handleScan} onClose={() => setScanning(false)} />}
 
@@ -288,24 +198,12 @@ export default function InventarioPage() {
         {editando && <ProductoForm producto={editando} codigo={null} onClose={() => setEditando(null)} update={update} />}
       </Sheet>
 
-      <Sheet open={!!editandoVenta} onOpenChange={(o) => !o && setEditandoVenta(null)}>
-        {editandoVenta && <VentaForm venta={editandoVenta} onClose={() => setEditandoVenta(null)} update={update} />}
-      </Sheet>
-
       <ConfirmDialog
         open={!!borrando}
         title="Eliminar producto"
         description={`Se borrará "${borrando?.nombre}" de tu inventario.`}
         onClose={() => setBorrando(null)}
         onConfirm={eliminarProducto}
-      />
-
-      <ConfirmDialog
-        open={!!borrandoVenta}
-        title="Eliminar venta"
-        description={`Se borrará esta venta por ${borrandoVenta ? formatMoney(borrandoVenta.total) : ""}. El stock no se ajusta automáticamente.`}
-        onClose={() => setBorrandoVenta(null)}
-        onConfirm={eliminarVenta}
       />
     </>
   );
@@ -527,111 +425,6 @@ function ProductoForm({
           onClose={() => setScanning(false)}
         />
       )}
-    </>
-  );
-}
-
-function VentaForm({
-  venta,
-  onClose,
-  update,
-}: {
-  venta: GrocerySale;
-  onClose: () => void;
-  update: ReturnType<typeof useSession>["update"];
-}) {
-  const [items, setItems] = React.useState<GrocerySaleItem[]>(venta.items);
-
-  const total = items.reduce((acc, it) => acc + it.subtotal, 0);
-  const puedeGuardar = items.length > 0;
-
-  function cambiarCantidad(itemId: string, cantidad: number) {
-    setItems((prev) =>
-      cantidad <= 0
-        ? prev.filter((it) => it.id !== itemId)
-        : prev.map((it) => (it.id === itemId ? { ...it, cantidad, subtotal: cantidad * it.precioUnitario } : it))
-    );
-  }
-
-  function quitar(itemId: string) {
-    setItems((prev) => prev.filter((it) => it.id !== itemId));
-  }
-
-  function guardar() {
-    if (!puedeGuardar) return;
-    update((prev) => {
-      const a = prev.abarrotes!;
-      return {
-        ...prev,
-        abarrotes: { ...a, ventas: a.ventas.map((v) => (v.id === venta.id ? { ...v, items, total } : v)) },
-      };
-    });
-    onClose();
-  }
-
-  return (
-    <>
-      <SheetHeader title="Editar venta" description="El stock no se ajusta automáticamente" onClose={onClose} />
-      <div className="flex flex-col gap-4">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Producto</TableHead>
-              <TableHead className="text-center">Cant</TableHead>
-              <TableHead className="text-right">Subtotal</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((it) => (
-              <TableRow key={it.id}>
-                <TableCell className="max-w-[100px] whitespace-normal text-sm font-medium">{it.productoNombre}</TableCell>
-                <TableCell>
-                  <div className="flex items-center justify-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => cambiarCantidad(it.id, it.cantidad - 1)}
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border hover:bg-secondary"
-                      aria-label="Restar"
-                    >
-                      <Minus className="h-3 w-3" />
-                    </button>
-                    <span className="w-4 text-center font-mono text-xs tabular-nums">{it.cantidad}</span>
-                    <button
-                      type="button"
-                      onClick={() => cambiarCantidad(it.id, it.cantidad + 1)}
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border hover:bg-secondary"
-                      aria-label="Sumar"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </button>
-                  </div>
-                </TableCell>
-                <TableCell className="text-right font-mono text-sm font-semibold">{formatMoney(it.subtotal)}</TableCell>
-                <TableCell>
-                  <button
-                    type="button"
-                    onClick={() => quitar(it.id)}
-                    className="rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    aria-label="Quitar"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        <div className="flex items-center justify-between rounded-lg bg-secondary px-4 py-3">
-          <span className="text-sm font-medium text-muted-foreground">Total</span>
-          <span className="font-display text-xl font-bold">{formatMoney(total)}</span>
-        </div>
-      </div>
-      <SheetFooter>
-        <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>
-          Guardar cambios
-        </Button>
-      </SheetFooter>
     </>
   );
 }
