@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Loader2, Lock, UserCog, WifiOff } from "lucide-react";
+import { ArrowRight, Loader2, Lock, UserCog, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 
 import { useSession } from "@/lib/session";
@@ -23,7 +23,14 @@ import { BarberiaQuickAdd, BARBERIA_ACTIONS } from "@/components/quick-add/barbe
 import { FondaQuickAdd, FONDA_ACTIONS } from "@/components/quick-add/fonda-quick-add";
 import { AbarrotesQuickAdd, ABARROTES_ACTIONS } from "@/components/quick-add/abarrotes-quick-add";
 import { getEmpleadoActual, setEmpleadoActual, clearEmpleadoActual, pinDuenoConfigurado } from "@/lib/empleados";
-import type { EmpleadoActual } from "@/lib/types";
+import type { EmpleadoActual, BusinessType } from "@/lib/types";
+
+/** Forma coloquial del giro para el banner de demo ("una demo de barbería"), distinta de NOMBRES_NEGOCIO (lib/mock.ts) que es para títulos/etiquetas. */
+const TIPO_DEMO_LABEL: Record<BusinessType, string> = {
+  barberia: "barbería",
+  fonda: "fondita",
+  abarrotes: "abarrotera",
+};
 
 // Segmentos de /app/{segmento} que SÍ son del dueño de un negocio (barbería/
 // fonda/abarrotes) y por lo tanto sí deben exigir sesión + negocio. Todo lo
@@ -282,19 +289,24 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
 
       {business.demo && (
         <div className="sticky top-14 z-20 flex items-center justify-between gap-3 border-b border-primary/30 bg-primary/10 px-4 py-2.5">
-          <p className="text-xs leading-tight text-foreground">Estás probando una demo de abarrotera - FueraLibreta</p>
+          <p className="text-xs leading-tight text-foreground">
+            Estás probando una demo de {TIPO_DEMO_LABEL[business.tipo]} - FueraLibreta
+          </p>
           <Button
             size="sm"
+            className="shrink-0 gap-1"
             onClick={() => {
               // Marca que viene del CTA de pago antes de mandarlo a /login —
               // /onboarding lo usa para SIEMPRE pedir teléfono y crear el
               // negocio en blanco ahí, en vez de ofrecer "activar" esta demo
-              // tal cual (ver lib/demoPreview.ts).
+              // tal cual (ver lib/demoPreview.ts). Sin precio en el banner a
+              // propósito — "$499/mes" ahí no enganchaba, el precio real se
+              // ve hasta el CTA de /onboarding.
               writePlanElegido({ plan: "pro", precio: 499 });
               router.push("/login");
             }}
           >
-            Lo quiero · $499/mes
+            Prueba 7 días gratis <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         </div>
       )}

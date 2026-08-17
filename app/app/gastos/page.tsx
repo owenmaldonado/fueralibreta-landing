@@ -110,10 +110,13 @@ export default function GastosPage() {
   // platillo). Un platillo SIN costo no aporta margen conocido — su venta
   // cuenta $0 de ganancia (ni se inventa como venta completa, ni se excluye
   // del todo: así una fonda con solo ALGUNOS platillos con costo sigue
-  // viendo la ganancia real de esos, en vez de todo-o-nada). El precio de
-  // venta usado es el del platillo AHORA (mismo trade-off que costoUnitario
-  // de Abarrotes vs. un precio histórico que no se guarda por línea en
-  // Fondita) más el precio_extra de la variante elegida, si tenía.
+  // viendo la ganancia real de esos, en vez de todo-o-nada). OrderItem
+  // guarda precioUnitario/costoUnitario como snapshot AL MOMENTO del pedido
+  // (ver venderRapido en fonda-dashboard.tsx y agregarItem en
+  // fonda-quick-add.tsx) — igual que costoUnitario en Abarrotes, editar el
+  // precio o el costo del platillo DESPUÉS ya no mueve ventas ya hechas.
+  // Pedidos de antes de este snapshot (sin precioUnitario guardado) siguen
+  // cayendo al platillo/variante ACTUAL, único caso con ese trade-off.
   const costoPorProducto = new Map((session.abarrotes?.productos ?? []).map((p) => [p.id, p.costo]));
   const platillosPorId = new Map((session.fonda?.platillos ?? []).map((p) => [p.id, p]));
   const gananciaPorVenta: Movimiento[] =
@@ -122,6 +125,10 @@ export default function GastosPage() {
           id: p.id,
           fecha: p.fecha,
           monto: p.items.reduce((acc, it) => {
+            if (it.precioUnitario != null) {
+              const costo = it.costoUnitario ?? 0;
+              return costo > 0 ? acc + (it.precioUnitario - costo) * it.cantidad : acc;
+            }
             const platillo = platillosPorId.get(it.platilloId);
             if (!platillo || platillo.costo == null) return acc;
             const extra = it.varianteNombre ? platillo.variantes?.find((v) => v.valor === it.varianteNombre)?.precioExtra ?? 0 : 0;

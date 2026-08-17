@@ -176,6 +176,10 @@ export interface OrderItem {
   nota?: string;
   /** Variante elegida (ej. "Pollo") cuando el platillo tiene variantes — se muestra en el ticket como "platillo c/ variante", separado de `nota` (comentarios libres). */
   varianteNombre?: string;
+  /** Precio de venta (platillo.precio + precioExtra de la variante elegida) AL MOMENTO de crear el pedido — snapshot para que Ganancias no recalcule pedidos viejos si el precio del platillo cambia después. Ausente en pedidos de antes de este campo: Ganancias cae al precio ACTUAL del platillo, igual que antes. */
+  precioUnitario?: number;
+  /** Costo del platillo AL MOMENTO de crear el pedido — mismo snapshot que costoUnitario en abarrotes_sale_items, por item de Fondita. Ausente = el platillo no tenía costo puesto en ese momento (esa venta cuenta $0 de margen, no se le inventa uno con el costo de hoy). */
+  costoUnitario?: number;
 }
 
 export type OrderStatus = "pendiente" | "entregado" | "cancelado";
