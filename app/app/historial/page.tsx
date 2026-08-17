@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
-import { formatMoney } from "@/lib/mock";
+import { formatHora12, formatMoney } from "@/lib/mock";
 
 const LIMITE_CORTES = 50;
 
@@ -31,7 +31,7 @@ export default function HistorialPage() {
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{c.clienteNombre}</p>
                 <p className="text-xs text-muted-foreground">
-                  {c.fecha} {c.hora} · {c.servicioNombre}
+                  {c.fecha} {formatHora12(c.hora)} · {c.servicioNombre}
                 </p>
               </div>
               <span className="shrink-0 font-mono text-sm text-ledger">{formatMoney(c.precio)}</span>

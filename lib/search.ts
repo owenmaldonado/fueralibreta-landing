@@ -1,3 +1,4 @@
+import { formatHora12 } from "./mock";
 import type { TenantData } from "./types";
 
 export interface SearchResult {
@@ -23,7 +24,7 @@ export function universalSearch(data: TenantData, query: string): SearchResult[]
       if (cita.clienteNombre.toLowerCase().includes(q) || cita.servicioNombre.toLowerCase().includes(q)) {
         results.push({
           label: `${cita.clienteNombre} · ${cita.servicioNombre}`,
-          sublabel: `${cita.fecha} ${cita.hora}`,
+          sublabel: `${cita.fecha} ${formatHora12(cita.hora)}`,
           href: "/app/agenda",
           group: "Citas",
         });
@@ -34,7 +35,7 @@ export function universalSearch(data: TenantData, query: string): SearchResult[]
   if (data.fonda) {
     for (const p of data.fonda.pedidos) {
       if (p.clienteNombre.toLowerCase().includes(q)) {
-        results.push({ label: p.clienteNombre, sublabel: `${p.hora} · ${p.estado}`, href: "/app/pedidos", group: "Pedidos" });
+        results.push({ label: p.clienteNombre, sublabel: `${formatHora12(p.hora)} · ${p.estado}`, href: "/app/pedidos", group: "Pedidos" });
       }
     }
     for (const d of data.fonda.platillos) {

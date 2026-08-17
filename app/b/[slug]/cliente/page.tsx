@@ -13,7 +13,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { fetchNegocioBySlug, fetchCitasByTelefono, type CitaCliente } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { readDemoPreview } from "@/lib/demoPreview";
-import { formatMoney, mensajeRecordatorioCita, waLink, whatsappDe } from "@/lib/mock";
+import { formatHora12, formatMoney, mensajeRecordatorioCita, waLink, whatsappDe } from "@/lib/mock";
 import { telefonoSchema } from "@/lib/validation";
 import type { Business } from "@/lib/types";
 
@@ -163,7 +163,7 @@ export default function ClientePublicoPage() {
                       day: "numeric",
                       month: "short",
                     })}{" "}
-                    · {c.hora} · {formatMoney(c.precio)}
+                    · {formatHora12(c.hora)} · {formatMoney(c.precio)}
                   </p>
                   <p className="mt-3 text-sm">{mensajeRecordatorioCita(c, business.nombre)}</p>
                   {whatsappDe(business) ? (
