@@ -123,23 +123,55 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   // inestable (ver mismo criterio en el guardia de update(), lib/session.ts).
   const rutaBloqueadaSinConexion = !online && !session?.business.demo && esRutaBloqueadaSinConexion(pathname ?? "");
 
-  // ?bloqueado=dueno en /app/inicio: el middleware acaba de rebotar aquí
-  // porque la ruta pedida (Configuración/Empleados) es solo para el dueño y
-  // esta cookie está en modo empleado — ver RUTAS_SOLO_DUENO en
-  // middleware.ts. Sin este aviso, ese bounce se sentía como que el botón
-  // "no hacía nada"/regresaba a la pantalla principal sin explicación. Se
-  // lee la URL a mano (no useSearchParams()) por el mismo motivo que
+  // ?bloqueado=dueno&destino=<ruta> en /app/inicio: el middleware acaba de
+  // rebotar aquí porque la ruta pedida (Configuración/Empleados) es solo
+  // para el dueño y la cookie fl_empleado está en modo empleado — ver
+  // RUTAS_SOLO_DUENO en middleware.ts. Ojo: la cookie es del NAVEGADOR
+  // completo, no de esta pestaña — un dueño real que ve el pill "DUEÑO"
+  // aquí puede seguir topándose con esto si OTRA pestaña (o una sesión
+  // vieja) dejó la cookie en modo empleado, porque nada en esta pestaña se
+  // entera de un cambio de cookie hecho en otra. El botón "Cambiar a modo
+  // Dueño" del toast limpia la cookie y regresa directo a `destino` — no
+  // hace falta que el dueño entienda la causa, un click lo desatora. Se lee
+  // la URL a mano (no useSearchParams()) por el mismo motivo que
   // app/app/configuracion/page.tsx: no forzar un Suspense boundary aquí.
-  // router.replace() limpia el query param para que un refresh no repita el
-  // toast.
+  // router.replace() limpia los query params para que un refresh no repita
+  // el toast.
+  //
+  // TEMPORAL — el console.log de abajo es para diagnosticar un reporte de
+  // falso positivo (dueño real viendo este toast): compara lo que el
+  // middleware vio en la cookie AL MOMENTO DEL REDIRECT (empleadoActual ya
+  // resuelto en el efecto de arriba) contra si esta pestaña, ahora mismo,
+  // se sigue viendo en modo empleado. Quitar en cuanto se confirme la causa.
   React.useEffect(() => {
     if (pathname !== "/app/inicio") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("bloqueado") !== "dueno") return;
-    toast.error("Esa sección es solo para el dueño — cambia a modo Dueño para entrar");
+    const destino = params.get("destino") || "/app/inicio";
+    const cookieAhora = getEmpleadoActual();
+    console.log("[fl_empleado] toast de 'solo para el dueño' —", {
+      destino,
+      cookieAlMostrarToast: cookieAhora,
+      empleadoActualEnEstaPestana: empleadoActual,
+    });
+    toast.error("Esa sección es solo para el dueño — cambia a modo Dueño para entrar", {
+      action: {
+        label: "Cambiar a modo Dueño",
+        onClick: () => {
+          // Mismo patrón que "Cerrar turno"/TurnoControl.volverADuenoYRecargar:
+          // handleSesionCambiada(null) limpia la cookie (no solo el estado
+          // en memoria de esta pestaña) y el reload completo descarta
+          // cualquier estado residual antes de reintentar `destino`.
+          handleSesionCambiada(null);
+          window.location.href = destino;
+        },
+      },
+    });
     params.delete("bloqueado");
+    params.delete("destino");
     const resto = params.toString();
     router.replace(resto ? `/app/inicio?${resto}` : "/app/inicio");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo debe reaccionar a pathname/router; empleadoActual es únicamente para el log de diagnóstico, no debe re-disparar el toast si cambia
   }, [pathname, router]);
 
   // Le pregunta al servidor si la cookie admin_impersonating (httpOnly) está
