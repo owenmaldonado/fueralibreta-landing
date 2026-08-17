@@ -10,6 +10,7 @@ import { cerrarSesion } from "@/lib/logout";
 import { universalSearch } from "@/lib/search";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { PinDuenoForm } from "@/components/kiosko/pin-dueno";
+import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { ConnectionStatus } from "./connection-status";
 import { PendingSalesBadge } from "./pending-sales-badge";
 import { TurnoControl } from "./turno-control";
@@ -125,6 +126,7 @@ export function TopBar({
               pinDuenoSet={Boolean(pinDuenoSet)}
               onSesionCambiada={(e) => onSesionCambiada?.(e)}
             />
+            <InstallPrompt />
             <PendingSalesBadge negocioId={data.business.id} />
             <ConnectionStatus negocioId={data.business.id} />
             <button

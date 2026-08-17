@@ -43,10 +43,23 @@ export const metadata: Metadata = {
     locale: "es_MX",
     type: "website",
   },
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "Fuera Libreta",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/icons/icon-192.png",
+  },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0f1115",
+  themeColor: "#0a0a0a",
 };
 
 export default function RootLayout({
@@ -56,6 +69,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es-MX" className="dark">
+      <head>
+        {/* El SplashScreen del arranque (ver authenticated-shell.tsx) usa este
+            ícono a 120px — precargarlo evita el medio segundo de logo
+            borroso/placeholder mientras el navegador lo descarga y decodifica
+            recién al pintar la pantalla. */}
+        <link rel="preload" as="image" href="/icons/icon-maskable-512.png" />
+      </head>
       <body
         className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
