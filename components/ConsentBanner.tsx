@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { supabase } from "@/lib/supabase";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { readConsent, writeConsent } from "@/lib/consent";
 
 /**
@@ -41,22 +41,41 @@ export function ConsentBanner() {
   }, [visible]);
 
   async function aceptar() {
+    if (!isSupabaseConfigured) {
+      // El cliente cae a una URL placeholder si faltan las env vars, así que
+      // el insert de abajo tronaría igual pero con un error de red confuso.
+      console.error(
+        "[ConsentBanner] Supabase no está configurado (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY faltantes)."
+      );
+      setError(true);
+      return;
+    }
+
     setSubmitting(true);
     setError(false);
 
-    const { error: insertError } = await supabase.from("consentimientos").insert({
-      negocio_id: null,
-      acepto_terminos: true,
-      acepto_privacidad: true,
-      acepto_cookies: true,
-      user_agent: navigator.userAgent,
-    });
+    try {
+      // supabase = createBrowserClient con la anon key (lib/supabase.ts), así
+      // que este insert queda sujeto a RLS igual que cualquier visitante.
+      const { error: insertError } = await supabase.from("consentimientos").insert({
+        negocio_id: null,
+        acepto_terminos: true,
+        acepto_privacidad: true,
+        acepto_cookies: true,
+        user_agent: navigator.userAgent,
+      });
 
-    setSubmitting(false);
-
-    if (insertError) {
+      if (insertError) {
+        console.error("[ConsentBanner] error al insertar en consentimientos:", insertError);
+        setError(true);
+        return;
+      }
+    } catch (err) {
+      console.error("[ConsentBanner] excepción al insertar en consentimientos:", err);
       setError(true);
       return;
+    } finally {
+      setSubmitting(false);
     }
 
     writeConsent("accepted");
