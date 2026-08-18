@@ -37,7 +37,7 @@ export default function MasPage() {
   React.useEffect(() => {
     if (!isSupabaseConfigured) return;
     supabase.auth.getUser().then(({ data }) => {
-      setIsAdmin(data.user?.email === ADMIN_EMAIL);
+      setIsAdmin(data.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase());
     });
   }, []);
 

@@ -29,14 +29,21 @@ export async function requireAdminUser() {
   if (!user) {
     return { user: null, error: "No autenticado", status: 401 as const };
   }
-  if (user.email !== ADMIN_EMAIL) {
+  if (!ADMIN_EMAIL) {
+    console.error("ADMIN_EMAIL missing");
+    return { user: null, error: "Configuración de servidor incompleta: falta ADMIN_EMAIL.", status: 500 as const };
+  }
+  if (user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
     return { user: null, error: "No autorizado", status: 403 as const };
   }
 
   const admin = createSupabaseAdminClient();
   const { data: profile } = await admin.from("profiles").select("role, is_banned").eq("id", user.id).single();
-  if (profile?.role !== "admin" || profile.is_banned) {
+  if (profile?.is_banned) {
     return { user: null, error: "No autorizado", status: 403 as const };
+  }
+  if (profile?.role !== "admin") {
+    return { user: null, error: `No es admin, role actual: ${profile?.role ?? "desconocido"}`, status: 403 as const };
   }
 
   return { user, error: null, status: 200 as const };

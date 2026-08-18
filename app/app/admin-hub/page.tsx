@@ -21,7 +21,7 @@ export default async function AdminHubPage() {
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (profile?.role !== "admin" || user.email !== ADMIN_EMAIL) redirect("/");
+  if (profile?.role !== "admin" || user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) redirect("/");
 
   return <AdminHub />;
 }
