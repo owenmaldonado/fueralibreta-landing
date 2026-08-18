@@ -257,12 +257,14 @@ export interface LimitesFonda {
   menuDia: boolean;
   maxProductos: number | null;
   comandas: boolean;
+  /** Mismo criterio que giroAbarrotes.grafica: básico solo ve el rango Semanal en /app/gastos, Mensual/Anual quedan detrás de BloqueoPlan. */
+  grafica: "semanal" | "anual";
 }
 
 export const LIMITES_FONDA: Record<PlanId, LimitesFonda> = {
-  basico: { variantes: false, mesas: 1, menuDia: false, maxProductos: 100, comandas: false },
-  pro: { variantes: true, mesas: null, menuDia: true, maxProductos: 500, comandas: false },
-  pro_plus: { variantes: true, mesas: null, menuDia: true, maxProductos: null, comandas: true },
+  basico: { variantes: false, mesas: 1, menuDia: false, maxProductos: 100, comandas: false, grafica: "semanal" },
+  pro: { variantes: true, mesas: null, menuDia: true, maxProductos: 500, comandas: false, grafica: "anual" },
+  pro_plus: { variantes: true, mesas: null, menuDia: true, maxProductos: null, comandas: true, grafica: "anual" },
 };
 
 /** Beneficios en texto plano por giro — alimenta las cards de /planes y /planes-bloqueado sin repetir la lista a mano en 3 lugares. */

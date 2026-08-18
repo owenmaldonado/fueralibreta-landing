@@ -358,7 +358,16 @@ export default function GastosPage() {
       )}
 
       <div className="flex flex-col gap-3 px-4 pt-4">
-        <Tabs value={rango} onValueChange={(v) => setRango(v as RangoTiempo)} tabs={RANGO_TABS} />
+        <Tabs
+          value={rango}
+          onValueChange={(v) => setRango(v as RangoTiempo)}
+          tabs={RANGO_TABS}
+          disabledValues={
+            (modulo === "abarrotes" ? plan.giroAbarrotes.grafica : plan.giroFonda.grafica) === "anual"
+              ? undefined
+              : new Set(["mensual", "anual"])
+          }
+        />
         {rango === "anual" && aniosDisponibles.length > 1 && (
           <ChipGroup>
             {aniosDisponibles.map((a) => (
@@ -370,7 +379,7 @@ export default function GastosPage() {
         )}
         <PlanGate feature="graficas">
           <BloqueoPlan
-            activo={!(modulo === "abarrotes" && rango !== "semanal" && plan.giroAbarrotes.grafica !== "anual")}
+            activo={rango === "semanal" || (modulo === "abarrotes" ? plan.giroAbarrotes.grafica : plan.giroFonda.grafica) === "anual"}
             texto="Gráfica mensual y anual disponible en Pro y Pro+"
           >
             {chartTab === "gastos" && (
