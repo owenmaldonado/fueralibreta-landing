@@ -30,6 +30,12 @@ type ProfileRow = { id: string; email: string | null; role: string; is_banned: b
  * .select() en vez de .single() (que truena con 0 o 2+ filas) y, si hay
  * varias filas para el mismo email, se queda con la que ya sea role='admin'
  * en vez de adivinar o reescribir primary keys en caliente.
+ *
+ * Los errores crudos de cada query (errId/errEmail) se loguean aparte del
+ * resultado: si la service_role key está mal (p. ej. "Unregistered API
+ * key" por un formato de key que el cliente de supabase-js no reconoce),
+ * la query falla y data queda null — sin loguear el error ahí se ve
+ * idéntico a "no encontré la fila", que es un bug totalmente distinto.
  */
 export async function requireAdminUser() {
   const supabase = createSupabaseServerClient();
@@ -52,14 +58,21 @@ export async function requireAdminUser() {
 
   const admin = createSupabaseAdminClient();
 
-  const { data: byId } = await admin.from("profiles").select("id, email, role, is_banned").eq("id", user.id);
+  const { data: byId, error: errId } = await admin
+    .from("profiles")
+    .select("id, email, role, is_banned")
+    .eq("id", user.id);
+  if (errId) console.error("Admin check: error consultando profiles por id", errId);
+
   let profile: ProfileRow | null = (byId?.[0] as ProfileRow | undefined) ?? null;
 
   if (!profile) {
-    const { data: byEmail } = await admin
+    const { data: byEmail, error: errEmail } = await admin
       .from("profiles")
       .select("id, email, role, is_banned")
       .ilike("email", actualEmail);
+    if (errEmail) console.error("Admin check: error consultando profiles por email", errEmail);
+
     const rows = (byEmail ?? []) as ProfileRow[];
     const adminRows = rows.filter((r) => r.role === "admin");
 
