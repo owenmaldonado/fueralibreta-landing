@@ -34,6 +34,14 @@ export function ConsentBanner() {
   function aceptar() {
     writeConsent("accepted");
     setVisible(false);
+    // Prueba legal del lado del servidor (IP/user agent) además del
+    // localStorage — best-effort: si falla (sin red, Supabase no
+    // configurado), no bloquea al visitante ni revierte la aceptación.
+    fetch("/api/public/consent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ acepto_terminos: true, acepto_privacidad: true, acepto_cookies: true }),
+    }).catch(() => {});
   }
 
   if (!visible) return null;

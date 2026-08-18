@@ -4,10 +4,13 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, ArrowRight, Check, Loader2, Scissors, ShoppingBasket, UtensilsCrossed, PartyPopper, X } from "lucide-react";
 
+import Link from "next/link";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useSession } from "@/lib/session";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { fetchNegocioByOwner } from "@/lib/data";
@@ -70,6 +73,25 @@ function logCreateError(context: string, err: unknown) {
   });
 }
 
+function TerminosCheckbox({ checked, onCheckedChange }: { checked: boolean; onCheckedChange: (v: boolean) => void }) {
+  return (
+    <label className="mt-4 flex items-start gap-2.5 text-left text-xs text-muted-foreground">
+      <Checkbox checked={checked} onCheckedChange={onCheckedChange} className="mt-0.5" />
+      <span>
+        Acepto{" "}
+        <Link href="/terminos" target="_blank" className="font-medium text-foreground underline underline-offset-2">
+          Términos y Condiciones
+        </Link>{" "}
+        y{" "}
+        <Link href="/aviso-privacidad" target="_blank" className="font-medium text-foreground underline underline-offset-2">
+          Aviso de Privacidad
+        </Link>{" "}
+        <span className="text-muted-foreground/70">[ver]</span>
+      </span>
+    </label>
+  );
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const { claim } = useSession();
@@ -89,6 +111,7 @@ export default function OnboardingPage() {
   const [planElegido, setPlanElegido] = React.useState(false);
   const [nombre, setNombre] = React.useState("");
   const [tipo, setTipo] = React.useState<BusinessType | null>(null);
+  const [aceptaTerminos, setAceptaTerminos] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   // Guardia sincrónica contra doble submit (doble tap, Enter + click casi
@@ -171,12 +194,13 @@ export default function OnboardingPage() {
   // cual — "en blanco" es de actividad (sin citas/pedidos/ventas de ejemplo),
   // no de catálogo.
   async function crearDesdeDemo() {
-    if (!demoTenant || !userId || nombre.trim().length < 2 || creandoRef.current) return;
+    if (!demoTenant || !userId || nombre.trim().length < 2 || !aceptaTerminos || creandoRef.current) return;
     creandoRef.current = true;
     setCreating(true);
     setError(null);
     try {
       const tenant = tenantFromDemo(demoTenant, { nombre: nombre.trim(), telefono: "" });
+      tenant.business.acceptedTermsAt = new Date().toISOString();
       await claim(tenant, userId);
       await marcarPlanPro(userId);
       clearPlanElegido();
@@ -193,12 +217,13 @@ export default function OnboardingPage() {
   // hace falta preguntar el tipo de negocio, porque no hay otra fuente. El
   // dueño ya se sacó del perfil de Google — no se vuelve a preguntar.
   async function createBusinessAndGo() {
-    if (!tipo || !userId || nombre.trim().length < 2 || creandoRef.current) return;
+    if (!tipo || !userId || nombre.trim().length < 2 || !aceptaTerminos || creandoRef.current) return;
     creandoRef.current = true;
     setCreating(true);
     setError(null);
     try {
       const tenant = createEmptyTenant({ dueno, nombre: nombre.trim(), telefono: "", tipo });
+      tenant.business.acceptedTermsAt = new Date().toISOString();
       await claim(tenant, userId);
       await marcarPlanPro(userId);
       clearPlanElegido();
@@ -288,7 +313,14 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            <Button size="lg" className="mt-6 w-full" onClick={crearDesdeDemo} disabled={nombre.trim().length < 2}>
+            <TerminosCheckbox checked={aceptaTerminos} onCheckedChange={setAceptaTerminos} />
+
+            <Button
+              size="lg"
+              className="mt-4 w-full"
+              onClick={crearDesdeDemo}
+              disabled={nombre.trim().length < 2 || !aceptaTerminos}
+            >
               Iniciar mi prueba de 7 días — $499/mes
             </Button>
           </div>
@@ -342,11 +374,13 @@ export default function OnboardingPage() {
             </div>
           )}
 
+          <TerminosCheckbox checked={aceptaTerminos} onCheckedChange={setAceptaTerminos} />
+
           <Button
             size="lg"
-            className="mt-6 w-full"
+            className="mt-4 w-full"
             onClick={createBusinessAndGo}
-            disabled={!tipo || nombre.trim().length < 2}
+            disabled={!tipo || nombre.trim().length < 2 || !aceptaTerminos}
           >
             Iniciar mi prueba de 7 días — $499/mes
             <ArrowRight className="h-4 w-4" />

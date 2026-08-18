@@ -60,6 +60,7 @@ export function businessFromRow(row: Row): Business {
     precioCustom: row.precio_custom != null ? Number(row.precio_custom) : null,
     esFundador: (row.es_fundador as boolean) ?? false,
     diasRecordatorio: row.dias_recordatorio != null ? Number(row.dias_recordatorio) : 28,
+    acceptedTermsAt: (row.accepted_terms_at as string) ?? undefined,
   };
 }
 
@@ -78,6 +79,7 @@ function businessToRow(b: Business): Row {
     trial_fin: b.trial_fin,
     demo: b.demo ?? false,
     app_slug: b.appSlug,
+    accepted_terms_at: b.acceptedTermsAt ?? null,
   };
 }
 

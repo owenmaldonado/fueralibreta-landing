@@ -70,6 +70,7 @@ export interface AdminOverview {
   profiles: AdminProfile[];
   negocios: AdminNegocio[];
   leads: AdminLead[];
+  consentimientos: AdminConsentimiento[];
   metrics: AdminMetrics;
   /** Movimientos (citas+pedidos+ventas) de los negocios del propio admin — para que "Excluirme" pueda restarlos de Libretas digitalizadas sin otra vuelta a Supabase. */
   movimientosPropios: number;
@@ -86,9 +87,13 @@ export async function fetchAdminOverview(currentUserId: string): Promise<AdminOv
   for (const r of [profilesRes, negociosRes, citasRes, pedidosRes, ventasRes]) {
     if (r.error) throw r.error;
   }
-  // No tumba el panel completo si la migración de `leads` (PR #3) todavía no
-  // corrió en este proyecto de Supabase: el tab de Leads simplemente queda en 0.
-  const leads = await fetchLeads().catch(() => []);
+  // No tumba el panel completo si la migración de `leads` (PR #3) o de
+  // `consentimientos` todavía no corrió en este proyecto de Supabase: esos
+  // tabs simplemente quedan en 0.
+  const [leads, consentimientos] = await Promise.all([
+    fetchLeads().catch(() => []),
+    fetchConsentimientos().catch(() => []),
+  ]);
 
   const profilesById = new Map((profilesRes.data ?? []).map((p) => [p.id as string, p]));
   const negociosByOwner = new Map<string, number>();
@@ -149,6 +154,7 @@ export async function fetchAdminOverview(currentUserId: string): Promise<AdminOv
     profiles,
     negocios,
     leads,
+    consentimientos,
     metrics: computeAdminMetrics(profiles, negocios, totalMovimientos),
     movimientosPropios,
   };
@@ -532,12 +538,43 @@ export async function updateLeadEstado(leadId: string, estado: LeadEstado): Prom
 }
 
 // ============================================================================
-// Cumplimiento LFPDPPP (aviso de privacidad / derechos ARCO) — placeholder.
-// El negocio de demo/piloto todavía no tiene un registro de consentimientos
-// por cliente ni un flujo de solicitud ARCO; esto documenta el contrato que
-// va a necesitar ese endpoint real (Ver consentimientos / Borrar datos ARCO
-// en el modal de negocio) sin fingir que ya existe.
+// Consentimientos (tab "Consentimientos" de /admin) — prueba legal de que un
+// visitante aceptó el banner de cookies (IP + user agent, ver
+// /api/public/consent y components/ConsentBanner.tsx), para poder
+// acreditarlo ante Profeco/INAI si hace falta.
 // ============================================================================
+
+export interface AdminConsentimiento {
+  id: string;
+  negocioId: string | null;
+  negocioNombre: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  aceptoTerminos: boolean;
+  aceptoPrivacidad: boolean;
+  aceptoCookies: boolean;
+  createdAt: string;
+}
+
+export async function fetchConsentimientos(): Promise<AdminConsentimiento[]> {
+  const { data, error } = await supabase
+    .from("consentimientos")
+    .select("*, negocios(nombre)")
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) throw error;
+  return (data ?? []).map((c) => ({
+    id: c.id,
+    negocioId: c.negocio_id,
+    negocioNombre: (c.negocios as { nombre?: string } | null)?.nombre ?? null,
+    ip: c.ip,
+    userAgent: c.user_agent,
+    aceptoTerminos: c.acepto_terminos,
+    aceptoPrivacidad: c.acepto_privacidad,
+    aceptoCookies: c.acepto_cookies,
+    createdAt: c.created_at,
+  }));
+}
 
 export async function prepareArcoRequest(_negocioId: string): Promise<{ ready: false; message: string }> {
   return {

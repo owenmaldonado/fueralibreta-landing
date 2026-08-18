@@ -65,6 +65,8 @@ export interface Business {
   esFundador: boolean;
   /** Días sin venir a partir de los cuales Clientes marca a alguien para recordatorio (badge + mensaje de WhatsApp distinto). Configurable en Configuración > General; 28 si no se ha configurado. */
   diasRecordatorio?: number;
+  /** ISO datetime de cuándo el dueño aceptó el checkbox de Términos/Aviso de Privacidad en /onboarding. */
+  acceptedTermsAt?: string;
 }
 
 // ---------- Barbería ----------
