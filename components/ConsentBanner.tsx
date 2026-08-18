@@ -7,6 +7,28 @@ import { usePathname } from "next/navigation";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { readConsent, writeConsent } from "@/lib/consent";
 
+const isDev = process.env.NODE_ENV !== "production";
+
+async function insertConsentimiento(userAgent: string) {
+  if (!isSupabaseConfigured) {
+    return { error: new Error("Supabase no configurado (faltan NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY).") };
+  }
+  try {
+    // supabase = createBrowserClient con la anon key (lib/supabase.ts), así
+    // que este insert queda sujeto a RLS igual que cualquier visitante.
+    const { error } = await supabase.from("consentimientos").insert({
+      negocio_id: null,
+      acepto_terminos: true,
+      acepto_privacidad: true,
+      acepto_cookies: true,
+      user_agent: userAgent,
+    });
+    return { error };
+  } catch (err) {
+    return { error: err };
+  }
+}
+
 /**
  * Modal de cookies obligatorio, pero SOLO en la página principal ("/"): ahí
  * bloquea toda la pantalla (overlay + scroll del body) hasta que el usuario
@@ -30,8 +52,15 @@ export function ConsentBanner() {
   const [error, setError] = React.useState(false);
 
   React.useEffect(() => {
-    setVisible(isHome && readConsent() !== "accepted");
-  }, [isHome]);
+    const consent = readConsent();
+    const shouldShow = isHome && consent !== "accepted";
+    if (isDev) {
+      // Diagnóstico: si esto no se ve en consola al cargar "/", el efecto ni
+      // siquiera está corriendo (bundle viejo servido por el SW o similar).
+      console.log("[ConsentBanner] evaluando visibilidad:", { pathname, isHome, consent, shouldShow });
+    }
+    setVisible(shouldShow);
+  }, [isHome, pathname]);
 
   React.useEffect(() => {
     document.body.style.overflow = visible ? "hidden" : "";
@@ -41,87 +70,88 @@ export function ConsentBanner() {
   }, [visible]);
 
   async function aceptar() {
-    if (!isSupabaseConfigured) {
-      // El cliente cae a una URL placeholder si faltan las env vars, así que
-      // el insert de abajo tronaría igual pero con un error de red confuso.
-      console.error(
-        "[ConsentBanner] Supabase no está configurado (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY faltantes)."
-      );
-      setError(true);
-      return;
-    }
-
     setSubmitting(true);
     setError(false);
 
-    try {
-      // supabase = createBrowserClient con la anon key (lib/supabase.ts), así
-      // que este insert queda sujeto a RLS igual que cualquier visitante.
-      const { error: insertError } = await supabase.from("consentimientos").insert({
-        negocio_id: null,
-        acepto_terminos: true,
-        acepto_privacidad: true,
-        acepto_cookies: true,
-        user_agent: navigator.userAgent,
-      });
+    const { error: insertError } = await insertConsentimiento(navigator.userAgent);
 
-      if (insertError) {
-        console.error("[ConsentBanner] error al insertar en consentimientos:", insertError);
-        setError(true);
-        return;
-      }
-    } catch (err) {
-      console.error("[ConsentBanner] excepción al insertar en consentimientos:", err);
+    setSubmitting(false);
+
+    if (insertError) {
+      console.error("[ConsentBanner] error al insertar en consentimientos:", insertError);
       setError(true);
       return;
-    } finally {
-      setSubmitting(false);
     }
 
     writeConsent("accepted");
     setVisible(false);
   }
 
-  if (!visible) return null;
+  // TEMPORAL — quitar cuando se confirme que el insert real funciona. Corre
+  // el mismo insert que "Aceptar", pero sin depender de que el banner esté
+  // visible, para aislar si el problema es RLS/esquema o el banner mismo.
+  async function probarInsertManual() {
+    console.log("[ConsentBanner] TEST manual: insertando en consentimientos...");
+    const { error: insertError } = await insertConsentimiento(`TEST MANUAL - ${navigator.userAgent}`);
+    if (insertError) {
+      console.error("[ConsentBanner] TEST manual FALLÓ:", insertError);
+    } else {
+      console.log("[ConsentBanner] TEST manual OK: revisa la tabla consentimientos en Supabase.");
+    }
+  }
 
   return (
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="consent-banner-title"
-    >
-      <div className="w-[90%] max-w-md rounded-2xl bg-white p-8 text-center text-black shadow-2xl">
-        <h2 id="consent-banner-title" className="text-2xl font-bold tracking-tight">
-          🍪 Usamos Cookies
-        </h2>
-        <p className="mt-4 text-sm leading-relaxed text-black/80">
-          Usamos cookies necesarias para que Fuera Libreta funcione. Al
-          continuar aceptas nuestro{" "}
-          <Link href="/aviso-privacidad" className="font-medium text-amber-700 underline underline-offset-2">
-            Aviso de Privacidad
-          </Link>{" "}
-          y{" "}
-          <Link href="/terminos" className="font-medium text-amber-700 underline underline-offset-2">
-            Términos
-          </Link>
-          .
-        </p>
-
+    <>
+      {isDev ? (
         <button
           type="button"
-          onClick={aceptar}
-          disabled={submitting}
-          className="mt-6 h-12 w-full rounded-md bg-black text-base font-bold text-white transition-colors hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={probarInsertManual}
+          className="fixed bottom-4 right-4 z-[10000] rounded-md bg-red-600 px-3 py-2 text-xs font-bold text-white shadow-lg hover:bg-red-700"
         >
-          {submitting ? "Guardando..." : "Aceptar y continuar"}
+          TEST: insertar consentimiento
         </button>
-        {error ? (
-          <p className="mt-3 text-xs font-medium text-red-600">
-            No se pudo guardar tu consentimiento. Intenta de nuevo.
-          </p>
-        ) : null}
-      </div>
-    </div>
+      ) : null}
+
+      {visible ? (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="consent-banner-title"
+        >
+          <div className="w-[90%] max-w-md rounded-2xl bg-white p-8 text-center text-black shadow-2xl">
+            <h2 id="consent-banner-title" className="text-2xl font-bold tracking-tight">
+              🍪 Usamos Cookies
+            </h2>
+            <p className="mt-4 text-sm leading-relaxed text-black/80">
+              Usamos cookies necesarias para que Fuera Libreta funcione. Al
+              continuar aceptas nuestro{" "}
+              <Link href="/aviso-privacidad" className="font-medium text-amber-700 underline underline-offset-2">
+                Aviso de Privacidad
+              </Link>{" "}
+              y{" "}
+              <Link href="/terminos" className="font-medium text-amber-700 underline underline-offset-2">
+                Términos
+              </Link>
+              .
+            </p>
+
+            <button
+              type="button"
+              onClick={aceptar}
+              disabled={submitting}
+              className="mt-6 h-12 w-full rounded-md bg-black text-base font-bold text-white transition-colors hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submitting ? "Guardando..." : "Aceptar y continuar"}
+            </button>
+            {error ? (
+              <p className="mt-3 text-xs font-medium text-red-600">
+                No se pudo guardar tu consentimiento. Intenta de nuevo.
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
