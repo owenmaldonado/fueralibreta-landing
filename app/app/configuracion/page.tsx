@@ -13,7 +13,9 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { EmptyState } from "@/components/dashboards/empty-state";
+import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import { useSession } from "@/lib/session";
+import { usePlan } from "@/lib/planes";
 import { formatMoney, todayISO, toISODate, uid } from "@/lib/mock";
 import type { Business, HorarioDia } from "@/lib/types";
 
@@ -32,6 +34,7 @@ const ORDEN_DIAS: HorarioDia["dia"][] = ["Lun", "Mar", "Mié", "Jue", "Vie", "S�
 
 export default function ConfiguracionPage() {
   const { session, ready, update } = useSession();
+  const plan = usePlan();
   const [tab, setTab] = React.useState("horario");
   const [addExcepcion, setAddExcepcion] = React.useState(false);
   const [addServicio, setAddServicio] = React.useState(false);
@@ -48,6 +51,8 @@ export default function ConfiguracionPage() {
   if (!ready || !session) return <LoadingBlock />;
 
   const data = session.barberia!;
+  const maxServicios = plan.giroBarberia.maxServicios;
+  const tocoLimiteServicios = maxServicios !== null && data.servicios.length >= maxServicios;
 
   function actualizarDia(dia: HorarioDia["dia"], cambios: Partial<HorarioDia>) {
     update((prev) => {
@@ -115,35 +120,48 @@ export default function ConfiguracionPage() {
       )}
 
       {tab === "excepciones" && (
-        <div className="flex flex-col gap-2 px-4 pb-6">
-          <Button size="sm" variant="outline" className="self-start" onClick={() => setAddExcepcion(true)}>
-            <Plus className="h-4 w-4" /> Agregar excepción
-          </Button>
-          {data.excepciones.length === 0 ? (
-            <EmptyState texto="Sin días especiales configurados" />
-          ) : (
-            data.excepciones.map((e) => (
-              <div key={e.id} className="flex items-center justify-between rounded-xl border border-border bg-card p-3">
-                <div>
-                  <p className="text-sm font-medium">{e.etiqueta}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {e.fecha} · {e.cerrado ? "Cerrado" : `Cierra a las ${e.horaEspecialFin}`}
-                  </p>
-                </div>
-                <button onClick={() => borrarExcepcion(e.id)} className="text-muted-foreground hover:text-destructive">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            ))
-          )}
+        <div className="px-4 pb-6">
+          <BloqueoPlan activo={plan.giroBarberia.excepciones} texto="Días especiales (vacaciones, cierres) disponible en Pro y Pro+">
+            <div className="flex flex-col gap-2">
+              <Button size="sm" variant="outline" className="self-start" onClick={() => setAddExcepcion(true)}>
+                <Plus className="h-4 w-4" /> Agregar excepción
+              </Button>
+              {data.excepciones.length === 0 ? (
+                <EmptyState texto="Sin días especiales configurados" />
+              ) : (
+                data.excepciones.map((e) => (
+                  <div key={e.id} className="flex items-center justify-between rounded-xl border border-border bg-card p-3">
+                    <div>
+                      <p className="text-sm font-medium">{e.etiqueta}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {e.fecha} · {e.cerrado ? "Cerrado" : `Cierra a las ${e.horaEspecialFin}`}
+                      </p>
+                    </div>
+                    <button onClick={() => borrarExcepcion(e.id)} className="text-muted-foreground hover:text-destructive">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </BloqueoPlan>
         </div>
       )}
 
       {tab === "servicios" && (
         <div className="flex flex-col gap-2 px-4 pb-6">
-          <Button size="sm" variant="outline" className="self-start" onClick={() => setAddServicio(true)}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="self-start"
+            disabled={tocoLimiteServicios}
+            onClick={() => setAddServicio(true)}
+          >
             <Plus className="h-4 w-4" /> Agregar servicio
           </Button>
+          {tocoLimiteServicios && (
+            <BloqueoPlan activo={false} compacto texto={`Llegaste al límite de ${plan.giroBarberia.maxServicios} servicios de tu plan ${plan.label}`} />
+          )}
           {data.servicios.map((s) => (
             <div key={s.id} className="flex items-center justify-between rounded-xl border border-border bg-card p-3">
               <div>

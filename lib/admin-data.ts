@@ -388,8 +388,14 @@ export async function updateNegocioPlan(negocioId: string, plan: PlanId): Promis
   await patchNegocioAdminFields(negocioId, { plan });
 }
 
-/** Extiende el trial de un negocio `dias` días a partir de hoy. */
-export async function updateNegocioTrial(negocioId: string, dias: 7 | 14): Promise<void> {
+/**
+ * Extiende trial_fin `dias` días a partir de hoy. No hay una columna
+ * separada para "hasta cuándo pagó" (plan_expires_at) — trial_fin se trata
+ * como "acceso bueno hasta" en general (ver bloqueadoPorTrial en
+ * lib/planes.ts), así que "Activar 30 días" (después de que el negocio
+ * paga por WhatsApp) usa exactamente esta misma función, solo con más días.
+ */
+export async function updateNegocioTrial(negocioId: string, dias: 7 | 14 | 30): Promise<void> {
   await patchNegocioAdminFields(negocioId, { trial_fin: todayISO(dias) });
 }
 

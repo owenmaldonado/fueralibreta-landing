@@ -15,6 +15,36 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 // normal y no localStorage: localStorage no existe aquí.
 const RUTAS_SOLO_DUENO = ["/app/empleados", "/app/configuracion"];
 
+// Mismo set que SEGMENTOS_DE_NEGOCIO en
+// components/app-shell/authenticated-shell.tsx — duplicado a propósito: ese
+// vive en un Client Component, este corre en el edge. Mantenerlos en sync si
+// se agrega una pantalla nueva de negocio (todo lo que NO está aquí es del
+// hub de super-admin, que nunca debe bloquearse por el trial de un negocio).
+const SEGMENTOS_DE_NEGOCIO = new Set([
+  "agenda",
+  "apartados",
+  "caja",
+  "clientes",
+  "configuracion",
+  "empleados",
+  "fiados",
+  "frutas-verdura",
+  "gastos",
+  "historial",
+  "inicio",
+  "inventario",
+  "mas",
+  "menu",
+  "pedidos",
+  "productos",
+]);
+
+function esRutaDeNegocio(pathname: string): boolean {
+  if (pathname === "/app") return true;
+  const segmento = pathname.split("/")[2];
+  return SEGMENTOS_DE_NEGOCIO.has(segmento ?? "");
+}
+
 export async function middleware(req: NextRequest) {
   const url = req.nextUrl;
 
@@ -106,6 +136,30 @@ export async function middleware(req: NextRequest) {
       const { data: profile } = await supabase.from("profiles").select("is_banned").eq("id", user.id).maybeSingle();
       if (profile?.is_banned) {
         return NextResponse.redirect(new URL("/cuenta-suspendida", url.origin));
+      }
+    }
+
+    // Bloqueo por trial/plan vencido: no hay una columna separada para
+    // "cuándo vence el plan de pago" (plan_expires_at) — trial_fin se trata
+    // como "acceso bueno hasta" en general (ver bloqueadoPorTrial en
+    // lib/planes.ts), así que activar un plan de pago desde /admin también
+    // reempuja esta misma fecha ("Activar 30 días"). Solo aplica a
+    // pantallas de negocio (esRutaDeNegocio) — nunca al hub de super-admin
+    // ni a /admin mismo, para que el propio admin no se bloquee a sí mismo
+    // por el trial de un negocio de prueba que tenga a su nombre.
+    if (user && esRutaDeNegocio(url.pathname)) {
+      const { data: negocio } = await supabase
+        .from("negocios")
+        .select("trial_fin,is_active,es_fundador")
+        .eq("owner_id", user.id)
+        .maybeSingle();
+      if (negocio && negocio.is_active && !negocio.es_fundador) {
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        const trialFin = new Date(`${negocio.trial_fin}T00:00:00`);
+        if (trialFin.getTime() < hoy.getTime()) {
+          return NextResponse.redirect(new URL("/planes-bloqueado", url.origin));
+        }
       }
     }
   }

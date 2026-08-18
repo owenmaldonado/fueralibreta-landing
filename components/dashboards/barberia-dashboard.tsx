@@ -12,12 +12,14 @@ import { daysSince, formatHora12, formatMoney, statsVisitasCliente, todayISO, wa
 import { camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import { avisosIgnoradosHoy, ignorarAvisoHoy } from "@/lib/dismissed-alerts";
+import { usePlan } from "@/lib/planes";
 import type { Appointment, TenantData, SessionUpdater } from "@/lib/types";
 
 export function BarberiaDashboard({ session, update }: { session: TenantData; update: SessionUpdater }) {
   const data = session.barberia!;
   const business = session.business;
   const hoy = todayISO(0);
+  const plan = usePlan();
   const [cobrando, setCobrando] = React.useState<Appointment | null>(null);
   const [cerrandoTurno, setCerrandoTurno] = React.useState(false);
   const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy(business.id));
@@ -31,13 +33,18 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
     .filter((c) => c.fecha === hoy && c.estado === "pendiente")
     .sort((a, b) => a.hora.localeCompare(b.hora));
 
-  const clientesAlerta = data.clientes
-    .map((c) => ({ ...c, ...statsVisitasCliente(data.citas, c.id) }))
-    .filter((c) => {
-      const d = daysSince(c.ultimaVisita);
-      return d !== null && d >= 28;
-    })
-    .filter((c) => !ignorados.has(`alerta-${c.id}`));
+  // Aviso de "cliente sin venir 28 días" es parte de la misma feature
+  // msg28 (ver lib/planes.ts) que el badge/mensaje de Clientes — básico no
+  // lo ve en ningún lado, no solo en la lista.
+  const clientesAlerta = plan.giroBarberia.msg28
+    ? data.clientes
+        .map((c) => ({ ...c, ...statsVisitasCliente(data.citas, c.id) }))
+        .filter((c) => {
+          const d = daysSince(c.ultimaVisita);
+          return d !== null && d >= 28;
+        })
+        .filter((c) => !ignorados.has(`alerta-${c.id}`))
+    : [];
 
   const hoyMMDD = new Date().toISOString().slice(5, 10);
   const cumples = data.clientes.filter((c) => c.cumpleanos === hoyMMDD);

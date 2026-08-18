@@ -18,7 +18,7 @@ interface UsersTableProps {
   onViewDetail: (userId: string) => void;
   /** Cambia el plan (básico/pro/pro_plus) del negocio de este usuario — no profiles.plan, ver lib/planes.ts. */
   onSetPlan: (profile: AdminProfile, plan: PlanId) => void;
-  onSetTrial: (profile: AdminProfile, dias: 7 | 14) => void;
+  onSetTrial: (profile: AdminProfile, dias: 7 | 14 | 30) => void;
   onSetPrecioCustom: (profile: AdminProfile) => void;
   onToggleFundador: (profile: AdminProfile) => void;
   onToggleBanned: (profile: AdminProfile) => void;

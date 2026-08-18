@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Search, MessageCircle, Trash2 } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
@@ -14,6 +15,7 @@ import { Sheet, SheetHeader } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { useSession } from "@/lib/session";
+import { usePlan } from "@/lib/planes";
 import { daysSince, formatMoney, mensajeRecordatorioInactivo, statsVisitasCliente, waLink } from "@/lib/mock";
 import type { BarberClient } from "@/lib/types";
 
@@ -21,6 +23,7 @@ const DIAS_RECORDATORIO_DEFAULT = 28;
 
 export default function ClientesPage() {
   const { session, ready, update } = useSession();
+  const plan = usePlan();
   const [q, setQ] = React.useState("");
   const [seleccionado, setSeleccionado] = React.useState<BarberClient | null>(null);
 
@@ -28,6 +31,8 @@ export default function ClientesPage() {
 
   const data = session.barberia!;
   const diasRecordatorio = session.business.diasRecordatorio ?? DIAS_RECORDATORIO_DEFAULT;
+  const maxClientes = plan.giroBarberia.maxClientes;
+  const tocoLimiteClientes = maxClientes !== null && data.clientes.length >= maxClientes;
   const filtrados = data.clientes
     .filter((c) => c.nombre.toLowerCase().includes(q.toLowerCase()) || c.telefono.includes(q))
     .map((c) => ({ ...c, ...statsVisitasCliente(data.citas, c.id) }))
@@ -46,13 +51,21 @@ export default function ClientesPage() {
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar cliente..." className="pl-9" />
         </div>
       </div>
+      {tocoLimiteClientes && (
+        <div className="mx-4 mb-3 rounded-xl border border-dashed border-border bg-card px-4 py-3 text-center">
+          <p className="text-sm font-medium">Llegaste al límite de {maxClientes} clientes de tu plan {plan.label}</p>
+          <Link href="/planes" className="mt-0.5 inline-block text-xs text-primary hover:underline">
+            Sube de plan para agregar más
+          </Link>
+        </div>
+      )}
       <div className="flex flex-col gap-2 px-4 pb-6">
         {filtrados.length === 0 ? (
           <EmptyState texto="Sin clientes todavía" />
         ) : (
           filtrados.map((c) => {
             const dias = daysSince(c.ultimaVisita);
-            const alerta = dias !== null && dias >= diasRecordatorio;
+            const alerta = plan.giroBarberia.msg28 && dias !== null && dias >= diasRecordatorio;
             const mensajeWa = alerta ? mensajeRecordatorioInactivo(c.nombre) : `Hola ${c.nombre}, ¿cómo estás?`;
             return (
               <button
@@ -96,6 +109,7 @@ export default function ClientesPage() {
             cliente={seleccionado}
             citas={data.citas.filter((c) => c.clienteId === seleccionado.id)}
             diasRecordatorio={diasRecordatorio}
+            msg28={plan.giroBarberia.msg28}
             onClose={() => setSeleccionado(null)}
             update={update}
           />
@@ -109,17 +123,19 @@ function ClienteDetalle({
   cliente,
   citas,
   diasRecordatorio,
+  msg28,
   onClose,
   update,
 }: {
   cliente: BarberClient;
   citas: { id: string; fecha: string; hora: string; servicioNombre: string; precio: number }[];
   diasRecordatorio: number;
+  msg28: boolean;
   onClose: () => void;
   update: ReturnType<typeof useSession>["update"];
 }) {
   const dias = daysSince(cliente.ultimaVisita);
-  const alerta = dias !== null && dias >= diasRecordatorio;
+  const alerta = msg28 && dias !== null && dias >= diasRecordatorio;
   const mensajeWa = alerta ? mensajeRecordatorioInactivo(cliente.nombre) : `Hola ${cliente.nombre}, ¿cómo estás?`;
   const [nombre, setNombre] = React.useState(cliente.nombre);
   const [telefono, setTelefono] = React.useState(cliente.telefono);

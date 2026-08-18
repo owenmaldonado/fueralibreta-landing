@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { AdminHub } from "@/components/admin/admin-hub";
 import { createSupabaseServerClient, isSupabaseConfigured } from "@/lib/supabase-server";
+import { ADMIN_EMAIL } from "@/lib/admin-data";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export default async function AdminHubPage() {
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (profile?.role !== "admin") redirect("/");
+  if (profile?.role !== "admin" || user.email !== ADMIN_EMAIL) redirect("/");
 
   return <AdminHub />;
 }

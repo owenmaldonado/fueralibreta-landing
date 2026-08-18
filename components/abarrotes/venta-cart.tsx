@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { ArrowLeft, X, ScanLine, Plus, Minus, Trash2, Zap, ShoppingCart } from "lucide-react";
@@ -416,7 +417,9 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
                 <p className="text-sm font-medium">
                   Llegaste al límite de {plan.limites.max_ventas_mes} ventas este mes de tu plan {plan.label}
                 </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">Sube de plan desde /admin para vender sin límite.</p>
+                <Link href="/planes" className="mt-0.5 inline-block text-xs text-primary hover:underline">
+                  Sube de plan para vender sin límite
+                </Link>
               </div>
             )}
             <div className="mb-3 flex items-center justify-between rounded-lg bg-secondary px-4 py-3">

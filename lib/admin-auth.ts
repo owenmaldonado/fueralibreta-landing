@@ -2,6 +2,7 @@ import "server-only";
 
 import { createSupabaseServerClient } from "./supabase-server";
 import { createSupabaseAdminClient } from "./supabase-admin";
+import { ADMIN_EMAIL } from "./admin-data";
 
 /**
  * Verifica en el servidor (nunca confíes en el cliente) que quien llama es
@@ -11,6 +12,13 @@ import { createSupabaseAdminClient } from "./supabase-admin";
  * policies "*_admin_all" estén bien puestas para decidir quién entra. De
  * paso bloquea aquí mismo a un admin baneado (is_banned), que antes podía
  * seguir usando las rutas /api/admin/* aunque ya no pudiera ver el panel.
+ *
+ * El check de ADMIN_EMAIL es un segundo candado explícito ("solo
+ * owenxmaldonado100@gmail.com") además de profiles.role — si algún día otra
+ * cuenta terminara con role='admin' por error (o un admin cambia su propio
+ * email en Supabase Auth sin querer perder el acceso), esto la sigue
+ * bloqueando aquí, en el único lugar que de verdad importa: donde se
+ * ejecutan los cambios con service_role.
  */
 export async function requireAdminUser() {
   const supabase = createSupabaseServerClient();
@@ -20,6 +28,9 @@ export async function requireAdminUser() {
 
   if (!user) {
     return { user: null, error: "No autenticado", status: 401 as const };
+  }
+  if (user.email !== ADMIN_EMAIL) {
+    return { user: null, error: "No autorizado", status: 403 as const };
   }
 
   const admin = createSupabaseAdminClient();

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Plus, Pencil, Trash2, RefreshCw, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -117,7 +118,15 @@ export default function EmpleadosPage() {
 
   const activos = (empleados ?? []).filter((e) => e.activo);
   const inactivos = (empleados ?? []).filter((e) => !e.activo);
-  const limite = plan.limites.max_empleados;
+  // maxCuentas es distinto por giro (ver lib/planes.ts) — fondita no tiene
+  // un número propio en la tabla que dio el negocio, así que cae al límite
+  // genérico plano (plan.limites.max_empleados) como antes.
+  const limite =
+    session.business.tipo === "abarrotes"
+      ? plan.giroAbarrotes.maxCuentas
+      : session.business.tipo === "barberia"
+        ? plan.giroBarberia.maxCuentas
+        : plan.limites.max_empleados;
   const limiteAlcanzado = limite !== null && activos.length >= limite;
 
   async function desactivar(emp: Empleado, activo: boolean) {
@@ -158,8 +167,11 @@ export default function EmpleadosPage() {
 
         {limiteAlcanzado && (
           <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm text-foreground">
-            Tu plan {plan.label} permite hasta {limite} {limite === 1 ? "persona" : "personas"} en negocio_empleados
-            (contando al dueño). Sube de plan para agregar más.
+            Tu plan {plan.label} permite hasta {limite} {limite === 1 ? "cuenta" : "cuentas"} (contando al dueño).{" "}
+            <Link href="/planes" className="font-medium text-primary hover:underline">
+              Sube de plan
+            </Link>{" "}
+            para agregar más.
           </div>
         )}
 

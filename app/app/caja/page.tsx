@@ -17,6 +17,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useSession } from "@/lib/session";
+import { usePlan } from "@/lib/planes";
 import { formatMoney, uid } from "@/lib/mock";
 import { aggregateTwoByRange, type RangoTiempo } from "@/lib/chart-buckets";
 import { camposEmpleado, permisosActuales } from "@/lib/empleados";
@@ -35,6 +36,7 @@ const RANGO_TABS = [
 
 export default function CajaPage() {
   const { session, ready, update } = useSession();
+  const plan = usePlan();
   const [addOpen, setAddOpen] = React.useState(false);
   const [editando, setEditando] = React.useState<CajaEntry | null>(null);
   const [borrando, setBorrando] = React.useState<CajaEntry | null>(null);
@@ -120,10 +122,17 @@ export default function CajaPage() {
         <PlanGate feature="graficas">
           <TrendBarChart
             data={serie.map((s) => ({ label: s.label, ingreso: s.a, gasto: s.b }))}
-            bars={[
-              { key: "ingreso", name: "Ingresos", color: "hsl(168 55% 45%)" },
-              { key: "gasto", name: "Gastos", color: "hsl(4 78% 58%)" },
-            ]}
+            // grafica "ventas" (básico) solo ve la barra de ingresos — la de
+            // gastos, junto a Ganancia neta/Efectivo/Transferencia arriba,
+            // es la vista "completa" de Pro/Pro+ (ver LIMITES_BARBERIA).
+            bars={
+              plan.giroBarberia.grafica === "completa"
+                ? [
+                    { key: "ingreso", name: "Ingresos", color: "hsl(168 55% 45%)" },
+                    { key: "gasto", name: "Gastos", color: "hsl(4 78% 58%)" },
+                  ]
+                : [{ key: "ingreso", name: "Ingresos", color: "hsl(168 55% 45%)" }]
+            }
             emptyText="Sin movimientos en este periodo"
           />
         </PlanGate>

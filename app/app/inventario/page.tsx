@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { Search, ScanLine, Plus, Pencil, Trash2 } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
@@ -45,7 +46,8 @@ export default function InventarioPage() {
   const filtrados = productosInventario.filter(
     (p) => p.nombre.toLowerCase().includes(q.toLowerCase()) || p.codigo.includes(q)
   );
-  const tocoLimiteProductos = plan.limiteAlcanzado("max_productos", productosInventario.length);
+  const maxProductos = plan.giroAbarrotes.maxProductos;
+  const tocoLimiteProductos = maxProductos !== null && productosInventario.length >= maxProductos;
 
   function handleScan(codigo: string) {
     setScanning(false);
@@ -113,8 +115,10 @@ export default function InventarioPage() {
 
       {tocoLimiteProductos && (
         <div className="mx-4 mb-3 rounded-xl border border-dashed border-border bg-card px-4 py-3 text-center">
-          <p className="text-sm font-medium">Llegaste al límite de {plan.limites.max_productos} productos de tu plan {plan.label}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">Sube de plan desde /admin para agregar más.</p>
+          <p className="text-sm font-medium">Llegaste al límite de {maxProductos} productos de tu plan {plan.label}</p>
+          <Link href="/planes" className="mt-0.5 inline-block text-xs text-primary hover:underline">
+            Sube de plan para agregar más
+          </Link>
         </div>
       )}
 
@@ -409,7 +413,13 @@ function ProductoForm({
         )}
       </div>
       {bloqueadoPorLimite && (
-        <p className="text-xs text-destructive">Llegaste al límite de productos de tu plan — sube de plan desde /admin para agregar más.</p>
+        <p className="text-xs text-destructive">
+          Llegaste al límite de productos de tu plan —{" "}
+          <Link href="/planes" className="underline">
+            sube de plan
+          </Link>{" "}
+          para agregar más.
+        </p>
       )}
       <SheetFooter>
         <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>

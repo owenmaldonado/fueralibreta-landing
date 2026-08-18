@@ -1,14 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Copy, Check } from "lucide-react";
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { AdminActionsMenu } from "./admin-actions-menu";
 import { waLink } from "@/lib/mock";
 import type { AdminNegocio, AdminProfile } from "@/lib/admin-data";
-import { PLAN_LABELS, type PlanId } from "@/lib/planes";
+import { PLAN_LABELS, formatTrial, estadoNegocio, type PlanId, type EstadoNegocio } from "@/lib/planes";
 
 const TIPO_LABEL: Record<AdminNegocio["tipo"], string> = {
   barberia: "Barbería",
@@ -22,6 +22,33 @@ const PLAN_BADGE_VARIANT: Record<PlanId, "outline" | "default" | "ledger"> = {
   pro_plus: "ledger",
 };
 
+const ESTADO_DOT: Record<EstadoNegocio, string> = {
+  activo: "bg-ledger",
+  por_vencer: "bg-primary",
+  bloqueado: "bg-destructive",
+};
+
+/** Primeros 8 caracteres del UUID + botón para copiar el ID completo — para pegarlo en el buscador o compartirlo sin tener que seleccionar el UUID entero a mano. */
+function IdCorto({ id }: { id: string }) {
+  const [copiado, setCopiado] = React.useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard.writeText(id).then(() => {
+          setCopiado(true);
+          setTimeout(() => setCopiado(false), 1200);
+        });
+      }}
+      className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground hover:text-foreground"
+      title={id}
+    >
+      {id.slice(0, 8)}
+      {copiado ? <Check className="h-3 w-3 text-ledger" /> : <Copy className="h-3 w-3" />}
+    </button>
+  );
+}
+
 interface OrgsTableProps {
   negocios: AdminNegocio[];
   profiles: AdminProfile[];
@@ -29,7 +56,7 @@ interface OrgsTableProps {
   onViewDetail: (negocio: AdminNegocio) => void;
   onImpersonate: (profile: AdminProfile) => void;
   onSetPlan: (negocio: AdminNegocio, plan: PlanId) => void;
-  onSetTrial: (negocio: AdminNegocio, dias: 7 | 14) => void;
+  onSetTrial: (negocio: AdminNegocio, dias: 7 | 14 | 30) => void;
   onSetPrecioCustom: (negocio: AdminNegocio) => void;
   onToggleFundador: (negocio: AdminNegocio) => void;
   onToggleBanned: (profile: AdminProfile) => void;
@@ -65,6 +92,7 @@ export function OrgsTable({
           <TableHead>Miembros</TableHead>
           <TableHead>Creado</TableHead>
           <TableHead>Plan</TableHead>
+          <TableHead>Vence</TableHead>
           <TableHead>Estado</TableHead>
           <TableHead className="text-right">Acciones</TableHead>
         </TableRow>
@@ -79,6 +107,7 @@ export function OrgsTable({
               <TableCell>
                 <p className="max-w-[220px] truncate text-sm font-medium">{n.nombre}</p>
                 <p className="font-mono text-xs text-muted-foreground">{TIPO_LABEL[n.tipo]}</p>
+                <IdCorto id={n.id} />
               </TableCell>
               <TableCell className="max-w-[200px] text-sm text-muted-foreground">
                 <span className="truncate">{n.ownerEmail ?? "—"}</span>
@@ -110,6 +139,12 @@ export function OrgsTable({
                       Fundador
                     </Badge>
                   )}
+                </div>
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center gap-1.5 whitespace-nowrap text-xs">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${ESTADO_DOT[estadoNegocio({ trialFin: n.trialFin, esFundador: n.esFundador, isActive: n.isActive })]}`} />
+                  {n.esFundador ? "Fundador" : formatTrial(n.trialFin).texto}
                 </div>
               </TableCell>
               <TableCell>

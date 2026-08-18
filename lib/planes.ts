@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession } from "./session";
+import type { BusinessType } from "./types";
 
 /**
  * Definición central de los 3 planes (negocios.plan) — un solo lugar del
@@ -125,6 +126,33 @@ export function formatTrial(trialFin: string): { texto: string; vencido: boolean
 }
 
 /**
+ * `trial_fin` es la única fecha de vigencia que existe en el esquema — no
+ * hay una columna separada para "cuándo vence el plan de PAGO". En vez de
+ * agregar una (plan_expires_at), esta fecha se trata como "acceso bueno
+ * hasta" en general: al activar un plan de pago, /admin la reempuja (ver
+ * "Activar 30 días" en el menú de acciones), exactamente igual que extender
+ * el trial gratuito. Un negocio Fundador nunca se bloquea por esto — el
+ * trato de Fundador es acceso completo sin importar fechas.
+ */
+export function bloqueadoPorTrial(negocio: { trialFin: string; esFundador: boolean; isActive: boolean }): boolean {
+  if (negocio.esFundador) return false;
+  if (!negocio.isActive) return false; // "Pausado" a mano ya tiene su propia pantalla (Cuenta suspendida) — no duplicar el mensaje aquí.
+  return diasParaTrial(negocio.trialFin) < 0;
+}
+
+export type EstadoNegocio = "activo" | "por_vencer" | "bloqueado";
+
+/** Para la columna Estado de /admin: 🔴 bloqueado (vencido o pausado), 🟡 por vencer (≤3 días), 🟢 el resto. */
+export function estadoNegocio(negocio: { trialFin: string; esFundador: boolean; isActive: boolean }): EstadoNegocio {
+  if (!negocio.isActive) return "bloqueado";
+  if (negocio.esFundador) return "activo";
+  const dias = diasParaTrial(negocio.trialFin);
+  if (dias < 0) return "bloqueado";
+  if (dias <= 3) return "por_vencer";
+  return "activo";
+}
+
+/**
  * Lee el plan del negocio activo (session.business.plan/esFundador,
  * reactivo — ver el canal de realtime de "negocios" en lib/session.ts: un
  * cambio hecho desde /admin llega aquí solo, sin F5) y expone
@@ -161,5 +189,95 @@ export function usePlan() {
     features: def.features,
     can: (feature: keyof PlanFeatures) => (feature === "graficas" && graficasDestapadas ? true : def.features[feature]),
     limiteAlcanzado: (limite: keyof PlanLimites, cantidadActual: number) => alcanzoLimite(planId, limite, cantidadActual),
+    // Límites/precio propios del giro del negocio activo (ver LIMITES_* /
+    // PRECIOS_POR_GIRO abajo) — ya resueltos sobre el plan de ACCESO
+    // (Fundador incluido), para no repetir esa lógica en cada pantalla.
+    giroAbarrotes: LIMITES_ABARROTES[planId],
+    giroBarberia: LIMITES_BARBERIA[planId],
+    giroFonda: LIMITES_FONDA[planId],
   };
 }
+
+// ============================================================================
+// Precios y límites POR GIRO — abarrotera/barbería/fondita cobran distinto y
+// limitan cosas distintas (ej. "clientes" no existe en abarrotes, "productos"
+// no existe en barbería). Viven aparte de PLANES/PLAN_PRECIO_LISTA (que son
+// el precio de LISTA plano, todavía usado como fallback de precioReal() para
+// cualquier código que no sepa el giro) — /planes, /planes-bloqueado y
+// BloqueoPlan sí resuelven según BusinessType.
+// ============================================================================
+
+/** Precio mensual (MXN) por giro y plan — lo que se muestra en /planes. */
+export const PRECIOS_POR_GIRO: Record<BusinessType, Record<PlanId, number>> = {
+  abarrotes: { basico: 149, pro: 249, pro_plus: 399 },
+  barberia: { basico: 199, pro: 349, pro_plus: 499 },
+  fonda: { basico: 179, pro: 299, pro_plus: 449 },
+};
+
+/** Precio real del giro: precio_custom congelado si lo tiene, si no el de lista de SU giro y plan contratado. */
+export function precioPorGiro(negocio: { tipo: BusinessType; plan: PlanId; precioCustom: number | null }): number {
+  return negocio.precioCustom ?? PRECIOS_POR_GIRO[negocio.tipo][negocio.plan];
+}
+
+export interface LimitesAbarrotes {
+  maxProductos: number | null;
+  maxCuentas: number | null;
+  recordatorio: boolean;
+  editor: boolean;
+  grafica: "semanal" | "anual";
+}
+
+export const LIMITES_ABARROTES: Record<PlanId, LimitesAbarrotes> = {
+  basico: { maxProductos: 200, maxCuentas: 1, recordatorio: false, editor: false, grafica: "semanal" },
+  pro: { maxProductos: null, maxCuentas: 3, recordatorio: true, editor: true, grafica: "anual" },
+  pro_plus: { maxProductos: null, maxCuentas: 8, recordatorio: true, editor: true, grafica: "anual" },
+};
+
+export interface LimitesBarberia {
+  maxClientes: number | null;
+  maxServicios: number | null;
+  maxCuentas: number | null;
+  msg28: boolean;
+  grafica: "ventas" | "completa";
+  /** No venía en la tabla de límites original — se agrega porque el spec sí pide bloquear "Excepciones" (vacaciones/días especiales) por plan. básico no, Pro/Pro+ sí. */
+  excepciones: boolean;
+}
+
+export const LIMITES_BARBERIA: Record<PlanId, LimitesBarberia> = {
+  basico: { maxClientes: 100, maxServicios: 20, maxCuentas: 1, msg28: false, grafica: "ventas", excepciones: false },
+  pro: { maxClientes: null, maxServicios: null, maxCuentas: 5, msg28: true, grafica: "completa", excepciones: true },
+  pro_plus: { maxClientes: null, maxServicios: null, maxCuentas: 10, msg28: true, grafica: "completa", excepciones: true },
+};
+
+export interface LimitesFonda {
+  variantes: boolean;
+  mesas: number | null;
+  menuDia: boolean;
+  maxProductos: number | null;
+  comandas: boolean;
+}
+
+export const LIMITES_FONDA: Record<PlanId, LimitesFonda> = {
+  basico: { variantes: false, mesas: 1, menuDia: false, maxProductos: 100, comandas: false },
+  pro: { variantes: true, mesas: null, menuDia: true, maxProductos: 500, comandas: false },
+  pro_plus: { variantes: true, mesas: null, menuDia: true, maxProductos: null, comandas: true },
+};
+
+/** Beneficios en texto plano por giro — alimenta las cards de /planes y /planes-bloqueado sin repetir la lista a mano en 3 lugares. */
+export const BENEFICIOS_POR_GIRO: Record<BusinessType, Record<PlanId, string[]>> = {
+  abarrotes: {
+    basico: ["Hasta 200 productos", "1 cuenta", "Gráfica semanal"],
+    pro: ["Productos ilimitados", "3 cuentas", "Gráfica anual", "Recordatorios de cobro", "Editor de ventas"],
+    pro_plus: ["Productos ilimitados", "8 cuentas", "Gráfica anual", "Recordatorios de cobro", "Editor de ventas", "Exportar a Excel"],
+  },
+  barberia: {
+    basico: ["Hasta 100 clientes", "Hasta 20 servicios", "1 cuenta", "Gráfica de ventas"],
+    pro: ["Clientes ilimitados", "Servicios ilimitados", "5 cuentas", "Gráfica completa", "Mensaje a 28 días sin venir"],
+    pro_plus: ["Clientes ilimitados", "Servicios ilimitados", "10 cuentas", "Gráfica completa", "Mensaje a 28 días sin venir", "Reservas en línea"],
+  },
+  fonda: {
+    basico: ["Hasta 100 productos", "1 mesa a la vez"],
+    pro: ["Hasta 500 productos", "Variantes de platillo", "Carrito por mesa"],
+    pro_plus: ["Productos ilimitados", "Variantes de platillo", "Carrito por mesa", "Comandas para cocina"],
+  },
+};

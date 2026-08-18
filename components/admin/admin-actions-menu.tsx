@@ -23,7 +23,7 @@ export interface AdminActionsMenuProps {
   onViewDetail: () => void;
   onImpersonate: () => void;
   onSetPlan: (plan: PlanId) => void;
-  onSetTrial: (dias: 7 | 14) => void;
+  onSetTrial: (dias: 7 | 14 | 30) => void;
   onSetPrecioCustom: () => void;
   onToggleFundador: () => void;
   onToggleBanned: () => void;
@@ -59,6 +59,7 @@ export function AdminActionsMenu({
           })),
           { label: "Poner trial 7 días", icon: <Clock className="h-4 w-4" />, onClick: () => onSetTrial(7) },
           { label: "Poner trial 14 días", icon: <Clock className="h-4 w-4" />, onClick: () => onSetTrial(14) },
+          { label: "Activar 30 días", icon: <Clock className="h-4 w-4" />, onClick: () => onSetTrial(30) },
           { label: "Precio custom", icon: <Tag className="h-4 w-4" />, onClick: onSetPrecioCustom },
           {
             label: negocio.esFundador ? "Quitar Fundador" : "Marcar Fundador",
