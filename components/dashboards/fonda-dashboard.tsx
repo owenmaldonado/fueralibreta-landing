@@ -8,11 +8,14 @@ import { Tabs } from "@/components/ui/tabs";
 import { Sheet, SheetHeader } from "@/components/ui/sheet";
 import { StatTile } from "./stat-tile";
 import { EmptyState } from "./empty-state";
+import { BloqueoPlan } from "./bloqueo-plan";
 import { CerrarTurnoSheet } from "./fonda-cerrar-turno";
 import { formatMoney, formatHora12, toISODate, uid } from "@/lib/mock";
 import { supabase } from "@/lib/supabase";
 import { fetchPedidosPendientes } from "@/lib/data";
 import { camposEmpleado } from "@/lib/empleados";
+import { usePlan } from "@/lib/planes";
+import { cn } from "@/lib/utils";
 import type { TenantData, SessionUpdater, FondaOrder, Dish, DishVariant } from "@/lib/types";
 
 type FiltroDia = "hoy" | "ayer" | "semana";
@@ -31,6 +34,7 @@ function nowHHMM() {
 export function FondaDashboard({ session, update }: { session: TenantData; update: SessionUpdater }) {
   const data = session.fonda!;
   const negocio = session.business;
+  const plan = usePlan();
   const [filtro, setFiltro] = React.useState<FiltroDia>("hoy");
   const [variantesSheet, setVariantesSheet] = React.useState<Dish | null>(null);
   const [cerrandoTurno, setCerrandoTurno] = React.useState(false);
@@ -136,11 +140,20 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
     });
   }
 
+  // Mismo límite de pedidos/mes que NuevoPedidoForm (components/quick-add/
+  // fonda-quick-add.tsx) — faltaba aquí: Venta rápida crea un pedido
+  // "entregado" directo sin pasar por ese formulario, así que se podía
+  // seguir vendiendo sin tope desde estos botones aunque el FAB ya bloqueara.
+  const mesActual = hoyEnSuZona.slice(0, 7);
+  const maxPedidos = plan.giroFonda.maxPedidos;
+  const bloqueadoPorLimite = maxPedidos !== null && data.pedidos.filter((p) => p.fecha.startsWith(mesActual)).length >= maxPedidos;
+
   // Venta rápida desde los botones de Hoy: mismo flujo que "Cobrar ahora"
   // del formulario de Nuevo Pedido (pedido ya entregado, no pasa por
   // pendientes) — un tap agrega directo si el platillo no tiene variantes,
   // o crea el pedido con la variante elegida en el bottom-sheet.
   function onTapPlatillo(platillo: Dish) {
+    if (bloqueadoPorLimite) return;
     const disponibles = (platillo.variantes ?? []).filter((v) => v.disponible);
     if (disponibles.length > 0) {
       setVariantesSheet(platillo);
@@ -150,6 +163,7 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
   }
 
   function venderRapido(platillo: Dish, variante?: DishVariant) {
+    if (bloqueadoPorLimite) return;
     const precio = platillo.precio + (variante?.precioExtra ?? 0);
     update((prev) => {
       const f = prev.fonda!;
@@ -201,11 +215,15 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
       {filtro === "hoy" && activos.length > 0 && (
         <div className="px-4 pt-5">
           <p className="mb-2 px-1 font-mono text-xs uppercase tracking-widest text-muted-foreground">Venta rápida</p>
-          <div className="grid grid-cols-2 gap-2">
+          {bloqueadoPorLimite && (
+            <BloqueoPlan activo={false} compacto texto={`Llegaste al límite de ${maxPedidos} pedidos este mes de tu plan ${plan.label}`} />
+          )}
+          <div className={cn("mt-2 grid grid-cols-2 gap-2", bloqueadoPorLimite && "pointer-events-none opacity-50")}>
             {activos.map((p) => (
               <button
                 key={p.id}
                 onClick={() => onTapPlatillo(p)}
+                disabled={bloqueadoPorLimite}
                 className="rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/50 active:scale-[0.98]"
               >
                 <p className="text-sm font-semibold">{p.nombre}</p>
