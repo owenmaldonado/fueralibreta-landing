@@ -7,8 +7,6 @@ import { usePathname } from "next/navigation";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { readConsent, writeConsent } from "@/lib/consent";
 
-const isDev = process.env.NODE_ENV !== "production";
-
 async function insertConsentimiento(userAgent: string) {
   if (!isSupabaseConfigured) {
     return { error: new Error("Supabase no configurado (faltan NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY).") };
@@ -52,15 +50,8 @@ export function ConsentBanner() {
   const [error, setError] = React.useState(false);
 
   React.useEffect(() => {
-    const consent = readConsent();
-    const shouldShow = isHome && consent !== "accepted";
-    if (isDev) {
-      // Diagnóstico: si esto no se ve en consola al cargar "/", el efecto ni
-      // siquiera está corriendo (bundle viejo servido por el SW o similar).
-      console.log("[ConsentBanner] evaluando visibilidad:", { pathname, isHome, consent, shouldShow });
-    }
-    setVisible(shouldShow);
-  }, [isHome, pathname]);
+    setVisible(isHome && readConsent() !== "accepted");
+  }, [isHome]);
 
   React.useEffect(() => {
     document.body.style.overflow = visible ? "hidden" : "";
@@ -87,71 +78,46 @@ export function ConsentBanner() {
     setVisible(false);
   }
 
-  // TEMPORAL — quitar cuando se confirme que el insert real funciona. Corre
-  // el mismo insert que "Aceptar", pero sin depender de que el banner esté
-  // visible, para aislar si el problema es RLS/esquema o el banner mismo.
-  async function probarInsertManual() {
-    console.log("[ConsentBanner] TEST manual: insertando en consentimientos...");
-    const { error: insertError } = await insertConsentimiento(`TEST MANUAL - ${navigator.userAgent}`);
-    if (insertError) {
-      console.error("[ConsentBanner] TEST manual FALLÓ:", insertError);
-    } else {
-      console.log("[ConsentBanner] TEST manual OK: revisa la tabla consentimientos en Supabase.");
-    }
-  }
+  if (!visible) return null;
 
   return (
-    <>
-      {isDev ? (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="consent-banner-title"
+    >
+      <div className="w-[90%] max-w-md rounded-2xl bg-white p-8 text-center text-black shadow-2xl">
+        <h2 id="consent-banner-title" className="text-2xl font-bold tracking-tight">
+          🍪 Usamos Cookies
+        </h2>
+        <p className="mt-4 text-sm leading-relaxed text-black/80">
+          Usamos cookies necesarias para que Fuera Libreta funcione. Al
+          continuar aceptas nuestro{" "}
+          <Link href="/aviso-privacidad" className="font-medium text-amber-700 underline underline-offset-2">
+            Aviso de Privacidad
+          </Link>{" "}
+          y{" "}
+          <Link href="/terminos" className="font-medium text-amber-700 underline underline-offset-2">
+            Términos
+          </Link>
+          .
+        </p>
+
         <button
           type="button"
-          onClick={probarInsertManual}
-          className="fixed bottom-4 right-4 z-[10000] rounded-md bg-red-600 px-3 py-2 text-xs font-bold text-white shadow-lg hover:bg-red-700"
+          onClick={aceptar}
+          disabled={submitting}
+          className="mt-6 h-12 w-full rounded-md bg-black text-base font-bold text-white transition-colors hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          TEST: insertar consentimiento
+          {submitting ? "Guardando..." : "Aceptar y continuar"}
         </button>
-      ) : null}
-
-      {visible ? (
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="consent-banner-title"
-        >
-          <div className="w-[90%] max-w-md rounded-2xl bg-white p-8 text-center text-black shadow-2xl">
-            <h2 id="consent-banner-title" className="text-2xl font-bold tracking-tight">
-              🍪 Usamos Cookies
-            </h2>
-            <p className="mt-4 text-sm leading-relaxed text-black/80">
-              Usamos cookies necesarias para que Fuera Libreta funcione. Al
-              continuar aceptas nuestro{" "}
-              <Link href="/aviso-privacidad" className="font-medium text-amber-700 underline underline-offset-2">
-                Aviso de Privacidad
-              </Link>{" "}
-              y{" "}
-              <Link href="/terminos" className="font-medium text-amber-700 underline underline-offset-2">
-                Términos
-              </Link>
-              .
-            </p>
-
-            <button
-              type="button"
-              onClick={aceptar}
-              disabled={submitting}
-              className="mt-6 h-12 w-full rounded-md bg-black text-base font-bold text-white transition-colors hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {submitting ? "Guardando..." : "Aceptar y continuar"}
-            </button>
-            {error ? (
-              <p className="mt-3 text-xs font-medium text-red-600">
-                No se pudo guardar tu consentimiento. Intenta de nuevo.
-              </p>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-    </>
+        {error ? (
+          <p className="mt-3 text-xs font-medium text-red-600">
+            No se pudo guardar tu consentimiento. Intenta de nuevo.
+          </p>
+        ) : null}
+      </div>
+    </div>
   );
 }
