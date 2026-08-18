@@ -430,6 +430,18 @@ export async function activarPlanConDias(negocioId: string, plan: PlanId, dias: 
   await patchNegocioAdminFields(negocioId, { plan, trial_fin: todayISO(dias), ultimo_pago_at: new Date().toISOString() });
 }
 
+/**
+ * Cambia el plan y extiende trial_fin 30 días EN UN SOLO PATCH — antes
+ * había que hacer updateNegocioPlan() y luego updateNegocioTrial() por
+ * separado (dos clics en el menú de acciones) para el flujo real: el
+ * cliente paga por WhatsApp, el admin confirma y activa. 30 días fijos
+ * porque hoy no hay integración de pagos que sepa el ciclo real — es el
+ * mismo número que ya usaba "Activar 30 días".
+ */
+export async function activarPlanConDias(negocioId: string, plan: PlanId, dias: 30 = 30): Promise<void> {
+  await patchNegocioAdminFields(negocioId, { plan, trial_fin: todayISO(dias) });
+}
+
 /** `precio` en `null` regresa al negocio al precio de lista de su plan. */
 export async function updateNegocioPrecioCustom(negocioId: string, precio: number | null): Promise<void> {
   await patchNegocioAdminFields(negocioId, { precio_custom: precio });
