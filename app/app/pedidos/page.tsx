@@ -160,7 +160,18 @@ export default function PedidosPage() {
                       ✔️ Entregado
                     </Button>
                   )}
-                  {puedeBorrar ? (
+                  {/*
+                    Un pedido "entregado" ya es una venta hecha, no un
+                    borrador — borrarlo de plano lo saca de golpe de
+                    ventas/gráficas Y del conteo de pedidos del mes (fácil
+                    de abusar para no toparse con el límite de plan básico,
+                    ver LimiteBar arriba). Solo se puede Cancelar (queda
+                    como registro, con motivo, y ya sale de ventas/gráficas
+                    solo por dejar de ser "entregado" — ver pedidosEntregados
+                    en gastos/page.tsx). Pendiente sí se puede borrar directo:
+                    ahí no hay nada cobrado todavía.
+                  */}
+                  {puedeBorrar && p.estado === "pendiente" ? (
                     <Button size="sm" variant="outline" onClick={() => eliminar(p.id)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>

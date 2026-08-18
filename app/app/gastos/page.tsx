@@ -24,7 +24,7 @@ import { VentaForm } from "@/components/abarrotes/venta-form";
 import { useSession } from "@/lib/session";
 import { formatMoney, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
 import { aggregateByRange, filterByRango, type RangoTiempo } from "@/lib/chart-buckets";
-import { permisosActuales } from "@/lib/empleados";
+import { permisosActuales, getEmpleadoActual } from "@/lib/empleados";
 import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
 import { usePlan } from "@/lib/planes";
 import { cn } from "@/lib/utils";
@@ -244,11 +244,28 @@ export default function GastosPage() {
     const pedido = session!.fonda!.pedidos.find((p) => p.id === id);
     if (pedido) setBorrandoVenta(pedido);
   }
+  // Ya no borra el pedido — lo cancela (mismo mecanismo que "Cancelar" en
+  // Pedidos): pedidosEntregados de arriba filtra por estado === "entregado",
+  // así que un pedido cancelado sale solo de ventas/gráficas/totales, pero
+  // el pedido sigue existiendo (visible en Pedidos, sigue contando para el
+  // límite de pedidos/mes) — evita que "corregir un número" en Gastos se
+  // pueda usar para hacer desaparecer pedidos de plano y saltarse el límite.
   function eliminarVenta() {
     if (!borrandoVenta) return;
+    const actual = getEmpleadoActual();
     update((prev) => {
       const f = prev.fonda!;
-      return { ...prev, fonda: { ...f, pedidos: f.pedidos.filter((p) => p.id !== borrandoVenta.id) } };
+      return {
+        ...prev,
+        fonda: {
+          ...f,
+          pedidos: f.pedidos.map((p) =>
+            p.id === borrandoVenta.id
+              ? { ...p, estado: "cancelado" as const, canceladoPor: actual?.nombre ?? "Dueño", motivoCancelacion: "Corrección desde Gastos/Ventas" }
+              : p
+          ),
+        },
+      };
     });
     setBorrandoVenta(null);
   }
@@ -479,7 +496,7 @@ export default function GastosPage() {
                     </button>
                     <button
                       onClick={() => abrirBorrarVenta(v.id)}
-                      aria-label="Eliminar venta"
+                      aria-label="Quitar de ventas"
                       className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -578,7 +595,7 @@ export default function GastosPage() {
                     </button>
                     <button
                       onClick={() => abrirBorrarVenta(m.id)}
-                      aria-label="Eliminar venta"
+                      aria-label="Quitar de ventas"
                       className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -612,8 +629,8 @@ export default function GastosPage() {
 
       <ConfirmDialog
         open={!!borrandoVenta}
-        title="Eliminar venta"
-        description={`Se borrará el pedido de ${borrandoVenta?.clienteNombre ?? ""} por ${borrandoVenta ? formatMoney(borrandoVenta.total) : ""}.`}
+        title="Quitar de ventas"
+        description={`El pedido de ${borrandoVenta?.clienteNombre ?? ""} por ${borrandoVenta ? formatMoney(borrandoVenta.total) : ""} dejará de contar en ventas/gráficas. El pedido no se borra: queda marcado como cancelado en Pedidos.`}
         onClose={() => setBorrandoVenta(null)}
         onConfirm={eliminarVenta}
       />
