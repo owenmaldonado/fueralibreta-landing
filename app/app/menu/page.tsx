@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Pencil, Trash2, ChevronDown, Plus, X } from "lucide-react";
+import { Pencil, Trash2, ChevronDown, Plus, X, Lock } from "lucide-react";
+import Link from "next/link";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -24,6 +25,7 @@ const CATEGORIA_CHIPS = ["Platillo fuerte", "Entrada", "Bebida", "Postre"];
 
 export default function MenuPage() {
   const { session, ready, update } = useSession();
+  const plan = usePlan();
   const [editando, setEditando] = React.useState<Dish | null>(null);
   const [borrando, setBorrando] = React.useState<Dish | null>(null);
   const [mostrarInactivos, setMostrarInactivos] = React.useState(false);
@@ -83,7 +85,14 @@ export default function MenuPage() {
                   {activos
                     .filter((p) => p.categoria === cat)
                     .map((p) => (
-                      <PlatilloRow key={p.id} platillo={p} onToggle={toggle} onEditar={() => setEditando(p)} onBorrar={() => setBorrando(p)} />
+                      <PlatilloRow
+                        key={p.id}
+                        platillo={p}
+                        onToggle={toggle}
+                        onEditar={() => setEditando(p)}
+                        onBorrar={() => setBorrando(p)}
+                        menuDiaDisponible={plan.giroFonda.menuDia}
+                      />
                     ))}
                 </div>
               </div>
@@ -106,7 +115,14 @@ export default function MenuPage() {
             {mostrarInactivos && (
               <div className="mt-2 flex flex-col gap-2 opacity-60">
                 {inactivos.map((p) => (
-                  <PlatilloRow key={p.id} platillo={p} onToggle={toggle} onEditar={() => setEditando(p)} onBorrar={() => setBorrando(p)} />
+                  <PlatilloRow
+                    key={p.id}
+                    platillo={p}
+                    onToggle={toggle}
+                    onEditar={() => setEditando(p)}
+                    onBorrar={() => setBorrando(p)}
+                    menuDiaDisponible={plan.giroFonda.menuDia}
+                  />
                 ))}
               </div>
             )}
@@ -134,16 +150,29 @@ function PlatilloRow({
   onToggle,
   onEditar,
   onBorrar,
+  menuDiaDisponible,
 }: {
   platillo: Dish;
   onToggle: (id: string, nuevoEstado: boolean) => void;
   onEditar: () => void;
   onBorrar: () => void;
+  /** básico no puede cambiar día a día qué hay disponible — el checkbox se reemplaza por un candado a /planes. */
+  menuDiaDisponible: boolean;
 }) {
   return (
     <div className="flex animate-in fade-in slide-in-from-top-1 items-center gap-3 rounded-xl border border-border bg-card p-3 duration-300">
       <label className="flex flex-1 items-center gap-2">
-        <Checkbox checked={p.activoHoy} onCheckedChange={() => onToggle(p.id, !p.activoHoy)} />
+        {menuDiaDisponible ? (
+          <Checkbox checked={p.activoHoy} onCheckedChange={() => onToggle(p.id, !p.activoHoy)} />
+        ) : (
+          <Link
+            href="/planes"
+            title="Menú del día (activar/desactivar platillos por día) disponible en Pro y Pro+"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-dashed border-border text-muted-foreground"
+          >
+            <Lock className="h-3 w-3" />
+          </Link>
+        )}
         <span className={`text-sm font-medium ${!p.activoHoy && "text-muted-foreground line-through"}`}>{p.nombre}</span>
         {p.estadoMerma && (
           <span className="shrink-0 rounded-full bg-primary/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-primary">

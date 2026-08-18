@@ -241,12 +241,14 @@ export interface LimitesBarberia {
   grafica: "ventas" | "completa";
   /** No venía en la tabla de límites original — se agrega porque el spec sí pide bloquear "Excepciones" (vacaciones/días especiales) por plan. básico no, Pro/Pro+ sí. */
   excepciones: boolean;
+  /** "Link de reservas" (booking público en /b/[slug]) — solo Pro+ según BENEFICIOS_POR_GIRO.barberia.pro_plus. Básico y Pro no lo tenían listado como beneficio. */
+  reservas: boolean;
 }
 
 export const LIMITES_BARBERIA: Record<PlanId, LimitesBarberia> = {
-  basico: { maxClientes: 100, maxServicios: 20, maxCuentas: 1, msg28: false, grafica: "ventas", excepciones: false },
-  pro: { maxClientes: null, maxServicios: null, maxCuentas: 5, msg28: true, grafica: "completa", excepciones: true },
-  pro_plus: { maxClientes: null, maxServicios: null, maxCuentas: 10, msg28: true, grafica: "completa", excepciones: true },
+  basico: { maxClientes: 100, maxServicios: 20, maxCuentas: 1, msg28: false, grafica: "ventas", excepciones: false, reservas: false },
+  pro: { maxClientes: null, maxServicios: null, maxCuentas: 5, msg28: true, grafica: "completa", excepciones: true, reservas: false },
+  pro_plus: { maxClientes: null, maxServicios: null, maxCuentas: 10, msg28: true, grafica: "completa", excepciones: true, reservas: true },
 };
 
 export interface LimitesFonda {

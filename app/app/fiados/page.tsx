@@ -13,12 +13,15 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { AbonoDialog } from "@/components/dashboards/abono-dialog";
 import { StatTile } from "@/components/dashboards/stat-tile";
 import { EmptyState } from "@/components/dashboards/empty-state";
+import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import { useSession } from "@/lib/session";
+import { usePlan } from "@/lib/planes";
 import { formatMoney, todayISO, waLink } from "@/lib/mock";
 import type { Fiado } from "@/lib/types";
 
 export default function FiadosPage() {
   const { session, ready, update } = useSession();
+  const plan = usePlan();
   const [seleccionado, setSeleccionado] = React.useState<Fiado | null>(null);
   const [abonando, setAbonando] = React.useState<Fiado | null>(null);
   const [liquidando, setLiquidando] = React.useState<Fiado | null>(null);
@@ -100,7 +103,7 @@ export default function FiadosPage() {
       </div>
 
       <Sheet open={!!seleccionado} onOpenChange={(o) => !o && setSeleccionado(null)}>
-        {seleccionado && <FiadoDetalle fiado={seleccionado} onClose={() => setSeleccionado(null)} update={update} />}
+        {seleccionado && <FiadoDetalle fiado={seleccionado} onClose={() => setSeleccionado(null)} update={update} recordatorioDisponible={plan.giroAbarrotes.recordatorio} />}
       </Sheet>
 
       <AbonoDialog
@@ -128,10 +131,12 @@ function FiadoDetalle({
   fiado,
   onClose,
   update,
+  recordatorioDisponible,
 }: {
   fiado: Fiado;
   onClose: () => void;
   update: ReturnType<typeof useSession>["update"];
+  recordatorioDisponible: boolean;
 }) {
   const [clienteNombre, setClienteNombre] = React.useState(fiado.clienteNombre);
   const [telefono, setTelefono] = React.useState(fiado.telefono);
@@ -205,11 +210,13 @@ function FiadoDetalle({
         <p className="text-center font-display text-2xl font-bold text-primary">Debe {formatMoney(fiado.saldo)}</p>
 
         {fiado.telefono && (
-          <Button asChild variant="ledger">
-            <a href={waLink(fiado.telefono, `Hola ${fiado.clienteNombre}, te recuerdo tu saldo de $${fiado.saldo}`)} target="_blank" rel="noreferrer">
-              <MessageCircle className="h-4 w-4" /> Enviar recordatorio
-            </a>
-          </Button>
+          <BloqueoPlan activo={recordatorioDisponible} compacto texto="Enviar recordatorio por WhatsApp disponible en Pro y Pro+">
+            <Button asChild variant="ledger">
+              <a href={waLink(fiado.telefono, `Hola ${fiado.clienteNombre}, te recuerdo tu saldo de $${fiado.saldo}`)} target="_blank" rel="noreferrer">
+                <MessageCircle className="h-4 w-4" /> Enviar recordatorio
+              </a>
+            </Button>
+          </BloqueoPlan>
         )}
 
         <div className="space-y-1.5">
