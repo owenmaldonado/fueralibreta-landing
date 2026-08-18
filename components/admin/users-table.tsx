@@ -52,7 +52,7 @@ export function UsersTable({
   }
 
   return (
-    <Table>
+    <Table className="min-w-[1180px]">
       <TableHeader>
         <TableRow>
           <TableHead>Usuario</TableHead>
