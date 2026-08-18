@@ -5,10 +5,19 @@ import { MessageCircle, Copy, Check } from "lucide-react";
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { AdminActionsMenu } from "./admin-actions-menu";
 import { waLink } from "@/lib/mock";
 import type { AdminNegocio, AdminProfile } from "@/lib/admin-data";
-import { PLAN_LABELS, formatTrial, estadoNegocio, type PlanId, type EstadoNegocio } from "@/lib/planes";
+import {
+  PLAN_LABELS,
+  formatTrial,
+  estadoNegocio,
+  estadoCobranza,
+  mensajeRecordatorioCobranza,
+  type PlanId,
+  type EstadoNegocio,
+} from "@/lib/planes";
 
 const TIPO_LABEL: Record<AdminNegocio["tipo"], string> = {
   barberia: "Barbería",
@@ -27,6 +36,15 @@ const ESTADO_DOT: Record<EstadoNegocio, string> = {
   por_vencer: "bg-primary",
   bloqueado: "bg-destructive",
 };
+
+/** "Hoy" / "Hace 1 día" / "Hace N días" — o "—" si nunca se registró un pago (ver ultimoPagoAt en lib/admin-data.ts). */
+function formatUltimoPago(iso: string | null): string {
+  if (!iso) return "—";
+  const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (dias <= 0) return "Hoy";
+  if (dias === 1) return "Hace 1 día";
+  return `Hace ${dias} días`;
+}
 
 /** Primeros 8 caracteres del UUID + botón para copiar el ID completo — para pegarlo en el buscador o compartirlo sin tener que seleccionar el UUID entero a mano. */
 function IdCorto({ id }: { id: string }) {
@@ -95,6 +113,7 @@ export function OrgsTable({
           <TableHead>Creado</TableHead>
           <TableHead>Plan</TableHead>
           <TableHead>Vence</TableHead>
+          <TableHead>Último pago</TableHead>
           <TableHead>Estado</TableHead>
           <TableHead className="text-right">Acciones</TableHead>
         </TableRow>
@@ -103,6 +122,7 @@ export function OrgsTable({
         {negocios.map((n) => {
           const profile = n.ownerId ? (profilePorId.get(n.ownerId) ?? null) : null;
           const isSelf = n.ownerId === currentUserId;
+          const cobranza = estadoCobranza(n);
 
           return (
             <TableRow key={n.id}>
@@ -149,25 +169,34 @@ export function OrgsTable({
                   {n.esFundador ? "Fundador" : formatTrial(n.trialFin).texto}
                 </div>
               </TableCell>
+              <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatUltimoPago(n.ultimoPagoAt)}</TableCell>
               <TableCell>
                 <Badge variant={n.isActive ? "ledger" : "outline"}>{n.isActive ? "Activo" : "Pausado"}</Badge>
               </TableCell>
               <TableCell className="text-right">
-                <AdminActionsMenu
-                  profile={profile}
-                  negocio={n}
-                  isSelf={isSelf}
-                  onViewDetail={() => onViewDetail(n)}
-                  onImpersonate={() => profile && onImpersonate(profile)}
-                  onSetPlan={(plan) => onSetPlan(n, plan)}
-                  onSetTrial={(dias) => onSetTrial(n, dias)}
-                  onActivarPlan={(plan) => onActivarPlan(n, plan)}
-                  onSetPrecioCustom={() => onSetPrecioCustom(n)}
-                  onToggleFundador={() => onToggleFundador(n)}
-                  onToggleBanned={() => profile && onToggleBanned(profile)}
-                  onDelete={() => onDeleteRequest(n)}
-                  className="ml-auto"
-                />
+                <div className="flex items-center justify-end gap-1.5">
+                  {(cobranza === "vencido" || cobranza === "por_vencer") && n.ownerPhone && (
+                    <Button asChild variant="outline" size="sm" className="gap-1.5 whitespace-nowrap">
+                      <a href={waLink(n.ownerPhone, mensajeRecordatorioCobranza(n))} target="_blank" rel="noreferrer">
+                        <MessageCircle className="h-3.5 w-3.5" /> Recordatorio
+                      </a>
+                    </Button>
+                  )}
+                  <AdminActionsMenu
+                    profile={profile}
+                    negocio={n}
+                    isSelf={isSelf}
+                    onViewDetail={() => onViewDetail(n)}
+                    onImpersonate={() => profile && onImpersonate(profile)}
+                    onSetPlan={(plan) => onSetPlan(n, plan)}
+                    onSetTrial={(dias) => onSetTrial(n, dias)}
+                    onActivarPlan={(plan) => onActivarPlan(n, plan)}
+                    onSetPrecioCustom={() => onSetPrecioCustom(n)}
+                    onToggleFundador={() => onToggleFundador(n)}
+                    onToggleBanned={() => profile && onToggleBanned(profile)}
+                    onDelete={() => onDeleteRequest(n)}
+                  />
+                </div>
               </TableCell>
             </TableRow>
           );
