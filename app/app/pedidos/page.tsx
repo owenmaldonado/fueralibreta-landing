@@ -10,8 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/dashboards/empty-state";
+import { LimiteBar } from "@/components/dashboards/limite-bar";
 import { useSession } from "@/lib/session";
-import { formatMoney, formatHora12 } from "@/lib/mock";
+import { usePlan } from "@/lib/planes";
+import { formatMoney, formatHora12, todayISO } from "@/lib/mock";
 import { getEmpleadoActual, permisosActuales } from "@/lib/empleados";
 import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
 import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
@@ -28,6 +30,7 @@ const ESTADO_LABEL: Record<string, string> = { pendiente: "pendiente", entregado
 
 export default function PedidosPage() {
   const { session, ready, update } = useSession();
+  const plan = usePlan();
   const [filtro, setFiltro] = React.useState("pendiente");
   const [cancelando, setCancelando] = React.useState<FondaOrder | null>(null);
   const [motivo, setMotivo] = React.useState("");
@@ -53,6 +56,9 @@ export default function PedidosPage() {
   const pedidos = data.pedidos
     .filter((p) => filtro === "todos" || p.estado === filtro)
     .sort((a, b) => b.hora.localeCompare(a.hora));
+  const mesActual = todayISO(0).slice(0, 7);
+  const maxPedidos = plan.giroFonda.maxPedidos;
+  const pedidosDelMes = data.pedidos.filter((p) => p.fecha.startsWith(mesActual)).length;
 
   function marcarEntregado(id: string) {
     update((prev) => {
@@ -92,6 +98,7 @@ export default function PedidosPage() {
   return (
     <>
       <PageHeader title="Pedidos" subtitle={`${data.pedidos.length} en total`} />
+      <LimiteBar actual={pedidosDelMes} max={maxPedidos} etiqueta="pedidos este mes" planLabel={plan.label} />
       <div className="px-4 pb-4">
         <Tabs value={filtro} onValueChange={setFiltro} tabs={FILTROS} />
       </div>

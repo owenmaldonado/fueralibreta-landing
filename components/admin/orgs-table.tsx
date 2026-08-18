@@ -57,6 +57,7 @@ interface OrgsTableProps {
   onImpersonate: (profile: AdminProfile) => void;
   onSetPlan: (negocio: AdminNegocio, plan: PlanId) => void;
   onSetTrial: (negocio: AdminNegocio, dias: 7 | 14 | 30) => void;
+  onActivarPlan: (negocio: AdminNegocio, plan: PlanId) => void;
   onSetPrecioCustom: (negocio: AdminNegocio) => void;
   onToggleFundador: (negocio: AdminNegocio) => void;
   onToggleBanned: (profile: AdminProfile) => void;
@@ -71,6 +72,7 @@ export function OrgsTable({
   onImpersonate,
   onSetPlan,
   onSetTrial,
+  onActivarPlan,
   onSetPrecioCustom,
   onToggleFundador,
   onToggleBanned,
@@ -159,6 +161,7 @@ export function OrgsTable({
                   onImpersonate={() => profile && onImpersonate(profile)}
                   onSetPlan={(plan) => onSetPlan(n, plan)}
                   onSetTrial={(dias) => onSetTrial(n, dias)}
+                  onActivarPlan={(plan) => onActivarPlan(n, plan)}
                   onSetPrecioCustom={() => onSetPrecioCustom(n)}
                   onToggleFundador={() => onToggleFundador(n)}
                   onToggleBanned={() => profile && onToggleBanned(profile)}

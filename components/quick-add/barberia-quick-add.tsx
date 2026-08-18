@@ -176,6 +176,10 @@ function NuevaCitaForm({
   const clienteEsNuevo = !!cliente && !("id" in cliente);
   const maxClientes = plan.giroBarberia.maxClientes;
   const bloqueadoPorLimiteClientes = clienteEsNuevo && maxClientes !== null && data.clientes.length >= maxClientes;
+  const mesActual = todayISO(0).slice(0, 7);
+  const maxCitas = plan.giroBarberia.maxCitas;
+  const bloqueadoPorLimiteCitas =
+    maxCitas !== null && data.citas.filter((c) => c.fecha.startsWith(mesActual) && c.estado !== "cancelada").length >= maxCitas;
   const puedeGuardar =
     !!servicio &&
     !!fecha &&
@@ -183,7 +187,8 @@ function NuevaCitaForm({
     !!cliente &&
     cliente.nombre.trim().length > 1 &&
     cliente.telefono.trim().length >= 6 &&
-    !bloqueadoPorLimiteClientes;
+    !bloqueadoPorLimiteClientes &&
+    !bloqueadoPorLimiteCitas;
 
   function guardar() {
     if (!puedeGuardar || !servicio || !cliente) return;
@@ -251,6 +256,9 @@ function NuevaCitaForm({
         </div>
         {bloqueadoPorLimiteClientes && (
           <BloqueoPlan activo={false} compacto texto={`Llegaste al límite de ${maxClientes} clientes de tu plan ${plan.label}`} />
+        )}
+        {bloqueadoPorLimiteCitas && (
+          <BloqueoPlan activo={false} compacto texto={`Llegaste al límite de ${maxCitas} citas este mes de tu plan ${plan.label}`} />
         )}
       </div>
       <SheetFooter>

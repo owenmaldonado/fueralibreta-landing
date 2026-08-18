@@ -13,7 +13,9 @@ import { Dialog, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { CobrarCitaDialog } from "@/components/dashboards/cobrar-cita-dialog";
+import { LimiteBar } from "@/components/dashboards/limite-bar";
 import { useSession } from "@/lib/session";
+import { usePlan } from "@/lib/planes";
 import { formatHora12, formatMoney, mensajeRecordatorioCita, todayISO, waLink } from "@/lib/mock";
 import { getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente, usePendingSalesQueue, type VentaPendienteRow } from "@/lib/offline-sales-queue";
@@ -31,6 +33,7 @@ const MODO_TABS = [
 
 export default function AgendaPage() {
   const { session, ready, update } = useSession();
+  const plan = usePlan();
   const [modo, setModo] = React.useState<Modo>("hoy");
   const [fecha, setFecha] = React.useState(todayISO(0));
   const [moviendo, setMoviendo] = React.useState<Appointment | null>(null);
@@ -49,6 +52,9 @@ export default function AgendaPage() {
   const data = session.barberia!;
   const negocioNombre = session.business.nombre;
   const negocioId = session.business.id;
+  const mesActual = todayISO(0).slice(0, 7);
+  const maxCitas = plan.giroBarberia.maxCitas;
+  const citasDelMes = data.citas.filter((c) => c.fecha.startsWith(mesActual) && c.estado !== "cancelada").length;
 
   /** "Cancelar cita" siempre deja constancia de quién y por qué — mismo patrón que Pedidos (fonda). */
   function confirmarCancelacion() {
@@ -123,6 +129,7 @@ export default function AgendaPage() {
   return (
     <>
       <PageHeader title="Agenda" subtitle={subtitle} />
+      <LimiteBar actual={citasDelMes} max={maxCitas} etiqueta="citas este mes" planLabel={plan.label} />
       <div className="px-4 pb-3">
         <Tabs value={modo} onValueChange={(v) => setModo(v as Modo)} tabs={MODO_TABS} />
       </div>
