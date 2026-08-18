@@ -152,6 +152,35 @@ export function estadoNegocio(negocio: { trialFin: string; esFundador: boolean; 
   return "activo";
 }
 
+export type EstadoCobranza = "vencido" | "por_vencer" | "trial" | "activo";
+
+/**
+ * Bucket para los 4 tabs de cobranza de /admin (Negocios): a diferencia de
+ * estadoNegocio() (que solo separa bloqueado/por_vencer/activo para la
+ * columna Estado), esta separa además a quienes siguen en básico sin haber
+ * pagado todavía ("trial") de quienes ya son clientes de pago en buen
+ * estado ("activo") — así Owen entra y ve de un vistazo a quién cobrarle,
+ * sin tener que revisar negocio por negocio cada mes.
+ */
+export function estadoCobranza(negocio: { trialFin: string; esFundador: boolean; isActive: boolean; plan: PlanId }): EstadoCobranza {
+  const base = estadoNegocio(negocio);
+  if (base === "bloqueado") return "vencido";
+  if (base === "por_vencer") return "por_vencer";
+  if (!negocio.esFundador && negocio.plan === "basico") return "trial";
+  return "activo";
+}
+
+/**
+ * Mensaje de WhatsApp para el botón "Recordatorio" de un negocio por vencer
+ * o ya vencido — precio y plan reales de SU giro (PRECIOS_POR_GIRO), no un
+ * precio genérico, para no tener que escribirlo a mano cada vez.
+ */
+export function mensajeRecordatorioCobranza(negocio: { tipo: BusinessType; plan: PlanId; precioCustom: number | null; trialFin: string }): string {
+  const precio = precioPorGiro(negocio);
+  const vence = new Date(`${negocio.trialFin}T00:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "long" });
+  return `Hola! Tu plan de FueraLibreta vence el ${vence}. ¿Renovamos ${PLAN_LABELS[negocio.plan]} $${precio} por 30 días más?`;
+}
+
 /**
  * Lee el plan del negocio activo (session.business.plan/esFundador,
  * reactivo — ver el canal de realtime de "negocios" en lib/session.ts: un
