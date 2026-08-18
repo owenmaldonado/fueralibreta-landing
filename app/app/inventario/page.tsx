@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/dashboards/empty-state";
+import { LimiteBar } from "@/components/dashboards/limite-bar";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import { VentaCart } from "@/components/abarrotes/venta-cart";
 import { useSession } from "@/lib/session";
@@ -113,14 +114,7 @@ export default function InventarioPage() {
         </Button>
       </div>
 
-      {tocoLimiteProductos && (
-        <div className="mx-4 mb-3 rounded-xl border border-dashed border-border bg-card px-4 py-3 text-center">
-          <p className="text-sm font-medium">Llegaste al límite de {maxProductos} productos de tu plan {plan.label}</p>
-          <Link href="/planes" className="mt-0.5 inline-block text-xs text-primary hover:underline">
-            Sube de plan para agregar más
-          </Link>
-        </div>
-      )}
+      <LimiteBar actual={productosInventario.length} max={maxProductos} etiqueta="productos" planLabel={plan.label} />
 
       <div className="flex flex-col gap-2 px-4 pb-6">
         {filtrados.length === 0 ? (

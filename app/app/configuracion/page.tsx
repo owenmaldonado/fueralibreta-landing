@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
+import { LimiteBar } from "@/components/dashboards/limite-bar";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { formatMoney, todayISO, toISODate, uid } from "@/lib/mock";
@@ -159,9 +160,7 @@ export default function ConfiguracionPage() {
           >
             <Plus className="h-4 w-4" /> Agregar servicio
           </Button>
-          {tocoLimiteServicios && (
-            <BloqueoPlan activo={false} compacto texto={`Llegaste al límite de ${plan.giroBarberia.maxServicios} servicios de tu plan ${plan.label}`} />
-          )}
+          <LimiteBar actual={data.servicios.length} max={maxServicios} etiqueta="servicios" planLabel={plan.label} />
           {data.servicios.map((s) => (
             <div key={s.id} className="flex items-center justify-between rounded-xl border border-border bg-card p-3">
               <div>
