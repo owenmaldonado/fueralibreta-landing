@@ -108,9 +108,10 @@ export default function AvisoPrivacidadPage() {
 
       <h2>7. Uso de cookies y tecnologías similares</h2>
       <p>
-        Utilizamos únicamente almacenamiento local técnico necesario para
-        que la aplicación funcione (sesión y preferencia de cookies). Puedes
-        consultar el detalle en nuestra{" "}
+        Utilizamos almacenamiento local técnico y cookies necesarias para
+        operar la app, y registramos tu preferencia de cookies
+        (aceptar/rechazar) junto con tu IP de forma anónima para prueba de
+        consentimiento. Puedes consultar el detalle en nuestra{" "}
         <a href="/cookies">Política de Cookies</a>.
       </p>
 
