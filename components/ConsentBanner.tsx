@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { supabase } from "@/lib/supabase";
 import { readConsent, writeConsent } from "@/lib/consent";
 
 /**
@@ -14,11 +15,19 @@ import { readConsent, writeConsent } from "@/lib/consent";
  * que se acepten primero. Al volver a "/" sin haber aceptado, reaparece.
  * No se cierra con click afuera, solo con el botón. Montado una sola vez
  * en app/layout.tsx.
+ *
+ * Este banner solo se ve en "/" antes de iniciar sesión (app/page.tsx
+ * redirige del lado del servidor en cuanto hay usuario logueado), así que
+ * todavía no hay negocio: el consentimiento se guarda con negocio_id null.
+ * localStorage solo se escribe si el insert en Supabase tuvo éxito, para no
+ * "recordar" una aceptación que nunca quedó registrada.
  */
 export function ConsentBanner() {
   const pathname = usePathname();
   const isHome = pathname === "/";
   const [visible, setVisible] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState(false);
 
   React.useEffect(() => {
     setVisible(isHome && readConsent() !== "accepted");
@@ -31,7 +40,25 @@ export function ConsentBanner() {
     };
   }, [visible]);
 
-  function aceptar() {
+  async function aceptar() {
+    setSubmitting(true);
+    setError(false);
+
+    const { error: insertError } = await supabase.from("consentimientos").insert({
+      negocio_id: null,
+      acepto_terminos: true,
+      acepto_privacidad: true,
+      acepto_cookies: true,
+      user_agent: navigator.userAgent,
+    });
+
+    setSubmitting(false);
+
+    if (insertError) {
+      setError(true);
+      return;
+    }
+
     writeConsent("accepted");
     setVisible(false);
   }
@@ -65,10 +92,16 @@ export function ConsentBanner() {
         <button
           type="button"
           onClick={aceptar}
-          className="mt-6 h-12 w-full rounded-md bg-black text-base font-bold text-white transition-colors hover:bg-black/85"
+          disabled={submitting}
+          className="mt-6 h-12 w-full rounded-md bg-black text-base font-bold text-white transition-colors hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Aceptar y continuar
+          {submitting ? "Guardando..." : "Aceptar y continuar"}
         </button>
+        {error ? (
+          <p className="mt-3 text-xs font-medium text-red-600">
+            No se pudo guardar tu consentimiento. Intenta de nuevo.
+          </p>
+        ) : null}
       </div>
     </div>
   );
