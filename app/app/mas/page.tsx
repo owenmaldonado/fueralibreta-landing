@@ -7,7 +7,9 @@ import { Boxes, Settings, ChevronRight, ArrowRight, Copy, Check, MessageCircle, 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { Button } from "@/components/ui/button";
+import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import { useSession } from "@/lib/session";
+import { usePlan } from "@/lib/planes";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { ADMIN_EMAIL } from "@/lib/admin-data";
 
@@ -30,6 +32,7 @@ const LINKS_BARBERIA = [
 
 export default function MasPage() {
   const { session, ready } = useSession();
+  const plan = usePlan();
   const [isAdmin, setIsAdmin] = React.useState(false);
   const [origin, setOrigin] = React.useState("");
   const [copiado, setCopiado] = React.useState(false);
@@ -84,28 +87,30 @@ export default function MasPage() {
         )}
 
         {esBarberia && (
-          <div className="rounded-xl border border-border bg-card p-4">
-            <p className="text-sm font-medium">Link de reservas</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Tus clientes agendan solos, sin necesitar cuenta</p>
-            <div className="mt-3 truncate rounded-lg bg-secondary px-3 py-2 font-mono text-xs text-muted-foreground">
-              {linkReservas || "Cargando..."}
+          <BloqueoPlan activo={plan.giroBarberia.reservas} titulo="Reservas en línea es de Pro+" texto="Deja que tus clientes agenden solos con un link — disponible en Pro+">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-sm font-medium">Link de reservas</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Tus clientes agendan solos, sin necesitar cuenta</p>
+              <div className="mt-3 truncate rounded-lg bg-secondary px-3 py-2 font-mono text-xs text-muted-foreground">
+                {linkReservas || "Cargando..."}
+              </div>
+              <div className="mt-3 flex gap-2">
+                <Button variant="outline" size="sm" className="flex-1" onClick={copiarLink} disabled={!linkReservas}>
+                  {copiado ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {copiado ? "¡Copiado!" : "Copiar"}
+                </Button>
+                <Button asChild variant="ledger" size="sm" className="flex-1">
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent(`Agenda tu cita en ${session.business.nombre}: ${linkReservas}`)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <MessageCircle className="h-4 w-4" /> Compartir
+                  </a>
+                </Button>
+              </div>
             </div>
-            <div className="mt-3 flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1" onClick={copiarLink} disabled={!linkReservas}>
-                {copiado ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                {copiado ? "¡Copiado!" : "Copiar"}
-              </Button>
-              <Button asChild variant="ledger" size="sm" className="flex-1">
-                <a
-                  href={`https://wa.me/?text=${encodeURIComponent(`Agenda tu cita en ${session.business.nombre}: ${linkReservas}`)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <MessageCircle className="h-4 w-4" /> Compartir
-                </a>
-              </Button>
-            </div>
-          </div>
+          </BloqueoPlan>
         )}
 
         {(esBarberia ? LINKS_BARBERIA : LINKS).map((l) => (

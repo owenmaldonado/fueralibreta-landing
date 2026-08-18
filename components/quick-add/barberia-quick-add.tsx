@@ -12,7 +12,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Stepper } from "@/components/ui/stepper";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import type { FabAction } from "@/components/app-shell/fab";
+import { usePlan } from "@/lib/planes";
 import { uid, todayISO } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 import { camposEmpleado } from "@/lib/empleados";
@@ -44,7 +46,7 @@ export function BarberiaQuickAdd({ active, onClose, session, update }: Props) {
         <NuevaCitaForm data={data} onClose={onClose} update={update} />
       </Sheet>
       <Sheet open={active === "cliente"} onOpenChange={(o) => !o && onClose()}>
-        <NuevoClienteForm onClose={onClose} update={update} />
+        <NuevoClienteForm onClose={onClose} update={update} clientesActuales={data.clientes.length} />
       </Sheet>
       <Sheet open={active === "venta"} onOpenChange={(o) => !o && onClose()}>
         <CajaForm tipo="venta" title="Nueva venta" onClose={onClose} update={update} />
@@ -164,13 +166,24 @@ function NuevaCitaForm({
   onClose: () => void;
   update: Props["update"];
 }) {
+  const plan = usePlan();
   const [cliente, setCliente] = React.useState<ClienteResuelto | null>(null);
   const [servicioId, setServicioId] = React.useState(data.servicios[0]?.id ?? "");
   const [fecha, setFecha] = React.useState(todayISO(0));
   const [hora, setHora] = React.useState("12:00");
 
   const servicio = data.servicios.find((s) => s.id === servicioId);
-  const puedeGuardar = !!servicio && !!fecha && !!hora && !!cliente && cliente.nombre.trim().length > 1 && cliente.telefono.trim().length >= 6;
+  const clienteEsNuevo = !!cliente && !("id" in cliente);
+  const maxClientes = plan.giroBarberia.maxClientes;
+  const bloqueadoPorLimiteClientes = clienteEsNuevo && maxClientes !== null && data.clientes.length >= maxClientes;
+  const puedeGuardar =
+    !!servicio &&
+    !!fecha &&
+    !!hora &&
+    !!cliente &&
+    cliente.nombre.trim().length > 1 &&
+    cliente.telefono.trim().length >= 6 &&
+    !bloqueadoPorLimiteClientes;
 
   function guardar() {
     if (!puedeGuardar || !servicio || !cliente) return;
@@ -236,6 +249,9 @@ function NuevaCitaForm({
             <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
           </div>
         </div>
+        {bloqueadoPorLimiteClientes && (
+          <BloqueoPlan activo={false} compacto texto={`Llegaste al límite de ${maxClientes} clientes de tu plan ${plan.label}`} />
+        )}
       </div>
       <SheetFooter>
         <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>
@@ -246,12 +262,23 @@ function NuevaCitaForm({
   );
 }
 
-function NuevoClienteForm({ onClose, update }: { onClose: () => void; update: Props["update"] }) {
+function NuevoClienteForm({
+  onClose,
+  update,
+  clientesActuales,
+}: {
+  onClose: () => void;
+  update: Props["update"];
+  clientesActuales: number;
+}) {
+  const plan = usePlan();
   const [nombre, setNombre] = React.useState("");
   const [telefono, setTelefono] = React.useState("");
+  const maxClientes = plan.giroBarberia.maxClientes;
+  const bloqueadoPorLimite = maxClientes !== null && clientesActuales >= maxClientes;
 
   function guardar() {
-    if (nombre.trim().length < 2) return;
+    if (nombre.trim().length < 2 || bloqueadoPorLimite) return;
     update((prev) => {
       const b = prev.barberia!;
       const cliente = {
@@ -278,9 +305,12 @@ function NuevoClienteForm({ onClose, update }: { onClose: () => void; update: Pr
           <Label>Teléfono</Label>
           <Input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="331 000 0000" />
         </div>
+        {bloqueadoPorLimite && (
+          <BloqueoPlan activo={false} compacto texto={`Llegaste al límite de ${maxClientes} clientes de tu plan ${plan.label}`} />
+        )}
       </div>
       <SheetFooter>
-        <Button size="lg" disabled={nombre.trim().length < 2} onClick={guardar}>
+        <Button size="lg" disabled={nombre.trim().length < 2 || bloqueadoPorLimite} onClick={guardar}>
           Guardar cliente
         </Button>
       </SheetFooter>
