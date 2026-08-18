@@ -18,6 +18,7 @@ export function BloqueoPlan({
   titulo = "Solo Pro",
   texto,
   compacto = false,
+  blur = false,
   children,
 }: {
   /** true = el negocio SÍ tiene esta feature/límite disponible → se renderiza `children` tal cual. */
@@ -26,10 +27,35 @@ export function BloqueoPlan({
   texto: string;
   /** Versión chica (una línea, sin candado) para envolver un solo botón/toggle en vez de una sección completa. */
   compacto?: boolean;
-  /** Opcional: un aviso "compacto" a veces no envuelve nada (ej. junto a un botón ya deshabilitado aparte) — solo se usa cuando `activo` es true. */
+  /**
+   * En vez de reemplazar `children` por la tarjeta de upsell, los deja
+   * visibles detrás (opacity-60 + blur-[1px], sin interacción) con el
+   * candado encima — "se antoja" la función real en vez de un placeholder
+   * vacío. Pensado para UNA sola tarjeta/sección (no listas completas, ahí
+   * sigue siendo mejor el reemplazo normal). Ignora `compacto`.
+   */
+  blur?: boolean;
   children?: React.ReactNode;
 }) {
   if (activo) return <>{children}</>;
+
+  if (blur) {
+    return (
+      <div className="relative overflow-hidden rounded-xl">
+        <div aria-hidden className="pointer-events-none select-none blur-[1px] opacity-60">
+          {children}
+        </div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl bg-background/40 px-6 text-center">
+          <span className="text-2xl">🔒</span>
+          <p className="text-sm font-semibold text-foreground">{titulo}</p>
+          <p className="text-xs text-muted-foreground">{texto}</p>
+          <Button asChild size="sm" className="mt-1">
+            <Link href="/planes">Sube de plan</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (compacto) {
     return (

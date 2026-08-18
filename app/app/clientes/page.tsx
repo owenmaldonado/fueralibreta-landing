@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { Search, MessageCircle, Trash2 } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
@@ -14,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetHeader } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/dashboards/empty-state";
+import { LimiteBar } from "@/components/dashboards/limite-bar";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { daysSince, formatMoney, mensajeRecordatorioInactivo, statsVisitasCliente, waLink } from "@/lib/mock";
@@ -32,7 +32,6 @@ export default function ClientesPage() {
   const data = session.barberia!;
   const diasRecordatorio = session.business.diasRecordatorio ?? DIAS_RECORDATORIO_DEFAULT;
   const maxClientes = plan.giroBarberia.maxClientes;
-  const tocoLimiteClientes = maxClientes !== null && data.clientes.length >= maxClientes;
   const filtrados = data.clientes
     .filter((c) => c.nombre.toLowerCase().includes(q.toLowerCase()) || c.telefono.includes(q))
     .map((c) => ({ ...c, ...statsVisitasCliente(data.citas, c.id) }))
@@ -51,14 +50,7 @@ export default function ClientesPage() {
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar cliente..." className="pl-9" />
         </div>
       </div>
-      {tocoLimiteClientes && (
-        <div className="mx-4 mb-3 rounded-xl border border-dashed border-border bg-card px-4 py-3 text-center">
-          <p className="text-sm font-medium">Llegaste al límite de {maxClientes} clientes de tu plan {plan.label}</p>
-          <Link href="/planes" className="mt-0.5 inline-block text-xs text-primary hover:underline">
-            Sube de plan para agregar más
-          </Link>
-        </div>
-      )}
+      <LimiteBar actual={data.clientes.length} max={maxClientes} etiqueta="clientes" planLabel={plan.label} />
       <div className="flex flex-col gap-2 px-4 pb-6">
         {filtrados.length === 0 ? (
           <EmptyState texto="Sin clientes todavía" />
