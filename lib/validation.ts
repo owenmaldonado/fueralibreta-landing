@@ -80,3 +80,10 @@ export const contactoSchema = z.object({
     .optional()
     .or(z.literal("")),
 });
+
+/** Body de POST /api/public/consent (banner de cookies, ver components/ConsentBanner.tsx). */
+export const consentSchema = z.object({
+  acepto_terminos: z.boolean(),
+  acepto_privacidad: z.boolean(),
+  acepto_cookies: z.boolean(),
+});

@@ -15,6 +15,7 @@ import { MetricsCards } from "./metrics-cards";
 import { UsersTable } from "./users-table";
 import { OrgsTable } from "./orgs-table";
 import { LeadsTable } from "./leads-table";
+import { ConsentimientosTable } from "./consentimientos-table";
 import { CatalogoTab } from "./catalogo-tab";
 import { UserDetailDialog } from "./user-detail-dialog";
 import { NegocioDetailDialog } from "./negocio-detail-dialog";
@@ -428,6 +429,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 label: `Negocios · ${(excludeSelf ? overview.negocios.filter((n) => n.ownerId !== currentUserId) : overview.negocios).length}`,
               },
               { value: "leads", label: `Leads · ${overview.leads.length}` },
+              { value: "consentimientos", label: `Consentimientos · ${overview.consentimientos.length}` },
               { value: "catalogo", label: "Catálogo" },
             ]}
             className="max-w-lg"
@@ -547,6 +549,10 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
             <div className="mt-4 overflow-hidden rounded-2xl border border-border">
               <LeadsTable leads={filteredLeads} onMarkContactado={handleMarkLeadContactado} onConvertir={handleConvertirLead} />
             </div>
+          </div>
+        ) : tab === "consentimientos" ? (
+          <div className="mt-4 overflow-hidden rounded-2xl border border-border">
+            <ConsentimientosTable consentimientos={overview.consentimientos} />
           </div>
         ) : (
           <CatalogoTab />

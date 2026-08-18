@@ -73,7 +73,14 @@ export default function AvisoPrivacidadPage() {
         negocio con el que tú, como cliente final, decides interactuar
         (para que pueda atender tu cita o pedido), y con proveedores de
         infraestructura tecnológica que operan el servicio en nuestro
-        nombre, bajo obligaciones contractuales de confidencialidad.
+        nombre, bajo obligaciones contractuales de confidencialidad. Tus
+        datos se almacenan en servidores de Supabase Inc. ubicados en
+        Estados Unidos, lo que implica una transferencia internacional de
+        datos personales necesaria para la prestación del servicio; dicho
+        proveedor está sujeto a obligaciones contractuales de
+        confidencialidad y seguridad equivalentes a las que aplicamos
+        nosotros mismos, conforme al artículo 36 y demás disposiciones
+        aplicables de la LFPDPPP sobre transferencias.
       </p>
 
       <h2>5. Almacenamiento y medidas de seguridad</h2>
@@ -107,7 +114,20 @@ export default function AvisoPrivacidadPage() {
         <a href="/cookies">Política de Cookies</a>.
       </p>
 
-      <h2>8. Cambios a este aviso de privacidad</h2>
+      <h2>8. Uso de automatización e inteligencia artificial</h2>
+      <p>
+        Fuera Libreta puede usar plantillas y asistencia automatizada
+        (incluyendo herramientas de inteligencia artificial) para ayudar a
+        generar borradores de mensajes de recordatorio, confirmación u
+        otros textos operativos dentro de la plataforma, a partir de los
+        datos operativos del negocio (cláusula 2). Estas herramientas son
+        un apoyo para el negocio: no suplantan ni sustituyen la
+        comunicación humana directa entre el negocio y sus clientes, y no
+        se usan para tomar decisiones automatizadas que produzcan efectos
+        jurídicos sobre ti sin intervención humana.
+      </p>
+
+      <h2>9. Cambios a este aviso de privacidad</h2>
       <p>
         Nos reservamos el derecho de actualizar este aviso de privacidad en
         cualquier momento, por ejemplo ante cambios en nuestras prácticas o
