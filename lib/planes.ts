@@ -243,12 +243,14 @@ export interface LimitesBarberia {
   excepciones: boolean;
   /** "Link de reservas" (booking público en /b/[slug]) — solo Pro+ según BENEFICIOS_POR_GIRO.barberia.pro_plus. Básico y Pro no lo tenían listado como beneficio. */
   reservas: boolean;
+  /** Citas por mes calendario (se cuenta por fecha, no acumulado histórico). `null` = sin límite. */
+  maxCitas: number | null;
 }
 
 export const LIMITES_BARBERIA: Record<PlanId, LimitesBarberia> = {
-  basico: { maxClientes: 100, maxServicios: 20, maxCuentas: 1, msg28: false, grafica: "ventas", excepciones: false, reservas: false },
-  pro: { maxClientes: null, maxServicios: null, maxCuentas: 5, msg28: true, grafica: "completa", excepciones: true, reservas: false },
-  pro_plus: { maxClientes: null, maxServicios: null, maxCuentas: 10, msg28: true, grafica: "completa", excepciones: true, reservas: true },
+  basico: { maxClientes: 100, maxServicios: 20, maxCuentas: 1, msg28: false, grafica: "ventas", excepciones: false, reservas: false, maxCitas: 100 },
+  pro: { maxClientes: null, maxServicios: null, maxCuentas: 5, msg28: true, grafica: "completa", excepciones: true, reservas: false, maxCitas: null },
+  pro_plus: { maxClientes: null, maxServicios: null, maxCuentas: 10, msg28: true, grafica: "completa", excepciones: true, reservas: true, maxCitas: null },
 };
 
 export interface LimitesFonda {
@@ -259,12 +261,14 @@ export interface LimitesFonda {
   comandas: boolean;
   /** Mismo criterio que giroAbarrotes.grafica: básico solo ve el rango Semanal en /app/gastos, Mensual/Anual quedan detrás de BloqueoPlan. */
   grafica: "semanal" | "anual";
+  /** Pedidos por mes calendario (se cuenta por fecha, no acumulado histórico). `null` = sin límite. */
+  maxPedidos: number | null;
 }
 
 export const LIMITES_FONDA: Record<PlanId, LimitesFonda> = {
-  basico: { variantes: false, mesas: 1, menuDia: false, maxProductos: 100, comandas: false, grafica: "semanal" },
-  pro: { variantes: true, mesas: null, menuDia: true, maxProductos: 500, comandas: false, grafica: "anual" },
-  pro_plus: { variantes: true, mesas: null, menuDia: true, maxProductos: null, comandas: true, grafica: "anual" },
+  basico: { variantes: false, mesas: 1, menuDia: false, maxProductos: 100, comandas: false, grafica: "semanal", maxPedidos: 100 },
+  pro: { variantes: true, mesas: null, menuDia: true, maxProductos: 500, comandas: false, grafica: "anual", maxPedidos: null },
+  pro_plus: { variantes: true, mesas: null, menuDia: true, maxProductos: null, comandas: true, grafica: "anual", maxPedidos: null },
 };
 
 /** Beneficios en texto plano por giro — alimenta las cards de /planes y /planes-bloqueado sin repetir la lista a mano en 3 lugares. */
@@ -275,13 +279,13 @@ export const BENEFICIOS_POR_GIRO: Record<BusinessType, Record<PlanId, string[]>>
     pro_plus: ["Productos ilimitados", "8 cuentas", "Gráfica anual", "Recordatorios de cobro", "Editor de ventas", "Exportar a Excel"],
   },
   barberia: {
-    basico: ["Hasta 100 clientes", "Hasta 20 servicios", "1 cuenta", "Gráfica de ventas"],
-    pro: ["Clientes ilimitados", "Servicios ilimitados", "5 cuentas", "Gráfica completa", "Mensaje a 28 días sin venir"],
-    pro_plus: ["Clientes ilimitados", "Servicios ilimitados", "10 cuentas", "Gráfica completa", "Mensaje a 28 días sin venir", "Reservas en línea"],
+    basico: ["Hasta 100 clientes", "Hasta 20 servicios", "Hasta 100 citas/mes", "1 cuenta", "Gráfica de ventas"],
+    pro: ["Clientes ilimitados", "Servicios ilimitados", "Citas ilimitadas", "5 cuentas", "Gráfica completa", "Mensaje a 28 días sin venir"],
+    pro_plus: ["Clientes ilimitados", "Servicios ilimitados", "Citas ilimitadas", "10 cuentas", "Gráfica completa", "Mensaje a 28 días sin venir", "Reservas en línea"],
   },
   fonda: {
-    basico: ["Hasta 100 productos", "1 mesa a la vez"],
-    pro: ["Hasta 500 productos", "Variantes de platillo", "Carrito por mesa"],
-    pro_plus: ["Productos ilimitados", "Variantes de platillo", "Carrito por mesa", "Comandas para cocina"],
+    basico: ["Hasta 100 productos", "Hasta 100 pedidos/mes", "1 mesa a la vez"],
+    pro: ["Hasta 500 productos", "Pedidos ilimitados", "Variantes de platillo", "Carrito por mesa"],
+    pro_plus: ["Productos ilimitados", "Pedidos ilimitados", "Variantes de platillo", "Carrito por mesa", "Comandas para cocina"],
   },
 };

@@ -31,6 +31,7 @@ import {
   toggleNegocioActive,
   updateNegocioPlan,
   updateNegocioTrial,
+  activarPlanConDias,
   updateNegocioPrecioCustom,
   updateNegocioFundador,
   updateNegocioFacturacion,
@@ -203,6 +204,17 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     }
   }
 
+  /** Un clic tras confirmar el pago por WhatsApp: cambia el plan y extiende trial_fin 30 días a la vez. */
+  async function handleActivarPlan(negocioId: string, plan: PlanId, nombre: string) {
+    try {
+      await activarPlanConDias(negocioId, plan);
+      toast.success(`${nombre}: activado ${PLAN_LABELS[plan]} por 30 días.`);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo activar el plan.");
+    }
+  }
+
   async function handleToggleFundadorById(negocioId: string, esFundador: boolean, nombre?: string) {
     try {
       await updateNegocioFundador(negocioId, esFundador);
@@ -264,6 +276,15 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
       return;
     }
     handleSetNegocioTrial(negocio.id, dias, negocio.nombre);
+  }
+
+  function handleActivarPlanDeUsuario(p: AdminProfile, plan: PlanId) {
+    const negocio = resolveNegocioDeUsuario(p);
+    if (!negocio) {
+      toast.error(`${p.email ?? "Este usuario"} todavía no tiene un negocio.`);
+      return;
+    }
+    handleActivarPlan(negocio.id, plan, negocio.nombre);
   }
 
   function handleSetPrecioCustomDeUsuario(p: AdminProfile) {
@@ -475,6 +496,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 onViewDetail={setDetailUserId}
                 onSetPlan={handleSetPlanDeUsuario}
                 onSetTrial={handleSetTrialDeUsuario}
+                onActivarPlan={handleActivarPlanDeUsuario}
                 onSetPrecioCustom={handleSetPrecioCustomDeUsuario}
                 onToggleFundador={handleToggleFundadorDeUsuario}
                 onToggleBanned={handleToggleBanned}
@@ -512,6 +534,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 onImpersonate={handleImpersonate}
                 onSetPlan={(n, plan) => handleSetNegocioPlan(n.id, plan, n.nombre)}
                 onSetTrial={(n, dias) => handleSetNegocioTrial(n.id, dias, n.nombre)}
+                onActivarPlan={(n, plan) => handleActivarPlan(n.id, plan, n.nombre)}
                 onSetPrecioCustom={setPrecioCustomNegocio}
                 onToggleFundador={handleToggleFundador}
                 onToggleBanned={handleToggleBanned}

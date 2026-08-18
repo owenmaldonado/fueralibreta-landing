@@ -9,9 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Stepper } from "@/components/ui/stepper";
 import { Button } from "@/components/ui/button";
+import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatHora12, formatMoney, todayISO } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
+import { usePlan } from "@/lib/planes";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import type { TenantData, OrderItem, Expense, FondaOrder } from "@/lib/types";
 
@@ -65,6 +67,10 @@ function NuevoPedidoForm({
   onClose: () => void;
   update: Props["update"];
 }) {
+  const plan = usePlan();
+  const maxPedidos = plan.giroFonda.maxPedidos;
+  const mesActual = todayISO(0).slice(0, 7);
+  const bloqueadoPorLimite = maxPedidos !== null && data.pedidos.filter((p) => p.fecha.startsWith(mesActual)).length >= maxPedidos;
   const [clienteNombre, setClienteNombre] = React.useState("");
   const [hora] = React.useState(nowHHMM());
   const [modo, setModo] = React.useState<"cobrar" | "programar">("cobrar");
@@ -146,7 +152,7 @@ function NuevoPedidoForm({
   const horaEntrega = modo === "programar" && horaEntregaInput ? horaEntregaInput : undefined;
 
   function guardar() {
-    if (!clienteNombre.trim() || items.length === 0) return;
+    if (!clienteNombre.trim() || items.length === 0 || bloqueadoPorLimite) return;
     const pedidoId = uid("ped");
     let pedidoCreado: FondaOrder | null = null;
     let negocioId = "";
@@ -324,9 +330,12 @@ function NuevoPedidoForm({
             <p className="pt-1 text-right font-mono text-sm text-muted-foreground">Total: {formatMoney(total)}</p>
           </div>
         )}
+        {bloqueadoPorLimite && (
+          <BloqueoPlan activo={false} compacto texto={`Llegaste al límite de ${maxPedidos} pedidos este mes de tu plan ${plan.label}`} />
+        )}
       </div>
       <SheetFooter>
-        <Button size="lg" disabled={!clienteNombre.trim() || items.length === 0} onClick={guardar}>
+        <Button size="lg" disabled={!clienteNombre.trim() || items.length === 0 || bloqueadoPorLimite} onClick={guardar}>
           {modo === "cobrar" ? "Cobrar" : "Programar pedido"}
         </Button>
       </SheetFooter>

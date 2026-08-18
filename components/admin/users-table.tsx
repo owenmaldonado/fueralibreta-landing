@@ -19,6 +19,7 @@ interface UsersTableProps {
   /** Cambia el plan (básico/pro/pro_plus) del negocio de este usuario — no profiles.plan, ver lib/planes.ts. */
   onSetPlan: (profile: AdminProfile, plan: PlanId) => void;
   onSetTrial: (profile: AdminProfile, dias: 7 | 14 | 30) => void;
+  onActivarPlan: (profile: AdminProfile, plan: PlanId) => void;
   onSetPrecioCustom: (profile: AdminProfile) => void;
   onToggleFundador: (profile: AdminProfile) => void;
   onToggleBanned: (profile: AdminProfile) => void;
@@ -33,6 +34,7 @@ export function UsersTable({
   onViewDetail,
   onSetPlan,
   onSetTrial,
+  onActivarPlan,
   onSetPrecioCustom,
   onToggleFundador,
   onToggleBanned,
@@ -135,6 +137,7 @@ export function UsersTable({
                   onImpersonate={() => onImpersonate(p)}
                   onSetPlan={(plan) => onSetPlan(p, plan)}
                   onSetTrial={(dias) => onSetTrial(p, dias)}
+                  onActivarPlan={(plan) => onActivarPlan(p, plan)}
                   onSetPrecioCustom={() => onSetPrecioCustom(p)}
                   onToggleFundador={() => onToggleFundador(p)}
                   onToggleBanned={() => onToggleBanned(p)}

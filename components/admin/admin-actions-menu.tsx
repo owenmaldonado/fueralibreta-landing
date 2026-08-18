@@ -24,6 +24,8 @@ export interface AdminActionsMenuProps {
   onImpersonate: () => void;
   onSetPlan: (plan: PlanId) => void;
   onSetTrial: (dias: 7 | 14 | 30) => void;
+  /** Cambia el plan Y extiende trial_fin 30 días en un solo PATCH — el flujo real después de que el cliente confirma el pago por WhatsApp (antes eran dos clics separados: "Cambiar plan" + "Activar 30 días"). */
+  onActivarPlan: (plan: PlanId) => void;
   onSetPrecioCustom: () => void;
   onToggleFundador: () => void;
   onToggleBanned: () => void;
@@ -39,6 +41,7 @@ export function AdminActionsMenu({
   onImpersonate,
   onSetPlan,
   onSetTrial,
+  onActivarPlan,
   onSetPrecioCustom,
   onToggleFundador,
   onToggleBanned,
@@ -52,14 +55,24 @@ export function AdminActionsMenu({
     { label: "Ver detalles", icon: <Eye className="h-4 w-4" />, onClick: onViewDetail },
     ...(negocio
       ? [
-          ...PLAN_ORDEN.filter((plan) => plan !== negocio.plan).map((plan) => ({
-            label: `Cambiar plan: ${PLAN_LABELS[plan]}`,
-            icon: <Crown className="h-4 w-4" />,
-            onClick: () => onSetPlan(plan),
-          })),
+          ...PLAN_ORDEN.filter((plan) => plan !== negocio.plan).map((plan) =>
+            plan === "basico"
+              ? {
+                  label: `Bajar a ${PLAN_LABELS[plan]}`,
+                  icon: <Crown className="h-4 w-4" />,
+                  onClick: () => onSetPlan(plan),
+                }
+              : {
+                  // Un solo clic tras confirmar el pago por WhatsApp: cambia
+                  // el plan y extiende trial_fin 30 días a la vez.
+                  label: `Activar ${PLAN_LABELS[plan]} (30 días)`,
+                  icon: <Crown className="h-4 w-4" />,
+                  onClick: () => onActivarPlan(plan),
+                }
+          ),
           { label: "Poner trial 7 días", icon: <Clock className="h-4 w-4" />, onClick: () => onSetTrial(7) },
           { label: "Poner trial 14 días", icon: <Clock className="h-4 w-4" />, onClick: () => onSetTrial(14) },
-          { label: "Activar 30 días", icon: <Clock className="h-4 w-4" />, onClick: () => onSetTrial(30) },
+          { label: "Extender 30 días (mismo plan)", icon: <Clock className="h-4 w-4" />, onClick: () => onSetTrial(30) },
           { label: "Precio custom", icon: <Tag className="h-4 w-4" />, onClick: onSetPrecioCustom },
           {
             label: negocio.esFundador ? "Quitar Fundador" : "Marcar Fundador",
