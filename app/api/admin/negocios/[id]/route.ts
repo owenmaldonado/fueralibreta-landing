@@ -10,6 +10,7 @@ interface PatchBody {
   precio_custom?: number | null;
   es_fundador?: boolean;
   notas_admin?: string | null;
+  ultimo_pago_at?: string;
 }
 
 function esFechaValida(v: unknown): v is string {
@@ -18,14 +19,14 @@ function esFechaValida(v: unknown): v is string {
 
 /**
  * Cambia plan / trial_fin / trial_inicio / precio_custom / es_fundador /
- * notas_admin de un negocio. Corre con service_role igual que
- * /api/admin/users/[id] — negocios_admin_all (RLS) ya le daría a un admin
- * acceso de escritura directo desde el cliente, pero el trigger
- * negocios_admin_fields_guard (supabase/migrations/20260815000000_esquema.sql) SOLO deja tocar estas seis
- * columnas cuando la sesión corre como service_role, sin importar qué
- * policy RLS aplique — así que esta ruta es la ÚNICA forma real de
- * cambiarlas, ni siquiera un admin autenticado por su propia sesión puede
- * hacerlo directo.
+ * notas_admin / ultimo_pago_at de un negocio. Corre con service_role igual
+ * que /api/admin/users/[id] — negocios_admin_all (RLS) ya le daría a un
+ * admin acceso de escritura directo desde el cliente, pero el trigger
+ * negocios_admin_fields_guard (supabase/migrations/20260815000000_esquema.sql y
+ * 20260822000000_ultimo_pago.sql) SOLO deja tocar estas siete columnas
+ * cuando la sesión corre como service_role, sin importar qué policy RLS
+ * aplique — así que esta ruta es la ÚNICA forma real de cambiarlas, ni
+ * siquiera un admin autenticado por su propia sesión puede hacerlo directo.
  */
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const { user, error, status } = await requireAdminUser();
@@ -80,6 +81,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return NextResponse.json({ error: "Notas inválidas." }, { status: 400 });
     }
     updates.notas_admin = body.notas_admin;
+  }
+
+  if (body.ultimo_pago_at !== undefined) {
+    if (!esFechaValida(body.ultimo_pago_at)) {
+      return NextResponse.json({ error: "Fecha de último pago inválida." }, { status: 400 });
+    }
+    updates.ultimo_pago_at = body.ultimo_pago_at;
   }
 
   if (Object.keys(updates).length === 0) {

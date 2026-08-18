@@ -54,6 +54,8 @@ export interface AdminNegocio {
   precioCustom: number | null;
   esFundador: boolean;
   notasAdmin: string | null;
+  /** Cuándo se registró por última vez un pago real (ver activarPlanConDias/updateNegocioTrial(id,30) abajo) — `null` si nunca, ya sea porque sigue en su trial gratis o porque solo se le extendió con "+7/+14 días" (esas no cuentan como pago). */
+  ultimoPagoAt: string | null;
 }
 
 export interface AdminMetrics {
@@ -129,6 +131,7 @@ export async function fetchAdminOverview(currentUserId: string): Promise<AdminOv
     precioCustom: n.precio_custom != null ? Number(n.precio_custom) : null,
     esFundador: (n.es_fundador as boolean) ?? false,
     notasAdmin: (n.notas_admin as string | null) ?? null,
+    ultimoPagoAt: (n.ultimo_pago_at as string | null) ?? null,
   }));
 
   const totalMovimientos = (citasRes.count ?? 0) + (pedidosRes.count ?? 0) + (ventasRes.count ?? 0);
@@ -398,11 +401,20 @@ export async function updateNegocioPlan(negocioId: string, plan: PlanId): Promis
  * Extiende trial_fin `dias` días a partir de hoy. No hay una columna
  * separada para "hasta cuándo pagó" (plan_expires_at) — trial_fin se trata
  * como "acceso bueno hasta" en general (ver bloqueadoPorTrial en
- * lib/planes.ts), así que "Activar 30 días" (después de que el negocio
- * paga por WhatsApp) usa exactamente esta misma función, solo con más días.
+ * lib/planes.ts), así que "Extender 30 días (mismo plan)" (después de que
+ * el negocio paga por WhatsApp sin cambiar de plan) usa exactamente esta
+ * misma función, solo con más días.
+ *
+ * 30 días es el único caso que representa un pago real (7/14 son
+ * extensiones de trial gratis) — por eso solo ese caso también registra
+ * `ultimo_pago_at` (columna "Último pago" de /admin), sin que Owen tenga
+ * que anotarlo aparte.
  */
 export async function updateNegocioTrial(negocioId: string, dias: 7 | 14 | 30): Promise<void> {
-  await patchNegocioAdminFields(negocioId, { trial_fin: todayISO(dias) });
+  await patchNegocioAdminFields(negocioId, {
+    trial_fin: todayISO(dias),
+    ...(dias === 30 ? { ultimo_pago_at: new Date().toISOString() } : {}),
+  });
 }
 
 /**
@@ -411,10 +423,11 @@ export async function updateNegocioTrial(negocioId: string, dias: 7 | 14 | 30): 
  * separado (dos clics en el menú de acciones) para el flujo real: el
  * cliente paga por WhatsApp, el admin confirma y activa. 30 días fijos
  * porque hoy no hay integración de pagos que sepa el ciclo real — es el
- * mismo número que ya usaba "Activar 30 días".
+ * mismo número que ya usaba "Activar 30 días". Siempre representa un pago
+ * real, así que también registra `ultimo_pago_at`.
  */
 export async function activarPlanConDias(negocioId: string, plan: PlanId, dias: 30 = 30): Promise<void> {
-  await patchNegocioAdminFields(negocioId, { plan, trial_fin: todayISO(dias) });
+  await patchNegocioAdminFields(negocioId, { plan, trial_fin: todayISO(dias), ultimo_pago_at: new Date().toISOString() });
 }
 
 /** `precio` en `null` regresa al negocio al precio de lista de su plan. */
@@ -448,6 +461,7 @@ async function patchNegocioAdminFields(
     precio_custom?: number | null;
     es_fundador?: boolean;
     notas_admin?: string | null;
+    ultimo_pago_at?: string;
   }
 ): Promise<void> {
   const res = await fetch(`/api/admin/negocios/${negocioId}`, {

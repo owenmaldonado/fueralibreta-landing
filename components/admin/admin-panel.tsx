@@ -45,7 +45,7 @@ import {
   type AdminLead,
 } from "@/lib/admin-data";
 import { formatMoney } from "@/lib/mock";
-import { PLAN_LABELS, formatTrial, type PlanId } from "@/lib/planes";
+import { PLAN_LABELS, formatTrial, estadoCobranza, type PlanId, type EstadoCobranza } from "@/lib/planes";
 
 type RoleFilter = "todos" | "admin" | "user";
 /** "trial" = todavía dentro de su periodo de prueba (trial_fin no vencido); "fundadores" = es_fundador = true. Reemplaza al viejo filtro por profiles.plan (free/pro) — ahora todo el filtrado de plan es a nivel negocio. */
@@ -62,6 +62,13 @@ const PLAN_ESTADO_OPCIONES: { value: PlanEstadoFilter; label: string }[] = [
   { value: "fundadores", label: "Fundadores" },
 ];
 
+const COBRANZA_OPCIONES: { value: EstadoCobranza; label: string; dot: string }[] = [
+  { value: "vencido", label: "Vencidos", dot: "🔴" },
+  { value: "por_vencer", label: "Por vencer <3d", dot: "🟡" },
+  { value: "activo", label: "Activos", dot: "🟢" },
+  { value: "trial", label: "Trial", dot: "⚪" },
+];
+
 function pasaFiltroPlan(negocio: AdminNegocio | undefined, filtro: PlanEstadoFilter): boolean {
   if (filtro === "todos") return true;
   if (!negocio) return false;
@@ -74,7 +81,9 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   const searchParams = useSearchParams();
   const [overview, setOverview] = React.useState<AdminOverview | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [tab, setTab] = React.useState("usuarios");
+  // Abre directo en Negocios (no Usuarios) para que Owen entre y vea a
+  // quién cobrarle sin un clic extra — ver cobranzaFilter abajo.
+  const [tab, setTab] = React.useState("negocios");
 
   const [q, setQ] = React.useState("");
   const [roleFilter, setRoleFilter] = React.useState<RoleFilter>("todos");
@@ -82,6 +91,9 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   const [sortOrder, setSortOrder] = React.useState<SortOrder>("recientes");
   const [orgQuery, setOrgQuery] = React.useState("");
   const [orgPlanFilter, setOrgPlanFilter] = React.useState<PlanEstadoFilter>("todos");
+  // Default "por_vencer": es la razón por la que Owen entra a /admin cada
+  // mes — a quién cobrarle antes de que se le bloquee la cuenta.
+  const [cobranzaFilter, setCobranzaFilter] = React.useState<EstadoCobranza>("por_vencer");
   const [leadQuery, setLeadQuery] = React.useState("");
   const [leadEstadoFilter, setLeadEstadoFilter] = React.useState<LeadEstadoFilter>("todos");
   // Las cards de arriba (Total usuarios, Negocios activos...) cuentan al
@@ -148,7 +160,12 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     );
   }, [overview, excludeSelf, currentUserId, q, roleFilter, planFilter, sortOrder, negocioPorOwner]);
 
-  const filteredNegocios = React.useMemo(() => {
+  // Base para los contadores reales de los 4 tabs de cobranza — antes de
+  // aplicarles el propio filtro de cobranza (si no, cada tab siempre
+  // contaría solo contra sí mismo) pero después de "Excluirme"/búsqueda/
+  // plan, para que los números que ve Owen coincidan con lo que va a ver en
+  // la tabla al cambiar de tab.
+  const negociosBaseCobranza = React.useMemo(() => {
     if (!overview) return [];
     let list = overview.negocios;
     if (excludeSelf) list = list.filter((n) => n.ownerId !== currentUserId);
@@ -161,6 +178,20 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     if (orgPlanFilter !== "todos") list = list.filter((n) => pasaFiltroPlan(n, orgPlanFilter));
     return list;
   }, [overview, excludeSelf, currentUserId, orgQuery, orgPlanFilter]);
+
+  const cobranzaCounts = React.useMemo(() => {
+    const counts: Record<EstadoCobranza, number> = { vencido: 0, por_vencer: 0, activo: 0, trial: 0 };
+    for (const n of negociosBaseCobranza) counts[estadoCobranza(n)]++;
+    return counts;
+  }, [negociosBaseCobranza]);
+
+  const filteredNegocios = React.useMemo(() => {
+    // vence ASC: el que vence hoy (o ya venció hace más días) va primero —
+    // así la fila de arriba siempre es la más urgente de cobrar.
+    return negociosBaseCobranza
+      .filter((n) => estadoCobranza(n) === cobranzaFilter)
+      .sort((a, b) => a.trialFin.localeCompare(b.trialFin));
+  }, [negociosBaseCobranza, cobranzaFilter]);
 
   const filteredLeads = React.useMemo(() => {
     if (!overview) return [];
@@ -507,7 +538,14 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
           </div>
         ) : tab === "negocios" ? (
           <div className="mt-4">
-            <div className="flex flex-wrap items-center gap-3">
+            <ChipGroup>
+              {COBRANZA_OPCIONES.map((o) => (
+                <Chip key={o.value} selected={cobranzaFilter === o.value} onClick={() => setCobranzaFilter(o.value)}>
+                  {o.dot} {o.label} · {cobranzaCounts[o.value]}
+                </Chip>
+              ))}
+            </ChipGroup>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
               <div className="relative min-w-[220px] flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
