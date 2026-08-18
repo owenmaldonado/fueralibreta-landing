@@ -23,7 +23,7 @@ export default async function AdminPage() {
   // owenxmaldonado100@gmail.com") — si algún día otra cuenta terminara con
   // role="admin" por error, este segundo check la sigue bloqueando.
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (profile?.role !== "admin" || user.email !== ADMIN_EMAIL) redirect("/");
+  if (profile?.role !== "admin" || user.email?.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) redirect("/");
 
   return <AdminPanel currentUserId={user.id} />;
 }

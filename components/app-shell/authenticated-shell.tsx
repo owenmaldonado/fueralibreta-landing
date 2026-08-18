@@ -247,7 +247,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
       if (!data.user) return;
       // isAdmin por email: no depende de que la policy de profiles esté
       // bien puesta para decidir si se muestra el botón (ver lib/admin-data.ts).
-      setIsAdmin(data.user.email === ADMIN_EMAIL);
+      setIsAdmin(data.user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase());
       supabase
         .from("profiles")
         .select("is_banned")
