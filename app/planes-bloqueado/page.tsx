@@ -6,6 +6,7 @@ import { Lock } from "lucide-react";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { Button } from "@/components/ui/button";
 import { PlanesCards } from "@/components/planes/planes-cards";
+import { PlanesInfo } from "@/components/planes/planes-info";
 import { SiteFooter } from "@/components/site-footer";
 import { useSession } from "@/lib/session";
 import { cerrarSesion } from "@/lib/logout";
@@ -38,6 +39,7 @@ export default function PlanesBloqueadoPage() {
         <div className="mt-8">
           <PlanesCards business={session.business} mensajeExtra="Se me acabaron 7 días gratis." />
         </div>
+        <PlanesInfo tipo={session.business.tipo} />
         <div className="mt-6 text-center">
           <Button
             variant="ghost"

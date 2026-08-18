@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/mock";
 import { PLAN_ORDEN, PLAN_LABELS, PRECIOS_POR_GIRO, BENEFICIOS_POR_GIRO, type PlanId } from "@/lib/planes";
 import { cn } from "@/lib/utils";
-import type { Business } from "@/lib/types";
+import type { Business, BusinessType } from "@/lib/types";
+
+/** Con sesión: negocio real (manda Negocio + ID corto por WhatsApp). Sin sesión (tabs de /planes): solo se conoce el giro elegido. */
+export type PlanesCardsBusiness = Pick<Business, "id" | "nombre" | "tipo"> | { tipo: BusinessType };
 
 /**
  * 3 cards de precio, una por plan del giro del negocio — reusada por
@@ -15,21 +18,19 @@ import type { Business } from "@/lib/types";
  * lib/planes.ts según business.tipo, así que un cambio de precio ahí se ve
  * en los 3 lugares (aquí y /admin) sin tocar este componente.
  */
-export function PlanesCards({ business, mensajeExtra }: { business: Pick<Business, "id" | "nombre" | "tipo">; mensajeExtra: string }) {
+export function PlanesCards({ business, mensajeExtra }: { business: PlanesCardsBusiness; mensajeExtra?: string }) {
   const numero = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "3329098631";
   const precios = PRECIOS_POR_GIRO[business.tipo];
   const beneficios = BENEFICIOS_POR_GIRO[business.tipo];
 
   function linkActivar(plan: PlanId) {
-    const mensaje = [
-      "Hola Owen! Quiero activar FueraLibreta:",
-      `Negocio: ${business.nombre}`,
-      `Tipo: ${TIPO_LABEL[business.tipo]}`,
-      `Plan: ${PLAN_LABELS[plan]}`,
-      `$${precios[plan]}/mes`,
-      `ID: ${business.id}`,
-      mensajeExtra,
-    ].join("\n");
+    const lineas = ["Hola Owen! Quiero activar FueraLibreta:"];
+    if ("nombre" in business) lineas.push(`Negocio: ${business.nombre}`);
+    lineas.push(`Tipo: ${TIPO_LABEL[business.tipo]}`, `Plan: ${PLAN_LABELS[plan]}`, `$${precios[plan]}/mes`);
+    // ID corto (8 chars) — igual al que usa /admin para buscar, más fácil de escribir a mano que el UUID completo.
+    lineas.push("id" in business ? `ID: ${business.id.slice(0, 8)}` : "Aún no tengo cuenta, quiero crear una.");
+    if (mensajeExtra) lineas.push(mensajeExtra);
+    const mensaje = lineas.join("\n");
     let digits = numero.replace(/\D/g, "");
     if (digits.length === 10) digits = `52${digits}`;
     return `https://wa.me/${digits}?text=${encodeURIComponent(mensaje)}`;
@@ -76,7 +77,7 @@ export function PlanesCards({ business, mensajeExtra }: { business: Pick<Busines
   );
 }
 
-const TIPO_LABEL: Record<Business["tipo"], string> = {
+export const TIPO_LABEL: Record<BusinessType, string> = {
   barberia: "Barbería",
   fonda: "Fondita",
   abarrotes: "Abarrotera",
