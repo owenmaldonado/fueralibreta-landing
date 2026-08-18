@@ -1,55 +1,106 @@
 import "server-only";
+
 import { createSupabaseServerClient } from "./supabase-server";
 import { createSupabaseAdminClient } from "./supabase-admin";
 import { ADMIN_EMAIL } from "./admin-data";
 
+type ProfileRow = { id: string; email: string | null; role: string; is_banned: boolean };
+
+/**
+ * Verifica en el servidor (nunca confíes en el cliente) que quien llama es
+ * admin. La identidad ("quién eres") sí se lee de la sesión normal en
+ * cookies, pero el rol se confirma con la service_role key en vez de
+ * apoyarse en RLS — así ninguna ruta de /api/admin/* depende de que las
+ * policies "*_admin_all" estén bien puestas para decidir quién entra. De
+ * paso bloquea aquí mismo a un admin baneado (is_banned), que antes podía
+ * seguir usando las rutas /api/admin/* aunque ya no pudiera ver el panel.
+ *
+ * El check de ADMIN_EMAIL es un segundo candado explícito ("solo
+ * owenxmaldonado100@gmail.com") además de profiles.role — si algún día otra
+ * cuenta terminara con role='admin' por error (o un admin cambia su propio
+ * email en Supabase Auth sin querer perder el acceso), esto la sigue
+ * bloqueando aquí, en el único lugar que de verdad importa: donde se
+ * ejecutan los cambios con service_role.
+ *
+ * profiles.id es FK a auth.users(id) on delete cascade, así que una fila
+ * "huérfana" (id que no matchea auth.uid() pero mismo email) solo puede
+ * pasar si hay dos filas en auth.users con el mismo email (dos altas,
+ * p. ej. password + Google sin auto-link) — no por corrupción de datos. El
+ * fallback por email de abajo cubre ese caso SIN tocar ningún id: usa
+ * .select() en vez de .single() (que truena con 0 o 2+ filas) y, si hay
+ * varias filas para el mismo email, se queda con la que ya sea role='admin'
+ * en vez de adivinar o reescribir primary keys en caliente.
+ *
+ * Los errores crudos de cada query (errId/errEmail) se loguean aparte del
+ * resultado: si la service_role key está mal (p. ej. "Unregistered API
+ * key" por un formato de key que el cliente de supabase-js no reconoce),
+ * la query falla y data queda null — sin loguear el error ahí se ve
+ * idéntico a "no encontré la fila", que es un bug totalmente distinto.
+ */
 export async function requireAdminUser() {
   const supabase = createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!user) return { user: null, error: "No autenticado", status: 401 as const };
+  if (!user) {
+    return { user: null, error: "No autenticado", status: 401 as const };
+  }
+  if (!ADMIN_EMAIL) {
+    console.error("ADMIN_EMAIL missing");
+    return { user: null, error: "Configuración de servidor incompleta: falta ADMIN_EMAIL.", status: 500 as const };
+  }
 
-  const actualEmail = user.email?.toLowerCase().trim()?? "";
-  const allowedEmail = ADMIN_EMAIL.toLowerCase().trim();
-  if (actualEmail!== allowedEmail) {
+  const actualEmail = user.email?.toLowerCase().trim() ?? "";
+  if (actualEmail !== ADMIN_EMAIL.toLowerCase().trim()) {
     return { user: null, error: "No autorizado", status: 403 as const };
   }
 
   const admin = createSupabaseAdminClient();
 
-  // 1. Busca por ID primero
   const { data: byId, error: errId } = await admin
-   .from("profiles")
-   .select("id, email, role, is_banned")
-   .eq("id", user.id);
+    .from("profiles")
+    .select("id, email, role, is_banned")
+    .eq("id", user.id);
+  if (errId) console.error("Admin check: error consultando profiles por id", errId);
 
-  console.log("Admin check byId", { userId: user.id, byId, errId });
+  let profile: ProfileRow | null = (byId?.[0] as ProfileRow | undefined) ?? null;
 
-  let profile = byId?.[0]?? null;
-
-  // 2. Si no hay por ID, busca por email
   if (!profile) {
     const { data: byEmail, error: errEmail } = await admin
-     .from("profiles")
-     .select("id, email, role, is_banned")
-     .ilike("email", actualEmail);
+      .from("profiles")
+      .select("id, email, role, is_banned")
+      .ilike("email", actualEmail);
+    if (errEmail) console.error("Admin check: error consultando profiles por email", errEmail);
 
-    console.log("Admin check byEmail", { byEmail, errEmail });
+    const rows = (byEmail ?? []) as ProfileRow[];
+    const adminRows = rows.filter((r) => r.role === "admin");
 
-    // Toma cualquiera que sea admin, aunque haya 2
-    profile = (byEmail?.find(r => r.role === 'admin')?? byEmail?.[0]?? null) as any;
+    if (adminRows.length === 1) {
+      profile = adminRows[0];
+    }
+
+    if (rows.length > 1) {
+      console.error("Admin check: profiles duplicados para el mismo email (revisa auth.users por cuentas duplicadas)", {
+        email: actualEmail,
+        filas: rows.map((r) => ({ id: r.id, role: r.role })),
+        filaUsada: profile?.id ?? null,
+      });
+    }
   }
 
-  console.log("Admin check final", {
+  console.log("Admin check", {
     userId: user.id,
     email: actualEmail,
-    role: profile?.role?? null,
-    profileId: profile?.id?? null,
+    role: profile?.role ?? null,
+    profileId: profile?.id ?? null,
   });
 
-  if (profile?.is_banned) return { user: null, error: "No autorizado", status: 403 as const };
-  if (profile?.role!== "admin") {
-    return { user: null, error: `No es admin, role actual: ${profile?.role?? "desconocido"}`, status: 403 as const };
+  if (profile?.is_banned) {
+    return { user: null, error: "No autorizado", status: 403 as const };
+  }
+  if (profile?.role !== "admin") {
+    return { user: null, error: `No es admin, role actual: ${profile?.role ?? "desconocido"}`, status: 403 as const };
   }
 
   return { user, error: null, status: 200 as const };
