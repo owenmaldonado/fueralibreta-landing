@@ -14,6 +14,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase-admin";
  */
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const { user, error, status } = await requireAdminUser();
+  console.log("Admin check [PATCH /api/admin/users]", { targetId: params.id, ok: Boolean(user), error, status });
   if (!user) return NextResponse.json({ error }, { status });
 
   let body: { role?: string; plan?: string; is_banned?: boolean };
@@ -80,6 +81,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
  */
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const { user, error, status } = await requireAdminUser();
+  console.log("Admin check [DELETE /api/admin/users]", { targetId: params.id, ok: Boolean(user), error, status });
   if (!user) return NextResponse.json({ error }, { status });
 
   if (user.id === params.id) {
