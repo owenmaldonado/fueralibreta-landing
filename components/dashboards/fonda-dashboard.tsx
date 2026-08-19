@@ -110,6 +110,39 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
     .reduce((acc, p) => acc + p.total, 0);
   const gastos = gastosPeriodo.reduce((acc, g) => acc + g.monto, 0);
 
+  // Un hard refresh pinta primero desde el catálogo local (que NUNCA trae
+  // pedidos — se reconstruyen vacíos a propósito, ver lib/local-cache.ts)
+  // y luego lo pisa con la carga real; si esa carga real se tarda o falla
+  // (con reintentos, ver fetchTenantConReintentos en lib/session.ts), "Ventas"
+  // se ve en $0 aunque sí haya ventas del día. Mientras esa carga real no
+  // llega, se muestra el último total de HOY conocido (guardado en
+  // localStorage la última vez que sí hubo ventas reales) en vez de un $0
+  // que no es cierto — nunca se cachea un $0 (podría ser el catálogo local
+  // vacío, no una venta real de cero), así que el valor cacheado siempre es
+  // de verdad, y se reemplaza solo en cuanto los pedidos reales cargan.
+  const ventasHoyCacheKey = `fl_fonda_ventas_hoy_${negocio.id}`;
+  const [ventasHoyCache, setVentasHoyCache] = React.useState<{ fecha: string; total: number } | null>(null);
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem(ventasHoyCacheKey);
+      if (raw) setVentasHoyCache(JSON.parse(raw));
+    } catch {
+      // localStorage corrupto o no disponible: se ignora, cae al valor real.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [negocio.id]);
+  React.useEffect(() => {
+    if (filtro !== "hoy" || ventas <= 0) return;
+    try {
+      localStorage.setItem(ventasHoyCacheKey, JSON.stringify({ fecha: hoyEnSuZona, total: ventas }));
+    } catch {
+      // Sin espacio o localStorage bloqueado: no es crítico, se sigue sin cache.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ventas, hoyEnSuZona, negocio.id, filtro]);
+  const mostrandoVentasCache = filtro === "hoy" && ventas === 0 && ventasHoyCache?.fecha === hoyEnSuZona;
+  const ventasMostradas = mostrandoVentasCache ? ventasHoyCache!.total : ventas;
+
   // "Hoy" en un negocio real muestra pendientesVivo (lectura directa,
   // siempre al día). En demo (sin ownerId, nunca persistida) cae a
   // session.fonda.pedidos filtrado solo por estado, igual que antes.
@@ -209,7 +242,7 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
         <Tabs value={filtro} onValueChange={(v) => setFiltro(v as FiltroDia)} tabs={FILTROS} />
       </div>
       <div className="grid grid-cols-2 gap-3 px-4 pt-4">
-        <StatTile label="Ventas" value={formatMoney(ventas)} />
+        <StatTile label={mostrandoVentasCache ? "Ventas ↻" : "Ventas"} value={formatMoney(ventasMostradas)} />
         <StatTile label="Gastos" value={formatMoney(gastos)} />
       </div>
       {filtro === "hoy" && activos.length > 0 && (

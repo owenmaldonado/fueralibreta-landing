@@ -14,8 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useSession } from "@/lib/session";
-import { usePlan } from "@/lib/planes";
-import { uid } from "@/lib/mock";
+import { usePlan, PRECIOS_POR_GIRO } from "@/lib/planes";
+import { uid, formatMoney } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 import type { GroceryProduct } from "@/lib/types";
 
@@ -127,68 +127,79 @@ function PrecioRapidoForm({
     <>
       <SheetHeader title={`${producto.emoji || "🥬"} ${producto.nombre}`} description={`Precios por ${producto.unidad === "kg" ? "kilo" : "pieza"}`} onClose={onClose} />
       <div className="flex flex-col gap-5 py-2">
-        <div className="space-y-1.5">
-          <Label>Precio compra (costo)</Label>
-          <Input
-            type="number"
-            inputMode="decimal"
-            step="0.5"
-            value={costo}
-            onChange={(e) => setCosto(Math.max(0, Number(e.target.value) || 0))}
-            className="h-12 text-center font-display text-xl font-semibold"
-          />
-          <BloqueoPlan activo={editorDisponible} compacto texto="Ajuste rápido de precio (±$1/±$0.50) disponible en Pro y Pro+">
-            <div className="grid w-full grid-cols-4 gap-2 pt-1">
-              <Button type="button" variant="outline" onClick={() => ajustar(setCosto, -1)}>
-                -$1
-              </Button>
-              <Button type="button" variant="outline" onClick={() => ajustar(setCosto, -0.5)}>
-                -$0.50
-              </Button>
-              <Button type="button" variant="outline" onClick={() => ajustar(setCosto, 0.5)}>
-                +$0.50
-              </Button>
-              <Button type="button" variant="outline" onClick={() => ajustar(setCosto, 1)}>
-                +$1
-              </Button>
+        {/* Básico VE el precio actual (por eso el bloqueo va aquí adentro, no
+            en la lista/grid de fuera) pero no puede tocarlo: ni a mano ni con
+            los botones rápidos — todo el bloque de edición queda detrás de
+            un solo candado con blur, no uno separado por cada fila. */}
+        <BloqueoPlan
+          activo={editorDisponible}
+          blur
+          titulo="Editor de precios es Pro"
+          texto={`Ajusta precios a mano o con ±$1 desde ${formatMoney(PRECIOS_POR_GIRO.abarrotes.pro)}/mes`}
+        >
+          <div className="flex flex-col gap-5">
+            <div className="space-y-1.5">
+              <Label>Precio compra (costo)</Label>
+              <Input
+                type="number"
+                inputMode="decimal"
+                step="0.5"
+                value={costo}
+                onChange={(e) => setCosto(Math.max(0, Number(e.target.value) || 0))}
+                disabled={!editorDisponible}
+                className="h-12 text-center font-display text-xl font-semibold"
+              />
+              <div className="grid w-full grid-cols-4 gap-2 pt-1">
+                <Button type="button" variant="outline" disabled={!editorDisponible} onClick={() => ajustar(setCosto, -1)}>
+                  -$1
+                </Button>
+                <Button type="button" variant="outline" disabled={!editorDisponible} onClick={() => ajustar(setCosto, -0.5)}>
+                  -$0.50
+                </Button>
+                <Button type="button" variant="outline" disabled={!editorDisponible} onClick={() => ajustar(setCosto, 0.5)}>
+                  +$0.50
+                </Button>
+                <Button type="button" variant="outline" disabled={!editorDisponible} onClick={() => ajustar(setCosto, 1)}>
+                  +$1
+                </Button>
+              </div>
             </div>
-          </BloqueoPlan>
-        </div>
 
-        <div className="space-y-1.5">
-          <Label>Precio venta</Label>
-          <Input
-            type="number"
-            inputMode="decimal"
-            step="0.5"
-            value={precio}
-            onChange={(e) => setPrecio(Math.max(0, Number(e.target.value) || 0))}
-            className="h-16 w-full text-center font-display text-4xl font-bold"
-          />
-          <BloqueoPlan activo={editorDisponible} compacto texto="Ajuste rápido de precio (±$1/±$0.50) disponible en Pro y Pro+">
-            <div className="grid w-full grid-cols-4 gap-2 pt-1">
-              <Button type="button" variant="outline" size="lg" onClick={() => ajustar(setPrecio, -1)}>
-                -$1
-              </Button>
-              <Button type="button" variant="outline" size="lg" onClick={() => ajustar(setPrecio, -0.5)}>
-                -$0.50
-              </Button>
-              <Button type="button" variant="outline" size="lg" onClick={() => ajustar(setPrecio, 0.5)}>
-                +$0.50
-              </Button>
-              <Button type="button" variant="outline" size="lg" onClick={() => ajustar(setPrecio, 1)}>
-                +$1
-              </Button>
+            <div className="space-y-1.5">
+              <Label>Precio venta</Label>
+              <Input
+                type="number"
+                inputMode="decimal"
+                step="0.5"
+                value={precio}
+                onChange={(e) => setPrecio(Math.max(0, Number(e.target.value) || 0))}
+                disabled={!editorDisponible}
+                className="h-16 w-full text-center font-display text-4xl font-bold"
+              />
+              <div className="grid w-full grid-cols-4 gap-2 pt-1">
+                <Button type="button" variant="outline" size="lg" disabled={!editorDisponible} onClick={() => ajustar(setPrecio, -1)}>
+                  -$1
+                </Button>
+                <Button type="button" variant="outline" size="lg" disabled={!editorDisponible} onClick={() => ajustar(setPrecio, -0.5)}>
+                  -$0.50
+                </Button>
+                <Button type="button" variant="outline" size="lg" disabled={!editorDisponible} onClick={() => ajustar(setPrecio, 0.5)}>
+                  +$0.50
+                </Button>
+                <Button type="button" variant="outline" size="lg" disabled={!editorDisponible} onClick={() => ajustar(setPrecio, 1)}>
+                  +$1
+                </Button>
+              </div>
             </div>
-          </BloqueoPlan>
-        </div>
+          </div>
+        </BloqueoPlan>
 
         <p className={cn("text-center text-sm font-medium", ganancia >= 0 ? "text-ledger" : "text-destructive")}>
           Ganancia: {formatPrecio(ganancia)} por {producto.unidad === "kg" ? "kilo" : "pieza"}
         </p>
       </div>
       <SheetFooter>
-        <Button size="lg" variant="ledger" className="h-14 text-lg" onClick={guardar}>
+        <Button size="lg" variant="ledger" className="h-14 text-lg" disabled={!editorDisponible} onClick={guardar}>
           Guardar
         </Button>
       </SheetFooter>
