@@ -14,6 +14,7 @@ import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatHora12, formatMoney, todayISO } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
 import { usePlan } from "@/lib/planes";
+import { obtenerOCrearTurno } from "@/lib/turno-fonda";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import type { TenantData, OrderItem, Expense, FondaOrder } from "@/lib/types";
 
@@ -41,7 +42,7 @@ export function FondaQuickAdd({ active, onClose, session, update }: Props) {
   return (
     <>
       <Sheet open={active === "pedido"} onOpenChange={(o) => !o && onClose()}>
-        <NuevoPedidoForm data={data} onClose={onClose} update={update} />
+        <NuevoPedidoForm data={data} onClose={onClose} update={update} negocioId={session.business.id} />
       </Sheet>
       <Sheet open={active === "platillo"} onOpenChange={(o) => !o && onClose()}>
         <NuevoPlatilloForm onClose={onClose} update={update} />
@@ -62,10 +63,12 @@ function NuevoPedidoForm({
   data,
   onClose,
   update,
+  negocioId,
 }: {
   data: NonNullable<TenantData["fonda"]>;
   onClose: () => void;
   update: Props["update"];
+  negocioId: string;
 }) {
   const plan = usePlan();
   const maxPedidos = plan.giroFonda.maxPedidos;
@@ -154,8 +157,14 @@ function NuevoPedidoForm({
   function guardar() {
     if (!clienteNombre.trim() || items.length === 0 || bloqueadoPorLimite) return;
     const pedidoId = uid("ped");
+    const estado = modo === "cobrar" ? ("entregado" as const) : ("pendiente" as const);
+    // "Cobrar ahora" es una venta ya entregada — se tagea con el turno en
+    // curso para que "Ventas" de Hoy la cuente (filtra por turno_id, ver
+    // lib/turno-fonda.ts y fonda-dashboard.tsx). "Programar" queda sin
+    // turno hasta que de verdad se entregue (marcarEntregado en
+    // fonda-dashboard.tsx / app/app/pedidos/page.tsx la tagea ahí).
+    const turnoId = estado === "entregado" ? obtenerOCrearTurno(negocioId).turnoId : undefined;
     let pedidoCreado: FondaOrder | null = null;
-    let negocioId = "";
     update(
       (prev) => {
         const f = prev.fonda!;
@@ -169,12 +178,12 @@ function NuevoPedidoForm({
           // "Cobrar ahora": venta directa, ya entregada, mismo flujo que
           // abarrotera — no pasa por Pedidos pendientes. "Programar": sí va a
           // pendientes, con la hora de entrega prometida si se puso.
-          estado: modo === "cobrar" ? ("entregado" as const) : ("pendiente" as const),
+          estado,
           total,
+          turnoId,
           ...camposEmpleado(),
         };
         pedidoCreado = pedido;
-        negocioId = prev.business.id;
         return { ...prev, fonda: { ...f, pedidos: [pedido, ...f.pedidos] } };
       },
       { ventaOffline: true }

@@ -11,6 +11,7 @@ import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { supabase } from "@/lib/supabase";
 import { formatMoney, mensajeDiferencia, uid } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
+import { leerTurnoActual, cerrarTurno } from "@/lib/turno-fonda";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
 
 type MermaTipo = "acabado" | "sobro_poco" | "sobro_mucho" | "tirado";
@@ -63,18 +64,31 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
   const negocio = session.business;
   const esNegocioReal = Boolean(negocio.ownerId);
 
-  const ventasHoy = data.pedidos
-    .filter((p) => p.estado === "entregado" && p.fecha === hoyEnSuZona)
-    .reduce((acc, p) => acc + p.total, 0);
+  // Mismo criterio que el StatTile "Ventas" del dashboard: mientras haya un
+  // turno abierto, el corte es del turno en curso (turno_id), no del día
+  // calendario — así un cierre pasada la medianoche no se corta a la mitad.
+  const [turnoActual, setTurnoActual] = React.useState(() => leerTurnoActual(negocio.id));
+  React.useEffect(() => {
+    setTurnoActual(leerTurnoActual(negocio.id));
+  }, [negocio.id, open]);
+
+  const pedidosDelTurno = React.useMemo(
+    () =>
+      data.pedidos.filter((p) =>
+        p.estado === "entregado" && (turnoActual ? p.turnoId === turnoActual.turnoId : p.fecha === hoyEnSuZona)
+      ),
+    [data.pedidos, turnoActual, hoyEnSuZona]
+  );
+
+  const ventasHoy = pedidosDelTurno.reduce((acc, p) => acc + p.total, 0);
   const ventasPorEmpleado = React.useMemo(() => {
     const mapa = new Map<string, number>();
-    for (const p of data.pedidos) {
-      if (p.estado !== "entregado" || p.fecha !== hoyEnSuZona) continue;
+    for (const p of pedidosDelTurno) {
       const nombre = p.empleadoNombreCache ?? "Dueño";
       mapa.set(nombre, (mapa.get(nombre) ?? 0) + p.total);
     }
     return Array.from(mapa, ([nombre, monto]) => ({ nombre, monto }));
-  }, [data.pedidos, hoyEnSuZona]);
+  }, [pedidosDelTurno]);
 
   const disponiblesHoy = data.platillos.filter((p) => p.activoHoy);
   const vendidosPorPlatillo = React.useMemo(() => {
@@ -191,6 +205,11 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
       return { ...prev, fonda: { ...f, platillos, gastos } };
     });
 
+    // Cierre real del turno: solo aquí se borra turno_actual_fonda de
+    // localStorage (no en un "cancelar" a medio wizard) — la próxima venta
+    // abre un turno_id nuevo desde cero.
+    cerrarTurno(negocio.id);
+    setTurnoActual(null);
     setGuardando(false);
     resetYCerrar();
   }

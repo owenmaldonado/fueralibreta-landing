@@ -15,6 +15,7 @@ import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { formatMoney, formatHora12, todayISO } from "@/lib/mock";
 import { getEmpleadoActual, permisosActuales } from "@/lib/empleados";
+import { obtenerOCrearTurno } from "@/lib/turno-fonda";
 import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
 import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
 import { cn } from "@/lib/utils";
@@ -61,9 +62,17 @@ export default function PedidosPage() {
   const pedidosDelMes = data.pedidos.filter((p) => p.fecha.startsWith(mesActual)).length;
 
   function marcarEntregado(id: string) {
+    // Tagea con el turno en curso AL ENTREGAR (no al crear el pedido): así
+    // "Ventas" de Hoy (fonda-dashboard.tsx, filtra por turno_id) cuenta un
+    // pedido programado que se entrega en este turno, aunque se haya
+    // agendado en un turno anterior — ver lib/turno-fonda.ts.
+    const turno = obtenerOCrearTurno(session!.business.id);
     update((prev) => {
       const f = prev.fonda!;
-      return { ...prev, fonda: { ...f, pedidos: f.pedidos.map((p) => (p.id === id ? { ...p, estado: "entregado" as const } : p)) } };
+      return {
+        ...prev,
+        fonda: { ...f, pedidos: f.pedidos.map((p) => (p.id === id ? { ...p, estado: "entregado" as const, turnoId: turno.turnoId } : p)) },
+      };
     });
   }
 

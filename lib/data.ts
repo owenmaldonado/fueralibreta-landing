@@ -352,6 +352,7 @@ const pedidoToRow = (p: FondaOrder, negocioId: string): Row => ({
   empleado_nombre_cache: p.empleadoNombreCache ?? null,
   cancelado_por: p.canceladoPor ?? null,
   motivo_cancelacion: p.motivoCancelacion ?? null,
+  turno_id: p.turnoId ?? null,
 });
 const itemToRow = (it: OrderItem, pedidoId: string): Row => ({
   pedido_id: pedidoId,
@@ -421,6 +422,7 @@ async function fetchFondaData(negocioId: string): Promise<FondaData> {
     empleadoNombreCache: (row.empleado_nombre_cache as string) ?? undefined,
     canceladoPor: (row.cancelado_por as string) ?? undefined,
     motivoCancelacion: (row.motivo_cancelacion as string) ?? undefined,
+    turnoId: (row.turno_id as string) ?? undefined,
     items: itemsData
       .filter((it) => it.pedido_id === row.id)
       .map((it) => ({
@@ -485,6 +487,7 @@ export async function fetchPedidosPendientes(negocioId: string): Promise<FondaOr
     total: Number(row.total),
     empleadoId: (row.empleado_id as string) ?? undefined,
     empleadoNombreCache: (row.empleado_nombre_cache as string) ?? undefined,
+    turnoId: (row.turno_id as string) ?? undefined,
     items: itemsData
       .filter((it) => it.pedido_id === row.id)
       .map((it) => ({

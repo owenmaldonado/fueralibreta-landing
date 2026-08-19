@@ -207,6 +207,8 @@ export interface FondaOrder {
   /** Cancelación por un rol "vendedor" (no puede borrar, solo cancelar — ver PERMISOS en lib/empleados.ts). */
   canceladoPor?: string;
   motivoCancelacion?: string;
+  /** Turno en curso al momento de la venta (ver lib/turno-fonda.ts) — "Ventas" de Hoy filtra por esto, no por fecha, para no depender de cuándo terminó de cargar la sesión. Ausente en pedidos de antes de esta columna. */
+  turnoId?: string;
 }
 
 export interface Expense {
