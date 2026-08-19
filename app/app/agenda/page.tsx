@@ -14,9 +14,10 @@ import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { CobrarCitaDialog } from "@/components/dashboards/cobrar-cita-dialog";
 import { LimiteBar } from "@/components/dashboards/limite-bar";
+import { WhatsappRecordatorioButton } from "@/components/dashboards/whatsapp-recordatorio-button";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
-import { formatHora12, formatMoney, mensajeRecordatorioCita, todayISO, waLink } from "@/lib/mock";
+import { formatHora12, formatMoney, todayISO, waLink } from "@/lib/mock";
 import { getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente, usePendingSalesQueue, type VentaPendienteRow } from "@/lib/offline-sales-queue";
 import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
@@ -154,6 +155,7 @@ export default function AgendaPage() {
           negocioNombre={negocioNombre}
           negocioId={negocioId}
           pendientesPorId={citasPendientesPorId}
+          msg28={plan.giroBarberia.msg28}
         />
       ) : (
         <DiaView
@@ -165,6 +167,7 @@ export default function AgendaPage() {
           negocioNombre={negocioNombre}
           negocioId={negocioId}
           pendientesPorId={citasPendientesPorId}
+          msg28={plan.giroBarberia.msg28}
         />
       )}
 
@@ -200,6 +203,7 @@ function DiaView({
   negocioNombre,
   negocioId,
   pendientesPorId,
+  msg28,
 }: {
   data: BarberiaData;
   fecha: string;
@@ -209,6 +213,7 @@ function DiaView({
   negocioNombre: string;
   negocioId: string;
   pendientesPorId: Map<string, VentaPendienteRow>;
+  msg28: boolean;
 }) {
   const citas = data.citas.filter((c) => c.fecha === fecha && c.estado !== "cancelada").sort((a, b) => a.hora.localeCompare(b.hora));
 
@@ -227,6 +232,7 @@ function DiaView({
             negocioNombre={negocioNombre}
             negocioId={negocioId}
             fila={pendientesPorId.get(c.id)}
+            msg28={msg28}
           />
         ))
       )}
@@ -242,6 +248,7 @@ function SemanaView({
   negocioNombre,
   negocioId,
   pendientesPorId,
+  msg28,
 }: {
   data: BarberiaData;
   onCobrar: (c: Appointment) => void;
@@ -250,6 +257,7 @@ function SemanaView({
   negocioNombre: string;
   negocioId: string;
   pendientesPorId: Map<string, VentaPendienteRow>;
+  msg28: boolean;
 }) {
   // Lunes a domingo de la semana de calendario en curso (misma definición
   // que "Semanal" en la gráfica de Gastos/Caja), no un rolling de 7 días
@@ -290,6 +298,7 @@ function SemanaView({
                     negocioNombre={negocioNombre}
                     negocioId={negocioId}
                     fila={pendientesPorId.get(c.id)}
+                    msg28={msg28}
                   />
                 ))}
               </div>
@@ -308,6 +317,7 @@ function CitaRow({
   negocioNombre,
   negocioId,
   fila,
+  msg28,
 }: {
   cita: Appointment;
   onCobrar: (c: Appointment) => void;
@@ -316,6 +326,7 @@ function CitaRow({
   negocioNombre: string;
   negocioId: string;
   fila?: VentaPendienteRow;
+  msg28: boolean;
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
@@ -334,6 +345,7 @@ function CitaRow({
       ) : (
         <span className="shrink-0 font-mono text-xs uppercase tracking-widest text-ledger">Listo</span>
       )}
+      <WhatsappRecordatorioButton cita={c} negocioNombre={negocioNombre} disponible={msg28} />
       <DropdownMenu
         items={[
           ...(c.clienteTelefono
@@ -342,10 +354,6 @@ function CitaRow({
                   label: "WhatsApp",
                   onClick: () =>
                     window.open(waLink(c.clienteTelefono, `Hola ${c.clienteNombre}, te confirmamos tu cita a las ${formatHora12(c.hora)}`), "_blank"),
-                },
-                {
-                  label: "Enviar recordatorio",
-                  onClick: () => window.open(waLink(c.clienteTelefono, mensajeRecordatorioCita(c, negocioNombre)), "_blank"),
                 },
               ]
             : []),
