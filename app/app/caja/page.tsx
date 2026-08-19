@@ -9,6 +9,7 @@ import { StatTile } from "@/components/dashboards/stat-tile";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { TrendBarChart } from "@/components/dashboards/trend-bar-chart";
 import { PlanGate } from "@/components/dashboards/plan-gate";
+import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -118,23 +119,38 @@ export default function CajaPage() {
       </div>
 
       <div className="flex flex-col gap-3 px-4 pt-4">
-        <Tabs value={rango} onValueChange={(v) => setRango(v as RangoTiempo)} tabs={RANGO_TABS} />
+        <Tabs
+          value={rango}
+          onValueChange={(v) => setRango(v as RangoTiempo)}
+          tabs={RANGO_TABS}
+          // Mismo criterio que /app/gastos (abarrotes/fonda): básico
+          // ("ventas") solo navega Semanal, Mensual/Anual quedan con
+          // candado hasta Pro/Pro+ ("completa"). Antes solo se restringía
+          // qué barras se veían, no el rango — se podía picar Mensual/Anual
+          // libremente aunque el plan fuera básico.
+          disabledValues={plan.giroBarberia.grafica === "completa" ? undefined : new Set(["mensual", "anual"])}
+        />
         <PlanGate feature="graficas">
-          <TrendBarChart
-            data={serie.map((s) => ({ label: s.label, ingreso: s.a, gasto: s.b }))}
-            // grafica "ventas" (básico) solo ve la barra de ingresos — la de
-            // gastos, junto a Ganancia neta/Efectivo/Transferencia arriba,
-            // es la vista "completa" de Pro/Pro+ (ver LIMITES_BARBERIA).
-            bars={
-              plan.giroBarberia.grafica === "completa"
-                ? [
-                    { key: "ingreso", name: "Ingresos", color: "hsl(168 55% 45%)" },
-                    { key: "gasto", name: "Gastos", color: "hsl(4 78% 58%)" },
-                  ]
-                : [{ key: "ingreso", name: "Ingresos", color: "hsl(168 55% 45%)" }]
-            }
-            emptyText="Sin movimientos en este periodo"
-          />
+          <BloqueoPlan
+            activo={rango === "semanal" || plan.giroBarberia.grafica === "completa"}
+            texto="Gráfica mensual y anual disponible en Pro y Pro+"
+          >
+            <TrendBarChart
+              data={serie.map((s) => ({ label: s.label, ingreso: s.a, gasto: s.b }))}
+              // grafica "ventas" (básico) solo ve la barra de ingresos — la de
+              // gastos, junto a Ganancia neta/Efectivo/Transferencia arriba,
+              // es la vista "completa" de Pro/Pro+ (ver LIMITES_BARBERIA).
+              bars={
+                plan.giroBarberia.grafica === "completa"
+                  ? [
+                      { key: "ingreso", name: "Ingresos", color: "hsl(168 55% 45%)" },
+                      { key: "gasto", name: "Gastos", color: "hsl(4 78% 58%)" },
+                    ]
+                  : [{ key: "ingreso", name: "Ingresos", color: "hsl(168 55% 45%)" }]
+              }
+              emptyText="Sin movimientos en este periodo"
+            />
+          </BloqueoPlan>
         </PlanGate>
       </div>
 
