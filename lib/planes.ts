@@ -209,6 +209,15 @@ export function usePlan() {
   // (max_productos/max_ventas_mes) ni el resto de features: eso sigue igual.
   const graficasDestapadas = esDemo || planContratado === "basico";
 
+  // Una demo (createBusiness() en lib/mock.ts la arma siempre con
+  // plan:"basico") es una demo DE VENTA: tiene que enseñar el techo del
+  // producto (gráfica completa, reservas, editor de ventas...) a un
+  // prospecto, no quedarse trabada en los límites de básico como si fuera
+  // un negocio real que nunca pagó. Por eso los límites POR GIRO (a
+  // diferencia de `limites`/`features`, que siguen el plan tal cual) se
+  // resuelven en el techo (Pro+) cuando es demo.
+  const planIdGiro = esDemo ? "pro_plus" : planId;
+
   return {
     plan: planId,
     planContratado,
@@ -220,10 +229,11 @@ export function usePlan() {
     limiteAlcanzado: (limite: keyof PlanLimites, cantidadActual: number) => alcanzoLimite(planId, limite, cantidadActual),
     // Límites/precio propios del giro del negocio activo (ver LIMITES_* /
     // PRECIOS_POR_GIRO abajo) — ya resueltos sobre el plan de ACCESO
-    // (Fundador incluido), para no repetir esa lógica en cada pantalla.
-    giroAbarrotes: LIMITES_ABARROTES[planId],
-    giroBarberia: LIMITES_BARBERIA[planId],
-    giroFonda: LIMITES_FONDA[planId],
+    // (Fundador incluido) y sobre el override de demo de arriba, para no
+    // repetir esa lógica en cada pantalla.
+    giroAbarrotes: LIMITES_ABARROTES[planIdGiro],
+    giroBarberia: LIMITES_BARBERIA[planIdGiro],
+    giroFonda: LIMITES_FONDA[planIdGiro],
   };
 }
 
@@ -278,7 +288,9 @@ export interface LimitesBarberia {
 
 export const LIMITES_BARBERIA: Record<PlanId, LimitesBarberia> = {
   basico: { maxClientes: 100, maxServicios: 20, maxCuentas: 1, msg28: false, grafica: "ventas", excepciones: false, reservas: false, maxCitas: 100 },
-  pro: { maxClientes: null, maxServicios: null, maxCuentas: 5, msg28: true, grafica: "completa", excepciones: true, reservas: false, maxCitas: null },
+  // reservas ahora también en Pro (antes solo Pro+) — Owen lo confirmó como
+  // beneficio real de Pro, no exclusivo de Pro+.
+  pro: { maxClientes: null, maxServicios: null, maxCuentas: 5, msg28: true, grafica: "completa", excepciones: true, reservas: true, maxCitas: null },
   pro_plus: { maxClientes: null, maxServicios: null, maxCuentas: 10, msg28: true, grafica: "completa", excepciones: true, reservas: true, maxCitas: null },
 };
 
@@ -309,7 +321,7 @@ export const BENEFICIOS_POR_GIRO: Record<BusinessType, Record<PlanId, string[]>>
   },
   barberia: {
     basico: ["Hasta 100 clientes", "Hasta 20 servicios", "Hasta 100 citas/mes", "1 cuenta", "Gráfica de ventas"],
-    pro: ["Clientes ilimitados", "Servicios ilimitados", "Citas ilimitadas", "5 cuentas", "Gráfica completa", "Mensaje a 28 días sin venir"],
+    pro: ["Clientes ilimitados", "Servicios ilimitados", "Citas ilimitadas", "5 cuentas", "Gráfica completa", "Mensaje a 28 días sin venir", "Reservas en línea"],
     pro_plus: ["Clientes ilimitados", "Servicios ilimitados", "Citas ilimitadas", "10 cuentas", "Gráfica completa", "Mensaje a 28 días sin venir", "Reservas en línea"],
   },
   fonda: {

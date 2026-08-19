@@ -43,9 +43,17 @@ export function formatMoney(n: number): string {
  * ventas calculadas, mismo signo en las 3 apps: negativo es faltante,
  * positivo es sobrante.
  */
+/**
+ * Compartida por los 3 "Cerrar turno" (abarrotes/barbería/fonda). `dif`
+ * sale de sumar muchas líneas con centavos (ventas del día, fondo, gastos)
+ * — redondeada al peso entero antes de decidir el mensaje, para que el
+ * residuo de punto flotante (o unos centavos reales de un día con muchas
+ * ventas) no se lea como "te sobra/falta" cuando en la práctica cuadró.
+ */
 export function mensajeDiferencia(dif: number): string {
-  if (dif < 0) return `🔴 Te faltan ${formatMoney(-dif)}`;
-  if (dif > 0) return `🔵 Te sobran ${formatMoney(dif)}`;
+  const redondeado = Math.round(dif);
+  if (redondeado < 0) return `🔴 Te faltan ${formatMoney(-redondeado)}`;
+  if (redondeado > 0) return `🔵 Te sobran ${formatMoney(redondeado)}`;
   return "🟢 ¡Cuadra perfecto! ✅";
 }
 
