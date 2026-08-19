@@ -16,7 +16,8 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { fetchNegocioByOwner } from "@/lib/data";
 import { updateUserPlan } from "@/lib/admin-data";
 import { readDemoPreview, readPlanElegido, clearDemoPreview, clearPlanElegido } from "@/lib/demoPreview";
-import { createEmptyTenant, tenantFromDemo } from "@/lib/mock";
+import { createEmptyTenant, tenantFromDemo, formatMoney } from "@/lib/mock";
+import { PRECIOS_POR_GIRO } from "@/lib/planes";
 import type { BusinessType, TenantData } from "@/lib/types";
 
 const TIPOS: { value: BusinessType; label: string; icon: typeof Scissors }[] = [
@@ -177,7 +178,9 @@ export default function OnboardingPage() {
 
   // El plan pro se marca siempre que se completa este flujo de alta — es la
   // única forma de crear un negocio en la app hoy, así que llegar hasta el
-  // final ya es la señal de "quiero el plan de $499".
+  // final ya es la señal de "quiero el plan pagado". Esto es profiles.plan
+  // ("free"/"pro", flag simple de /admin), no negocios.plan — no tiene
+  // relación con el precio por giro que se muestra en los botones de abajo.
   async function marcarPlanPro(uid: string) {
     try {
       await updateUserPlan(uid, "pro");
@@ -321,7 +324,7 @@ export default function OnboardingPage() {
               onClick={crearDesdeDemo}
               disabled={nombre.trim().length < 2 || !aceptaTerminos}
             >
-              Iniciar mi prueba de 7 días — $499/mes
+              Iniciar mi prueba de 7 días — {formatMoney(PRECIOS_POR_GIRO[demoTenant.business.tipo].basico)}/mes
             </Button>
           </div>
         )}
@@ -382,7 +385,7 @@ export default function OnboardingPage() {
             onClick={createBusinessAndGo}
             disabled={!tipo || nombre.trim().length < 2 || !aceptaTerminos}
           >
-            Iniciar mi prueba de 7 días — $499/mes
+            Iniciar mi prueba de 7 días{tipo ? ` — ${formatMoney(PRECIOS_POR_GIRO[tipo].basico)}/mes` : ""}
             <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
