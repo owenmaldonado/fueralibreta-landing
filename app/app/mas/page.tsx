@@ -90,11 +90,11 @@ export default function MasPage() {
           <BloqueoPlan
             activo={plan.giroBarberia.reservas}
             blur
-            titulo="Reservas en línea es de Pro+"
+            titulo="Reservas en línea es de Pro"
             texto="Deja que tus clientes agenden solos con un link"
           >
             <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-sm font-medium">Link de reservas</p>
+              <p className="text-sm font-medium">Link de reservas{session.business.demo ? " (Demo)" : ""}</p>
               <p className="mt-0.5 text-xs text-muted-foreground">Tus clientes agendan solos, sin necesitar cuenta</p>
               <div className="mt-3 truncate rounded-lg bg-secondary px-3 py-2 font-mono text-xs text-muted-foreground">
                 {linkReservas || "Cargando..."}

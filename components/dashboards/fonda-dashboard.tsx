@@ -16,6 +16,7 @@ import { fetchPedidosPendientes } from "@/lib/data";
 import { camposEmpleado } from "@/lib/empleados";
 import { usePlan } from "@/lib/planes";
 import { leerTurnoActual, obtenerOCrearTurno, type TurnoActual } from "@/lib/turno-fonda";
+import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import { cn } from "@/lib/utils";
 import type { TenantData, SessionUpdater, FondaOrder, Dish, DishVariant } from "@/lib/types";
 
@@ -194,6 +195,11 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
     }
   }
 
+  // Mismo patrón que NuevoPedidoForm (components/quick-add/fonda-quick-add.tsx):
+  // faltaba aquí, así que un tap sin conexión no hacía NADA — update() por
+  // defecto rechaza cualquier cambio offline salvo que se marque
+  // ventaOffline:true (ver lib/session.ts), y sin encolarVentaPendiente()
+  // esa venta tampoco se subía sola al recuperar señal.
   function venderRapido(platillo: Dish, variante?: DishVariant) {
     if (bloqueadoPorLimite) return;
     const precio = platillo.precio + (variante?.precioExtra ?? 0);
@@ -201,31 +207,48 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
     // no crear un turno_id "fantasma" solo por haber abierto la pantalla.
     const turno = obtenerOCrearTurno(negocio.id);
     setTurnoActual(turno);
-    update((prev) => {
-      const f = prev.fonda!;
-      const pedido: FondaOrder = {
-        id: uid("ped"),
-        clienteNombre: "Venta rápida",
-        fecha: hoyEnSuZona,
-        hora: nowHHMM(),
-        items: [
-          {
-            id: uid("it"),
-            platilloId: platillo.id,
-            platilloNombre: platillo.nombre,
-            cantidad: 1,
-            varianteNombre: variante?.valor,
-            precioUnitario: precio,
-            costoUnitario: platillo.costo,
-          },
-        ],
-        estado: "entregado",
-        total: precio,
-        turnoId: turno.turnoId,
+    const pedidoId = uid("ped");
+    let pedidoCreado: FondaOrder | null = null;
+    let negocioId = "";
+    update(
+      (prev) => {
+        const f = prev.fonda!;
+        const pedido: FondaOrder = {
+          id: pedidoId,
+          clienteNombre: "Venta rápida",
+          fecha: hoyEnSuZona,
+          hora: nowHHMM(),
+          items: [
+            {
+              id: uid("it"),
+              platilloId: platillo.id,
+              platilloNombre: platillo.nombre,
+              cantidad: 1,
+              varianteNombre: variante?.valor,
+              precioUnitario: precio,
+              costoUnitario: platillo.costo,
+            },
+          ],
+          estado: "entregado",
+          total: precio,
+          turnoId: turno.turnoId,
+          ...camposEmpleado(),
+        };
+        pedidoCreado = pedido;
+        negocioId = prev.business.id;
+        return { ...prev, fonda: { ...f, pedidos: [pedido, ...f.pedidos] } };
+      },
+      { ventaOffline: true }
+    );
+    if (typeof navigator !== "undefined" && !navigator.onLine && pedidoCreado) {
+      encolarVentaPendiente({
+        id: pedidoId,
+        negocioId,
+        tipo: "fonda_pedido",
+        payload: pedidoCreado,
         ...camposEmpleado(),
-      };
-      return { ...prev, fonda: { ...f, pedidos: [pedido, ...f.pedidos] } };
-    });
+      }).catch((err) => console.error("No se pudo encolar la venta pendiente:", err));
+    }
     setVariantesSheet(null);
   }
 

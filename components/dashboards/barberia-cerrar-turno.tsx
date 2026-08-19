@@ -103,7 +103,10 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
   const gastoPaso1Num = gastoMonto.trim() === "" ? 0 : Number(gastoMonto) || 0;
   const esperado = ventasHoyTotal + fondoInicialNum - gastoPaso1Num;
   const efectivoValido = efectivoReal.trim() !== "" && !isNaN(Number(efectivoReal)) && Number(efectivoReal) >= 0;
-  const diferencia = efectivoValido ? Number(efectivoReal) - esperado : null;
+  // Redondeado al peso entero: mismo criterio que mensajeDiferencia() (lib/mock.ts)
+  // — así el color de arriba y el mensaje nunca se contradicen, y lo que se
+  // guarda queda consistente con lo que vio el dueño.
+  const diferencia = efectivoValido ? Math.round(Number(efectivoReal) - esperado) : null;
 
   function resetYCerrar() {
     setPaso(1);
@@ -203,7 +206,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
         ventas_calculadas: ventasHoyTotal,
         efectivo_real: efectivoNum,
         gastos: gastoPaso1 || null,
-        diferencia: efectivoNum - esperado,
+        diferencia: Math.round(efectivoNum - esperado),
         propinas_total: propinasNum,
         gastos_material: gastosMaterialTotal,
         empleado_id: camposEmpleado().empleadoId ?? null,
