@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Plus, Pencil, Trash2, Lock } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -37,6 +38,10 @@ export default function FrutasVerduraPage() {
 
   const data = session.abarrotes!;
   const volatiles = data.productos.filter((p) => p.isVolatile);
+  // No existe una feature "frutas" en PlanFeatures ni un arreglo LIMITES.features
+  // (ver lib/planes.ts) — el gate real por giro para esta pantalla ya vivía en
+  // LIMITES_ABARROTES.editor (false en básico, true en Pro/Pro+).
+  const desbloqueado = plan.giroAbarrotes.editor;
 
   function cerrarForm() {
     setAddOpen(false);
@@ -44,54 +49,67 @@ export default function FrutasVerduraPage() {
   }
 
   return (
-    <>
-      <PageHeader
-        title="Frutas y Verdura"
-        subtitle={`${volatiles.length} producto${volatiles.length === 1 ? "" : "s"}`}
-        action={
-          <Button size="sm" onClick={() => setAddOpen(true)}>
-            <Plus className="h-4 w-4" /> Nuevo
-          </Button>
-        }
-      />
+    <div className="relative min-h-[70vh]">
+      <div className={cn(!desbloqueado && "pointer-events-none select-none blur-sm")}>
+        <PageHeader
+          title="Frutas y Verdura"
+          subtitle={`${volatiles.length} producto${volatiles.length === 1 ? "" : "s"}`}
+          action={
+            <Button size="sm" onClick={() => setAddOpen(true)} disabled={!desbloqueado}>
+              <Plus className="h-4 w-4" /> Nuevo
+            </Button>
+          }
+        />
 
-      <div className="grid grid-cols-2 gap-3 px-4 pb-6">
-        {volatiles.length === 0 ? (
-          <div className="col-span-2">
-            <EmptyState texto="Sin frutas ni verduras todavía" />
-          </div>
-        ) : (
-          volatiles.map((p) => (
-            <div key={p.id} className="relative rounded-2xl border border-border bg-card p-4">
-              <button
-                type="button"
-                onClick={() => setEditando(p)}
-                aria-label="Editar producto"
-                className="absolute right-2 top-2 rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-              <button type="button" onClick={() => setPrecioRapido(p)} className="flex w-full flex-col items-center gap-1.5 pt-2 text-center">
-                <span className="text-5xl leading-none">{p.emoji || "🥬"}</span>
-                <span className="mt-1 truncate text-sm font-medium">{p.nombre}</span>
-                <span className="font-display text-xl font-bold text-primary">{formatPrecio(p.precio)}</span>
-                <span className="text-[10px] uppercase tracking-widest text-muted-foreground">por {p.unidad === "kg" ? "kg" : "pza"}</span>
-              </button>
+        <div className="grid grid-cols-2 gap-3 px-4 pb-6">
+          {volatiles.length === 0 ? (
+            <div className="col-span-2">
+              <EmptyState texto="Sin frutas ni verduras todavía" />
             </div>
-          ))
-        )}
+          ) : (
+            volatiles.map((p) => (
+              <div key={p.id} className="relative rounded-2xl border border-border bg-card p-4">
+                <button
+                  type="button"
+                  onClick={() => setEditando(p)}
+                  aria-label="Editar producto"
+                  className="absolute right-2 top-2 rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button type="button" onClick={() => setPrecioRapido(p)} className="flex w-full flex-col items-center gap-1.5 pt-2 text-center">
+                  <span className="text-5xl leading-none">{p.emoji || "🥬"}</span>
+                  <span className="mt-1 truncate text-sm font-medium">{p.nombre}</span>
+                  <span className="font-display text-xl font-bold text-primary">{formatPrecio(p.precio)}</span>
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground">por {p.unidad === "kg" ? "kg" : "pza"}</span>
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        <Sheet open={!!precioRapido} onOpenChange={(o) => !o && setPrecioRapido(null)}>
+          {precioRapido && (
+            <PrecioRapidoForm producto={precioRapido} onClose={() => setPrecioRapido(null)} update={update} editorDisponible={plan.giroAbarrotes.editor} />
+          )}
+        </Sheet>
+
+        <Sheet open={addOpen || !!editando} onOpenChange={(o) => !o && cerrarForm()}>
+          <ProductoVolatilForm producto={editando} onClose={cerrarForm} update={update} />
+        </Sheet>
       </div>
 
-      <Sheet open={!!precioRapido} onOpenChange={(o) => !o && setPrecioRapido(null)}>
-        {precioRapido && (
-          <PrecioRapidoForm producto={precioRapido} onClose={() => setPrecioRapido(null)} update={update} editorDisponible={plan.giroAbarrotes.editor} />
-        )}
-      </Sheet>
-
-      <Sheet open={addOpen || !!editando} onOpenChange={(o) => !o && cerrarForm()}>
-        <ProductoVolatilForm producto={editando} onClose={cerrarForm} update={update} />
-      </Sheet>
-    </>
+      {!desbloqueado && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-2xl bg-background/60 px-6 text-center">
+          <Lock className="h-6 w-6 text-muted-foreground" />
+          <p className="text-sm font-semibold">Frutas y Verdura es Pro</p>
+          <p className="text-xs text-muted-foreground">Desbloquea esta sección y el editor de precios con el plan Pro.</p>
+          <Button asChild size="sm" className="mt-2">
+            <Link href="/planes">Actualizar a Pro</Link>
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
