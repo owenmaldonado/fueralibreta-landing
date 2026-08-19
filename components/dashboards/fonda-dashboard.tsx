@@ -15,6 +15,7 @@ import { supabase } from "@/lib/supabase";
 import { fetchPedidosPendientes } from "@/lib/data";
 import { camposEmpleado } from "@/lib/empleados";
 import { usePlan } from "@/lib/planes";
+import { leerTurnoActual, obtenerOCrearTurno, type TurnoActual } from "@/lib/turno-fonda";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import { cn } from "@/lib/utils";
 import type { TenantData, SessionUpdater, FondaOrder, Dish, DishVariant } from "@/lib/types";
@@ -106,10 +107,33 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
     filtro === "hoy" ? [hoyEnSuZona, hoyEnSuZona] : filtro === "ayer" ? [ayerEnSuZona, ayerEnSuZona] : [semanaDesde, semanaHasta];
 
   const gastosPeriodo = data.gastos.filter((g) => g.fecha >= desde && g.fecha <= hasta);
-  const ventas = data.pedidos
-    .filter((p) => p.estado === "entregado" && p.fecha >= desde && p.fecha <= hasta)
-    .reduce((acc, p) => acc + p.total, 0);
   const gastos = gastosPeriodo.reduce((acc, g) => acc + g.monto, 0);
+
+  // Turno en curso del negocio — vive en localStorage (lib/turno-fonda.ts),
+  // no en la fecha del render: un hard refresh pinta primero desde el
+  // catálogo local (que NUNCA trae pedidos — se reconstruyen vacíos a
+  // propósito, ver lib/local-cache.ts) y luego lo pisa con la carga real;
+  // filtrar "Ventas" de Hoy por turno_id en vez de por fecha hace que el
+  // total no dependa de en qué momento exacto terminó de cargar la sesión
+  // — el turno sigue siendo el mismo aunque la página se recargue 10 veces,
+  // y solo se reinicia al "Cerrar turno" (ver CerrarTurnoSheet).
+  const [turnoActual, setTurnoActual] = React.useState<TurnoActual | null>(null);
+  React.useEffect(() => {
+    setTurnoActual(leerTurnoActual(negocio.id));
+  }, [negocio.id]);
+
+  // Sin turno abierto todavía (nadie ha vendido nada hoy desde este
+  // dispositivo) cae a filtrar por fecha — así los pedidos de hoy que ya
+  // existían (sincronizados de otro dispositivo, o de antes de esta
+  // columna) siguen contando mientras no se abra un turno nuevo.
+  const ventas =
+    filtro === "hoy"
+      ? data.pedidos
+          .filter((p) => p.estado === "entregado" && (turnoActual ? p.turnoId === turnoActual.turnoId : p.fecha === hoyEnSuZona))
+          .reduce((acc, p) => acc + p.total, 0)
+      : data.pedidos
+          .filter((p) => p.estado === "entregado" && p.fecha >= desde && p.fecha <= hasta)
+          .reduce((acc, p) => acc + p.total, 0);
 
   // "Hoy" en un negocio real muestra pendientesVivo (lectura directa,
   // siempre al día). En demo (sin ownerId, nunca persistida) cae a
@@ -130,14 +154,22 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
   })}`;
 
   async function marcarEntregado(id: string) {
+    // Tagea con el turno en curso AL ENTREGAR (no al crear el pedido): un
+    // pedido programado que se agendó en un turno anterior sí debe contar
+    // en "Ventas" del turno donde de verdad se entrega — ver lib/turno-fonda.ts.
+    const turno = obtenerOCrearTurno(negocio.id);
+    setTurnoActual(turno);
     if (esNegocioReal) {
       setPendientesVivo((prev) => prev.filter((p) => p.id !== id));
-      const { error } = await supabase.from("fonda_pedidos").update({ estado: "entregado" }).eq("id", id);
+      const { error } = await supabase.from("fonda_pedidos").update({ estado: "entregado", turno_id: turno.turnoId }).eq("id", id);
       if (error) console.error("No se pudo marcar el pedido como entregado:", error);
     }
     update((prev) => {
       const f = prev.fonda!;
-      return { ...prev, fonda: { ...f, pedidos: f.pedidos.map((p) => (p.id === id ? { ...p, estado: "entregado" as const } : p)) } };
+      return {
+        ...prev,
+        fonda: { ...f, pedidos: f.pedidos.map((p) => (p.id === id ? { ...p, estado: "entregado" as const, turnoId: turno.turnoId } : p)) },
+      };
     });
   }
 
@@ -171,6 +203,10 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
   function venderRapido(platillo: Dish, variante?: DishVariant) {
     if (bloqueadoPorLimite) return;
     const precio = platillo.precio + (variante?.precioExtra ?? 0);
+    // Abre el turno aquí (no antes): recién con la PRIMERA venta real, para
+    // no crear un turno_id "fantasma" solo por haber abierto la pantalla.
+    const turno = obtenerOCrearTurno(negocio.id);
+    setTurnoActual(turno);
     const pedidoId = uid("ped");
     let pedidoCreado: FondaOrder | null = null;
     let negocioId = "";
@@ -195,6 +231,7 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
           ],
           estado: "entregado",
           total: precio,
+          turnoId: turno.turnoId,
           ...camposEmpleado(),
         };
         pedidoCreado = pedido;
