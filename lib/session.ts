@@ -400,6 +400,35 @@ export function useSession() {
       });
     }
 
+    /**
+     * Reintenta fetchTenantFresco hasta 2 veces antes de rendirse. Un hard
+     * refresh (Ctrl+Shift+R) dispara TODO al mismo tiempo — bundle completo
+     * sin caché de por medio, el cliente de Supabase reasentando el token de
+     * sesión, y las 7+ queries de fetchTenantData — así que es mucho más
+     * fácil que UNA de esas queries truene a medias justo ahí que en una
+     * navegación normal entre pantallas. Antes, ese único fallo tumbaba todo
+     * el intento (ver el catch de resolveForUser) y, como leerCacheLocal ya
+     * había pintado el catálogo local con pedidos/ventas/citas VACÍOS
+     * (ver el comentario de leerCacheLocal en lib/local-cache.ts — esa tabla
+     * nunca vive en el caché local, se reconstruye vacía a propósito), la
+     * sesión se quedaba mostrando ese catálogo vacío como si fuera el
+     * definitivo, para siempre — de ahí el "Ventas: $0" que nunca se
+     * recupera aunque el negocio sí tenga pedidos hoy.
+     */
+    async function fetchTenantConReintentos(userId: string): Promise<TenantData | null> {
+      const maxIntentos = 2;
+      for (let intento = 1; intento <= maxIntentos; intento++) {
+        try {
+          return await conTimeout(fetchTenantFresco(userId), 10000, `fetchTenantFresco(${userId}) intento ${intento}`);
+        } catch (err) {
+          if (intento === maxIntentos) throw err;
+          console.error(`[session] intento ${intento}/${maxIntentos} de fetchTenantFresco falló, reintentando:`, err);
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      }
+      throw new Error("fetchTenantConReintentos: no debería llegar aquí");
+    }
+
     async function resolveForUser(userId: string | null) {
       if (!userId) {
         loadFromDemoPreview();
@@ -461,13 +490,13 @@ export function useSession() {
         } else {
           let fetch = fetchesEnVuelo.get(userId);
           if (!fetch) {
-            fetch = fetchTenantFresco(userId);
+            fetch = fetchTenantConReintentos(userId);
             fetchesEnVuelo.set(userId, fetch);
             fetch.finally(() => fetchesEnVuelo.delete(userId));
           } else {
             console.log("[session] esperando fetch ya en vuelo para", userId);
           }
-          tenant = await conTimeout(fetch, 15000, `fetchTenantFresco(${userId})`);
+          tenant = await fetch;
         }
         if (cancelled) return;
         if (tenant) {
@@ -531,7 +560,15 @@ export function useSession() {
         // Si el catálogo local ya pintó datos reales (offline, ver arriba),
         // no los pisamos con la demo/null — el usuario se queda viendo su
         // negocio real, aunque desactualizado, en vez de rebotar a demo.
-        if (!pintadoDesdeCache) loadFromDemoPreview();
+        if (!pintadoDesdeCache) {
+          loadFromDemoPreview();
+        } else {
+          // El catálogo local NUNCA trae pedidos/ventas/citas/fiados (se
+          // reconstruyen vacíos a propósito, ver lib/local-cache.ts) — sin
+          // este aviso, el dueño ve "Ventas: $0" y no tiene forma de saber
+          // que es un dato desactualizado y no que de verdad no vendió nada.
+          toast.error("No se pudo actualizar tus pedidos/ventas de hoy. Recarga la página para reintentar.");
+        }
       } finally {
         if (!cancelled) setReady(true);
       }
