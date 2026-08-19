@@ -248,9 +248,9 @@ export function usePlan() {
 
 /** Precio mensual (MXN) por giro y plan — lo que se muestra en /planes. */
 export const PRECIOS_POR_GIRO: Record<BusinessType, Record<PlanId, number>> = {
-  abarrotes: { basico: 149, pro: 249, pro_plus: 399 },
-  barberia: { basico: 199, pro: 349, pro_plus: 499 },
-  fonda: { basico: 179, pro: 299, pro_plus: 449 },
+  abarrotes: { basico: 199, pro: 349, pro_plus: 649 },
+  barberia: { basico: 349, pro: 599, pro_plus: 999 },
+  fonda: { basico: 249, pro: 449, pro_plus: 749 },
 };
 
 /** Precio real del giro: precio_custom congelado si lo tiene, si no el de lista de SU giro y plan contratado. */
