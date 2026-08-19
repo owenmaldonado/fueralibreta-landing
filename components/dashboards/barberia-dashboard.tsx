@@ -8,6 +8,7 @@ import { ActionCard } from "./action-card";
 import { EmptyState } from "./empty-state";
 import { CobrarCitaDialog } from "./cobrar-cita-dialog";
 import { CerrarTurnoSheet } from "./barberia-cerrar-turno";
+import { WhatsappRecordatorioButton } from "./whatsapp-recordatorio-button";
 import { daysSince, formatHora12, formatMoney, statsVisitasCliente, todayISO, waLink } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
@@ -155,9 +156,12 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
                       {c.servicioNombre} · {formatMoney(c.precio)}
                     </p>
                   </div>
-                  <Button size="sm" variant="ledger" onClick={() => setCobrando(c)}>
-                    ✔️ Listo
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button size="sm" variant="ledger" onClick={() => setCobrando(c)}>
+                      ✔️ Listo
+                    </Button>
+                    <WhatsappRecordatorioButton cita={c} negocioNombre={business.nombre} disponible={plan.giroBarberia.msg28} />
+                  </div>
                 </div>
               ))}
             </div>
