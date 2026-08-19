@@ -519,6 +519,7 @@ const productoAbarrotesToRow = (p: GroceryProduct, negocioId: string): Row => ({
   unidad: p.unidad,
   emoji: p.emoji || null,
   por_caducar: p.porCaducar ?? false,
+  is_volatile: p.isVolatile ?? false,
 });
 const loteToRow = (l: { cantidad: number; fecha: string }, productoId: string): Row => ({
   producto_id: productoId,
@@ -678,6 +679,7 @@ async function fetchAbarrotesData(negocioId: string): Promise<AbarrotesData> {
     unidad: ((row.unidad as string) ?? "pieza") as GroceryProduct["unidad"],
     emoji: (row.emoji as string) || undefined,
     porCaducar: Boolean(row.por_caducar),
+    isVolatile: Boolean(row.is_volatile),
     lotes: lotesData
       .filter((l) => l.producto_id === row.id)
       .map((l) => ({ cantidad: l.cantidad as number, fecha: l.fecha_caducidad as string })),
