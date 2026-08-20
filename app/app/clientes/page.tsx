@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Search, MessageCircle, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -128,17 +129,27 @@ function ClienteDetalle({
 }) {
   const dias = daysSince(cliente.ultimaVisita);
   const alerta = msg28 && dias !== null && dias >= diasRecordatorio;
-  const mensajeWa = alerta ? mensajeRecordatorioInactivo(cliente.nombre) : `Hola ${cliente.nombre}, ¿cómo estás?`;
   const [nombre, setNombre] = React.useState(cliente.nombre);
   const [telefono, setTelefono] = React.useState(cliente.telefono);
   const [notas, setNotas] = React.useState(cliente.notas ?? "");
   const [confirmando, setConfirmando] = React.useState(false);
+  // El botón de WhatsApp usa el nombre/teléfono EDITADOS (estado local), no
+  // el `cliente` original con el que se abrió el sheet — antes seguía
+  // mandando al teléfono viejo si lo acababas de cambiar sin cerrar y
+  // reabrir el sheet.
+  const mensajeWa = alerta ? mensajeRecordatorioInactivo(nombre) : `Hola ${nombre}, ¿cómo estás?`;
 
   function guardarCampo(cambios: Partial<BarberClient>) {
     update((prev) => {
       const b = prev.barberia!;
       return { ...prev, barberia: { ...b, clientes: b.clientes.map((c) => (c.id === cliente.id ? { ...c, ...cambios } : c)) } };
     });
+  }
+
+  function guardarCambios() {
+    if (!nombre.trim()) return;
+    guardarCampo({ nombre: nombre.trim(), telefono: telefono.trim(), notas });
+    toast.success("Cliente actualizado ✅");
   }
 
   function eliminar() {
@@ -174,9 +185,9 @@ function ClienteDetalle({
           </div>
         </div>
 
-        {cliente.telefono && (
+        {telefono.trim() && (
           <Button asChild size="lg" variant="ledger">
-            <a href={waLink(cliente.telefono, mensajeWa)} target="_blank" rel="noreferrer">
+            <a href={waLink(telefono.trim(), mensajeWa)} target="_blank" rel="noreferrer">
               <MessageCircle className="h-4 w-4" /> Enviar WhatsApp
             </a>
           </Button>
@@ -211,6 +222,10 @@ function ClienteDetalle({
             </div>
           )}
         </div>
+
+        <Button size="lg" onClick={guardarCambios}>
+          Guardar cambios
+        </Button>
 
         <Button
           variant="outline"
