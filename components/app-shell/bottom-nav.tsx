@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, CalendarDays, Users, Wallet, Settings, ClipboardList, UtensilsCrossed, Receipt, Boxes, HandCoins } from "lucide-react";
+import { Home, CalendarDays, Users, Wallet, Settings, ClipboardList, UtensilsCrossed, Receipt, Boxes, HandCoins, CreditCard } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { BusinessType, RolEmpleado } from "@/lib/types";
@@ -21,6 +21,7 @@ const NAV_BARBERIA: NavItem[] = [
   { href: "/app/clientes", label: "Clientes", icon: Users },
   { href: "/app/caja", label: "Caja", icon: Wallet },
   { href: "/app/mas", label: "Más", icon: Settings },
+  { href: "/app/mi-plan", label: "Mi Plan", icon: CreditCard },
 ];
 
 const NAV_FONDA: NavItem[] = [
@@ -28,6 +29,7 @@ const NAV_FONDA: NavItem[] = [
   { href: "/app/pedidos", label: "Pedidos", icon: ClipboardList },
   { href: "/app/menu", label: "Menú", icon: UtensilsCrossed },
   { href: "/app/gastos", label: "Gastos", icon: Receipt },
+  { href: "/app/mi-plan", label: "Mi Plan", icon: CreditCard },
 ];
 
 const NAV_ABARROTES: NavItem[] = [
@@ -36,6 +38,7 @@ const NAV_ABARROTES: NavItem[] = [
   { href: "/app/fiados", label: "Fiados", icon: HandCoins },
   { href: "/app/frutas-verdura", label: "Frutas y Verdura", emoji: "🥑" },
   { href: "/app/gastos", label: "Gastos", icon: Receipt },
+  { href: "/app/mi-plan", label: "Mi Plan", icon: CreditCard },
 ];
 
 const NAV_BY_TYPE: Record<BusinessType, NavItem[]> = {

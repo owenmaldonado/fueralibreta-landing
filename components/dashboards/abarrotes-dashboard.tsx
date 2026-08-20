@@ -3,21 +3,18 @@
 import * as React from "react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
-import { Button } from "@/components/ui/button";
 import { ActionCard } from "./action-card";
 import { EmptyState } from "./empty-state";
 import { StatTile } from "./stat-tile";
-import { CerrarDiaSheet } from "./abarrotes-cerrar-dia";
 import { formatMoney, fechaCalendarioLocal, todayISO, waLink } from "@/lib/mock";
 import { avisosIgnoradosHoy, ignorarAvisoHoy } from "@/lib/dismissed-alerts";
 import { usePlan } from "@/lib/planes";
 import type { TenantData, SessionUpdater } from "@/lib/types";
 
-export function AbarrotesDashboard({ session, update }: { session: TenantData; update: SessionUpdater }) {
+export function AbarrotesDashboard({ session }: { session: TenantData; update: SessionUpdater }) {
   const data = session.abarrotes!;
   const plan = usePlan();
   const hoy = todayISO(0);
-  const [cerrandoDia, setCerrandoDia] = React.useState(false);
   const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy(session.business.id));
 
   function ignorar(id: string) {
@@ -43,19 +40,9 @@ export function AbarrotesDashboard({ session, update }: { session: TenantData; u
 
   return (
     <>
-      <PageHeader
-        title="Hoy"
-        subtitle="Pendientes de tu negocio"
-        action={
-          <Button size="sm" variant="outline" onClick={() => setCerrandoDia(true)}>
-            Cerrar día
-          </Button>
-        }
-      />
-      <div className="px-4">
+      <PageHeader title="Hoy" subtitle="Pendientes de tu negocio" />
+      <div className="grid gap-4 p-4">
         <StatTile label="Ventas hoy" value={formatMoney(ventasHoy)} />
-      </div>
-      <div className="flex flex-col gap-3 px-4 py-6">
         {porCaducar.map((p) => (
           <ActionCard
             key={p.id}
@@ -98,8 +85,6 @@ export function AbarrotesDashboard({ session, update }: { session: TenantData; u
         ))}
         {nada && <EmptyState texto="Todo bajo control 🎉" />}
       </div>
-
-      <CerrarDiaSheet open={cerrandoDia} onClose={() => setCerrandoDia(false)} session={session} update={update} />
     </>
   );
 }
