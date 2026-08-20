@@ -15,7 +15,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import type { FabAction } from "@/components/app-shell/fab";
 import { usePlan } from "@/lib/planes";
-import { uid, todayISO } from "@/lib/mock";
+import { uid, todayISO, formatHora12 } from "@/lib/mock";
+import { getDaySlots } from "@/lib/agenda";
 import { cn } from "@/lib/utils";
 import { camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
@@ -170,7 +171,8 @@ function NuevaCitaForm({
   const [cliente, setCliente] = React.useState<ClienteResuelto | null>(null);
   const [servicioId, setServicioId] = React.useState(data.servicios[0]?.id ?? "");
   const [fecha, setFecha] = React.useState(todayISO(0));
-  const [hora, setHora] = React.useState("12:00");
+  const [hora, setHora] = React.useState<string | null>(null);
+  const slots = React.useMemo(() => getDaySlots(data, fecha), [data, fecha]);
 
   const servicio = data.servicios.find((s) => s.id === servicioId);
   const clienteEsNuevo = !!cliente && !("id" in cliente);
@@ -191,7 +193,7 @@ function NuevaCitaForm({
     !bloqueadoPorLimiteCitas;
 
   function guardar() {
-    if (!puedeGuardar || !servicio || !cliente) return;
+    if (!puedeGuardar || !servicio || !cliente || !hora) return;
     update((prev) => {
       const b = prev.barberia!;
       let clientes = b.clientes;
@@ -244,15 +246,37 @@ function NuevaCitaForm({
             ))}
           </Select>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label>Fecha</Label>
-            <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Hora</Label>
-            <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
-          </div>
+        <div className="space-y-1.5">
+          <Label>Fecha</Label>
+          <Input
+            type="date"
+            value={fecha}
+            onChange={(e) => {
+              setFecha(e.target.value);
+              setHora(null);
+            }}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Hora</Label>
+          {slots.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Sin horario disponible este día.</p>
+          ) : (
+            <ChipGroup>
+              {slots.map((s) => (
+                <Chip
+                  key={s.hora}
+                  selected={hora === s.hora}
+                  disabled={s.estado !== "libre"}
+                  onClick={() => setHora(s.hora)}
+                >
+                  {formatHora12(s.hora)}
+                  {s.estado === "comida" && " · En comida"}
+                  {s.estado === "ocupado" && " · Ocupado"}
+                </Chip>
+              ))}
+            </ChipGroup>
+          )}
         </div>
         {bloqueadoPorLimiteClientes && (
           <BloqueoPlan activo={false} compacto texto={`Llegaste al límite de ${maxClientes} clientes de tu plan ${plan.label}`} />
