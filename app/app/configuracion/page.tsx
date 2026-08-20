@@ -62,6 +62,10 @@ export default function ConfiguracionPage() {
     });
   }
 
+  function toggleComida(dia: HorarioDia["dia"], activa: boolean) {
+    actualizarDia(dia, activa ? { comidaInicio: "14:00", comidaFin: "15:00" } : { comidaInicio: undefined, comidaFin: undefined });
+  }
+
   function borrarExcepcion(id: string) {
     update((prev) => {
       const b = prev.barberia!;
@@ -115,6 +119,32 @@ export default function ConfiguracionPage() {
                   className="h-9 min-w-0 w-full flex-1 text-sm"
                 />
               </div>
+              {h.abierto && (
+                <div className="flex items-center gap-2 border-t border-border/60 pt-2 sm:border-0 sm:pt-0">
+                  <Switch
+                    checked={Boolean(h.comidaInicio && h.comidaFin)}
+                    onCheckedChange={(v) => toggleComida(h.dia, v)}
+                  />
+                  <span className="shrink-0 text-xs text-muted-foreground">Comida</span>
+                  {h.comidaInicio && h.comidaFin && (
+                    <div className="flex flex-1 items-center gap-2">
+                      <Input
+                        type="time"
+                        value={h.comidaInicio}
+                        onChange={(e) => actualizarDia(h.dia, { comidaInicio: e.target.value })}
+                        className="h-9 min-w-0 w-full flex-1 text-sm"
+                      />
+                      <span className="w-4 shrink-0 text-center text-xs text-muted-foreground">a</span>
+                      <Input
+                        type="time"
+                        value={h.comidaFin}
+                        onChange={(e) => actualizarDia(h.dia, { comidaFin: e.target.value })}
+                        className="h-9 min-w-0 w-full flex-1 text-sm"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>

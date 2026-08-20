@@ -8,21 +8,26 @@ interface ChipProps {
   children: React.ReactNode;
   className?: string;
   tone?: "default" | "danger";
+  /** Chip no accionable (ej. horario ocupado/en comida) — se ve gris y no responde a click, sin importar `selected`. */
+  disabled?: boolean;
 }
 
 /** Botón tipo chip para elegir opciones sin escribir. */
-export function Chip({ selected, onClick, children, className, tone = "default" }: ChipProps) {
+export function Chip({ selected, onClick, children, className, tone = "default", disabled }: ChipProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={cn(
         "whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors",
-        selected
-          ? tone === "danger"
-            ? "border-destructive bg-destructive/15 text-destructive"
-            : "border-primary bg-primary/15 text-primary"
-          : "border-border bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground",
+        disabled
+          ? "cursor-not-allowed border-border bg-secondary/60 text-muted-foreground/70"
+          : selected
+            ? tone === "danger"
+              ? "border-destructive bg-destructive/15 text-destructive"
+              : "border-primary bg-primary/15 text-primary"
+            : "border-border bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground",
         className
       )}
     >

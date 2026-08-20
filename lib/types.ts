@@ -83,6 +83,9 @@ export interface HorarioDia {
   abierto: boolean;
   inicio: string; // "09:00"
   fin: string; // "19:00"
+  /** Franja de comida ese día — el horario no es corrido. Ambos presentes o ambos ausentes: sin hora de comida ese día si faltan. */
+  comidaInicio?: string; // "14:00"
+  comidaFin?: string; // "15:00"
 }
 
 export interface Excepcion {

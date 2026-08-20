@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { Dialog, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
+import { Chip, ChipGroup } from "@/components/ui/chip";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { CobrarCitaDialog } from "@/components/dashboards/cobrar-cita-dialog";
 import { LimiteBar } from "@/components/dashboards/limite-bar";
@@ -18,6 +19,7 @@ import { WhatsappRecordatorioButton } from "@/components/dashboards/whatsapp-rec
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { formatHora12, formatMoney, todayISO, waLink } from "@/lib/mock";
+import { getDaySlots, diaCodigoDeFecha } from "@/lib/agenda";
 import { getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente, usePendingSalesQueue, type VentaPendienteRow } from "@/lib/offline-sales-queue";
 import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
@@ -171,7 +173,7 @@ export default function AgendaPage() {
         />
       )}
 
-      <MoverCitaSheet cita={moviendo} onClose={() => setMoviendo(null)} onGuardar={mover} />
+      <MoverCitaSheet cita={moviendo} data={data} onClose={() => setMoviendo(null)} onGuardar={mover} />
       <CobrarCitaDialog cita={cobrando} onClose={() => setCobrando(null)} onConfirmar={marcarListoConMetodo} />
 
       <Dialog open={!!cancelando} onOpenChange={(o) => !o && setCancelando(null)}>
@@ -216,26 +218,19 @@ function DiaView({
   msg28: boolean;
 }) {
   const citas = data.citas.filter((c) => c.fecha === fecha && c.estado !== "cancelada").sort((a, b) => a.hora.localeCompare(b.hora));
+  const items = filaItems(citas, comidaDeFecha(data, fecha), {
+    onCobrar,
+    onMover,
+    onCancelar,
+    negocioNombre,
+    negocioId,
+    pendientesPorId,
+    msg28,
+  });
 
   return (
     <div className="flex flex-col gap-2 px-4 pb-6">
-      {citas.length === 0 ? (
-        <EmptyState texto="Sin citas para este día" />
-      ) : (
-        citas.map((c) => (
-          <CitaRow
-            key={c.id}
-            cita={c}
-            onCobrar={onCobrar}
-            onMover={onMover}
-            onCancelar={onCancelar}
-            negocioNombre={negocioNombre}
-            negocioId={negocioId}
-            fila={pendientesPorId.get(c.id)}
-            msg28={msg28}
-          />
-        ))
-      )}
+      {items.length === 0 ? <EmptyState texto="Sin citas para este día" /> : items.map((it) => it.node)}
     </div>
   );
 }
@@ -265,19 +260,22 @@ function SemanaView({
   // desaparecen solo porque "hoy" cae a mitad de semana.
   const diasDesdeLunes = (new Date().getDay() + 6) % 7;
   const dias = Array.from({ length: 7 }, (_, i) => todayISO(i - diasDesdeLunes));
-  const porDia = dias.map((fecha) => ({
-    fecha,
-    citas: data.citas.filter((c) => c.fecha === fecha && c.estado !== "cancelada").sort((a, b) => a.hora.localeCompare(b.hora)),
-  }));
-  const hayCitas = porDia.some((d) => d.citas.length > 0);
+  const porDia = dias.map((fecha) => {
+    const citas = data.citas.filter((c) => c.fecha === fecha && c.estado !== "cancelada").sort((a, b) => a.hora.localeCompare(b.hora));
+    return {
+      fecha,
+      items: filaItems(citas, comidaDeFecha(data, fecha), { onCobrar, onMover, onCancelar, negocioNombre, negocioId, pendientesPorId, msg28 }),
+    };
+  });
+  const hayAlgo = porDia.some((d) => d.items.length > 0);
 
   return (
     <div className="flex flex-col gap-5 px-4 pb-6">
-      {!hayCitas ? (
+      {!hayAlgo ? (
         <EmptyState texto="Sin citas esta semana" />
       ) : (
         porDia
-          .filter((d) => d.citas.length > 0)
+          .filter((d) => d.items.length > 0)
           .map((d) => (
             <div key={d.fecha}>
               <p className="mb-2 px-1 font-mono text-xs uppercase tracking-widest text-muted-foreground">
@@ -287,24 +285,63 @@ function SemanaView({
                     ? "Mañana"
                     : new Date(`${d.fecha}T00:00:00`).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "short" })}
               </p>
-              <div className="flex flex-col gap-2">
-                {d.citas.map((c) => (
-                  <CitaRow
-                    key={c.id}
-                    cita={c}
-                    onCobrar={onCobrar}
-                    onMover={onMover}
-                    onCancelar={onCancelar}
-                    negocioNombre={negocioNombre}
-                    negocioId={negocioId}
-                    fila={pendientesPorId.get(c.id)}
-                    msg28={msg28}
-                  />
-                ))}
-              </div>
+              <div className="flex flex-col gap-2">{d.items.map((it) => it.node)}</div>
             </div>
           ))
       )}
+    </div>
+  );
+}
+
+/** Franja de comida del día de la semana al que cae `fecha` — null si ese día no tiene (o está cerrado). */
+function comidaDeFecha(data: BarberiaData, fecha: string): { inicio: string; fin: string } | null {
+  const h = data.horario.find((h) => h.dia === diaCodigoDeFecha(fecha));
+  if (!h?.abierto || !h.comidaInicio || !h.comidaFin) return null;
+  return { inicio: h.comidaInicio, fin: h.comidaFin };
+}
+
+/** Une citas + el bloque de comida (si aplica) en un solo arreglo ordenado por hora — el gris de "En comida" se intercala donde le toca cronológicamente, no siempre arriba. */
+function filaItems(
+  citas: Appointment[],
+  comida: { inicio: string; fin: string } | null,
+  props: {
+    onCobrar: (c: Appointment) => void;
+    onMover: (c: Appointment) => void;
+    onCancelar: (c: Appointment) => void;
+    negocioNombre: string;
+    negocioId: string;
+    pendientesPorId: Map<string, VentaPendienteRow>;
+    msg28: boolean;
+  }
+): { hora: string; node: React.ReactNode }[] {
+  const rows: { hora: string; node: React.ReactNode }[] = citas.map((c) => ({
+    hora: c.hora,
+    node: (
+      <CitaRow
+        key={c.id}
+        cita={c}
+        onCobrar={props.onCobrar}
+        onMover={props.onMover}
+        onCancelar={props.onCancelar}
+        negocioNombre={props.negocioNombre}
+        negocioId={props.negocioId}
+        fila={props.pendientesPorId.get(c.id)}
+        msg28={props.msg28}
+      />
+    ),
+  }));
+  if (comida) {
+    rows.push({ hora: comida.inicio, node: <ComidaRow key="comida" inicio={comida.inicio} fin={comida.fin} /> });
+  }
+  return rows.sort((a, b) => a.hora.localeCompare(b.hora));
+}
+
+function ComidaRow({ inicio, fin }: { inicio: string; fin: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-dashed border-border bg-secondary/50 p-3 text-muted-foreground">
+      <div className="w-16 shrink-0 font-mono text-sm">{formatHora12(inicio)}</div>
+      <p className="flex-1 text-sm font-medium">🍽️ En comida</p>
+      <span className="shrink-0 font-mono text-xs uppercase tracking-widest">hasta {formatHora12(fin)}</span>
     </div>
   );
 }
@@ -367,15 +404,23 @@ function CitaRow({
 
 function MoverCitaSheet({
   cita,
+  data,
   onClose,
   onGuardar,
 }: {
   cita: Appointment | null;
+  data: BarberiaData;
   onClose: () => void;
   onGuardar: (id: string, fecha: string, hora: string) => void;
 }) {
   const [fecha, setFecha] = React.useState("");
   const [hora, setHora] = React.useState("");
+  // Sin la propia cita en la lista de ocupados: si no, su propio horario
+  // actual se vería como "Ocupado" al reabrir el mismo día en el picker.
+  const slots = React.useMemo(
+    () => (cita && fecha ? getDaySlots({ ...data, citas: data.citas.filter((c) => c.id !== cita.id) }, fecha) : []),
+    [data, cita, fecha]
+  );
 
   React.useEffect(() => {
     if (cita) {
@@ -392,11 +437,30 @@ function MoverCitaSheet({
           <div className="flex flex-col gap-4">
             <div className="space-y-1.5">
               <Label>Fecha</Label>
-              <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+              <Input
+                type="date"
+                value={fecha}
+                onChange={(e) => {
+                  setFecha(e.target.value);
+                  setHora("");
+                }}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Hora</Label>
-              <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
+              {slots.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sin horario disponible este día.</p>
+              ) : (
+                <ChipGroup>
+                  {slots.map((s) => (
+                    <Chip key={s.hora} selected={hora === s.hora} disabled={s.estado !== "libre"} onClick={() => setHora(s.hora)}>
+                      {formatHora12(s.hora)}
+                      {s.estado === "comida" && " · En comida"}
+                      {s.estado === "ocupado" && " · Ocupado"}
+                    </Chip>
+                  ))}
+                </ChipGroup>
+              )}
             </div>
           </div>
           <SheetFooter>

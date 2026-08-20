@@ -142,6 +142,8 @@ const horarioFromRow = (r: Row): HorarioDia => ({
   abierto: r.abierto as boolean,
   inicio: (r.inicio as string).slice(0, 5),
   fin: (r.fin as string).slice(0, 5),
+  comidaInicio: r.comida_inicio ? (r.comida_inicio as string).slice(0, 5) : undefined,
+  comidaFin: r.comida_fin ? (r.comida_fin as string).slice(0, 5) : undefined,
 });
 const horarioToRow = (h: HorarioDia, negocioId: string): Row => ({
   negocio_id: negocioId,
@@ -149,6 +151,8 @@ const horarioToRow = (h: HorarioDia, negocioId: string): Row => ({
   abierto: h.abierto,
   inicio: h.inicio,
   fin: h.fin,
+  comida_inicio: h.comidaInicio || null,
+  comida_fin: h.comidaFin || null,
 });
 
 const excepcionFromRow = (r: Row): Excepcion => ({
