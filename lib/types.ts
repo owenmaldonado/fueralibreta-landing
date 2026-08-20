@@ -39,6 +39,8 @@ export interface Business {
   tipo: BusinessType;
   dueno: string;
   telefono: string;
+  /** WhatsApp de contacto pedido en /onboarding (obligatorio, 10 dígitos MX) — con este el admin contacta al dueño desde /app/admin-dashboard y /admin. Distinto de `telefono` (opcional, "de recuperación") y de `whatsapp` (para recibir citas). */
+  telefonoContacto: string;
   /** Número de WhatsApp para recibir citas/confirmaciones (ej. 521XXXXXXXXXX). Distinto de `telefono`: se configura aparte en Configuración > Perfil. */
   whatsapp?: string;
   direccion?: string;

@@ -18,6 +18,7 @@ import { updateUserPlan } from "@/lib/admin-data";
 import { readDemoPreview, readPlanElegido, clearDemoPreview, clearPlanElegido } from "@/lib/demoPreview";
 import { createEmptyTenant, tenantFromDemo, formatMoney } from "@/lib/mock";
 import { PRECIOS_POR_GIRO } from "@/lib/planes";
+import { telefonoMxSchema } from "@/lib/validation";
 import type { BusinessType, TenantData } from "@/lib/types";
 
 const TIPOS: { value: BusinessType; label: string; icon: typeof Scissors }[] = [
@@ -111,6 +112,8 @@ export default function OnboardingPage() {
   // correctamente en /admin.
   const [planElegido, setPlanElegido] = React.useState(false);
   const [nombre, setNombre] = React.useState("");
+  const [telefonoContacto, setTelefonoContacto] = React.useState("");
+  const [telefonoTocado, setTelefonoTocado] = React.useState(false);
   const [tipo, setTipo] = React.useState<BusinessType | null>(null);
   const [aceptaTerminos, setAceptaTerminos] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
@@ -164,6 +167,12 @@ export default function OnboardingPage() {
     if (demo && esDemoValida(demo)) {
       setDemoTenant(demo);
       setNombre(demo.business.nombre);
+      // /demo/[tipo] ya preguntó "¿Cuál es tu WhatsApp?" para armar la demo
+      // (ver form.telefono ahí) — se pre-llena aquí en vez de volver a
+      // pedirlo de cero, pero sigue siendo editable por si se equivocó o
+      // prefiere dar otro número.
+      const telefonoDemo = (demo.business.telefono ?? "").replace(/\D/g, "");
+      if (telefonoMxSchema.safeParse(telefonoDemo).success) setTelefonoContacto(telefonoDemo);
     } else if (demo) {
       console.error("fl_demo_preview tenía un formato inválido, se ignora:", demo);
       clearDemoPreview();
@@ -191,21 +200,38 @@ export default function OnboardingPage() {
     }
   }
 
+  // Copia el mismo WhatsApp también en profiles.telefono (a nivel de
+  // cuenta, no solo del negocio) — best effort, igual que marcarPlanPro: el
+  // negocio ya quedó creado con telefono_contacto de todos modos, así que
+  // un fallo aquí no debe bloquear el alta ni el redirect.
+  async function guardarTelefonoPerfil(uid: string, telefono: string) {
+    try {
+      const { error } = await supabase.from("profiles").update({ telefono }).eq("id", uid);
+      if (error) throw error;
+    } catch (err) {
+      console.error("No se pudo guardar el teléfono en el perfil:", err);
+    }
+  }
+
+  const telefonoParsed = telefonoMxSchema.safeParse(telefonoContacto);
+  const telefonoValido = telefonoParsed.success;
+  const telefonoErrorMsg = telefonoTocado && !telefonoValido ? telefonoParsed.error?.issues[0]?.message : null;
+
   // Único paso cuando SÍ hay demo previa (/demo/[tipo] -> "Lo quiero"): ya
   // sabemos tipo y dueño, solo se confirma/edita el nombre del negocio. El
   // catálogo (platillos/servicios/productos) que vio en la demo se copia tal
   // cual — "en blanco" es de actividad (sin citas/pedidos/ventas de ejemplo),
   // no de catálogo.
   async function crearDesdeDemo() {
-    if (!demoTenant || !userId || nombre.trim().length < 2 || !aceptaTerminos || creandoRef.current) return;
+    if (!demoTenant || !userId || nombre.trim().length < 2 || !telefonoValido || !aceptaTerminos || creandoRef.current) return;
     creandoRef.current = true;
     setCreating(true);
     setError(null);
     try {
-      const tenant = tenantFromDemo(demoTenant, { nombre: nombre.trim(), telefono: "" });
+      const tenant = tenantFromDemo(demoTenant, { nombre: nombre.trim(), telefono: "", telefonoContacto: telefonoParsed.data });
       tenant.business.acceptedTermsAt = new Date().toISOString();
       await claim(tenant, userId);
-      await marcarPlanPro(userId);
+      await Promise.all([marcarPlanPro(userId), guardarTelefonoPerfil(userId, telefonoParsed.data)]);
       clearPlanElegido();
       router.push("/app/inicio");
     } catch (err) {
@@ -220,15 +246,15 @@ export default function OnboardingPage() {
   // hace falta preguntar el tipo de negocio, porque no hay otra fuente. El
   // dueño ya se sacó del perfil de Google — no se vuelve a preguntar.
   async function createBusinessAndGo() {
-    if (!tipo || !userId || nombre.trim().length < 2 || !aceptaTerminos || creandoRef.current) return;
+    if (!tipo || !userId || nombre.trim().length < 2 || !telefonoValido || !aceptaTerminos || creandoRef.current) return;
     creandoRef.current = true;
     setCreating(true);
     setError(null);
     try {
-      const tenant = createEmptyTenant({ dueno, nombre: nombre.trim(), telefono: "", tipo });
+      const tenant = createEmptyTenant({ dueno, nombre: nombre.trim(), telefono: "", telefonoContacto: telefonoParsed.data, tipo });
       tenant.business.acceptedTermsAt = new Date().toISOString();
       await claim(tenant, userId);
-      await marcarPlanPro(userId);
+      await Promise.all([marcarPlanPro(userId), guardarTelefonoPerfil(userId, telefonoParsed.data)]);
       clearPlanElegido();
       router.push("/app/inicio");
     } catch (err) {
@@ -309,6 +335,23 @@ export default function OnboardingPage() {
               className="mt-3 h-14 text-lg"
             />
 
+            <Label htmlFor="whatsapp-demo" className="mt-4 block text-base normal-case tracking-normal text-foreground">
+              Tu WhatsApp de contacto
+            </Label>
+            <Input
+              id="whatsapp-demo"
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              value={telefonoContacto}
+              onChange={(e) => setTelefonoContacto(e.target.value.replace(/\D/g, ""))}
+              onBlur={() => setTelefonoTocado(true)}
+              onKeyDown={(e) => e.key === "Enter" && crearDesdeDemo()}
+              placeholder="10 dígitos, ej. 3312345678"
+              className="mt-3 h-14 text-lg"
+            />
+            {telefonoErrorMsg && <p className="mt-1.5 text-xs text-destructive">{telefonoErrorMsg}</p>}
+
             {error && (
               <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-xs text-destructive">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -322,7 +365,7 @@ export default function OnboardingPage() {
               size="lg"
               className="mt-4 w-full"
               onClick={crearDesdeDemo}
-              disabled={nombre.trim().length < 2 || !aceptaTerminos}
+              disabled={nombre.trim().length < 2 || !telefonoValido || !aceptaTerminos}
             >
               Iniciar mi prueba de 7 días — {formatMoney(PRECIOS_POR_GIRO[demoTenant.business.tipo].basico)}/mes
             </Button>
@@ -370,6 +413,23 @@ export default function OnboardingPage() {
             className="mt-3 h-14 text-lg"
           />
 
+          <Label htmlFor="whatsapp" className="mt-6 block text-base normal-case tracking-normal text-foreground">
+            Tu WhatsApp de contacto
+          </Label>
+          <Input
+            id="whatsapp"
+            type="tel"
+            inputMode="numeric"
+            maxLength={10}
+            value={telefonoContacto}
+            onChange={(e) => setTelefonoContacto(e.target.value.replace(/\D/g, ""))}
+            onBlur={() => setTelefonoTocado(true)}
+            onKeyDown={(e) => e.key === "Enter" && createBusinessAndGo()}
+            placeholder="10 dígitos, ej. 3312345678"
+            className="mt-3 h-14 text-lg"
+          />
+          {telefonoErrorMsg && <p className="mt-1.5 text-xs text-destructive">{telefonoErrorMsg}</p>}
+
           {error && (
             <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-xs text-destructive">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -383,7 +443,7 @@ export default function OnboardingPage() {
             size="lg"
             className="mt-4 w-full"
             onClick={createBusinessAndGo}
-            disabled={!tipo || nombre.trim().length < 2 || !aceptaTerminos}
+            disabled={!tipo || nombre.trim().length < 2 || !telefonoValido || !aceptaTerminos}
           >
             Iniciar mi prueba de 7 días{tipo ? ` — ${formatMoney(PRECIOS_POR_GIRO[tipo].basico)}/mes` : ""}
             <ArrowRight className="h-4 w-4" />

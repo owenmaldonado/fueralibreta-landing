@@ -13,6 +13,12 @@ export const telefonoSchema = z
   .trim()
   .regex(/^[0-9]{7,15}$/, "El teléfono debe tener solo números (7 a 15 dígitos).");
 
+/** WhatsApp de contacto en /onboarding: exactamente 10 dígitos, sin lada de país (+52) ni espacios/guiones — un celular mexicano real. */
+export const telefonoMxSchema = z
+  .string()
+  .trim()
+  .regex(/^[0-9]{10}$/, "El WhatsApp debe tener exactamente 10 dígitos (sin +52).");
+
 /** Nombre de persona: hasta 50 caracteres, sin `<`/`>` para bloquear intentos de inyectar HTML/scripts. */
 export const nombreSchema = z
   .string()

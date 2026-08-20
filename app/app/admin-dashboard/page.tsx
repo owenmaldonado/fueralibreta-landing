@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowUpRight, Building2 } from "lucide-react";
+import { ArrowUpRight, Building2, MessageCircle } from "lucide-react";
 
 import { createSupabaseServerClient, isSupabaseConfigured } from "@/lib/supabase-server";
 import { ADMIN_EMAIL } from "@/lib/admin-data";
+import { waLink } from "@/lib/mock";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ interface NegocioRow {
   id: string;
   nombre: string;
   telefono: string;
+  telefono_contacto: string | null;
   created_at: string;
 }
 
@@ -34,7 +36,7 @@ export default async function AdminDashboardPage() {
 
   const { data: negocios } = await supabase
     .from("negocios")
-    .select("id, nombre, telefono, created_at")
+    .select("id, nombre, telefono, telefono_contacto, created_at")
     .order("created_at", { ascending: false });
 
   const lista = (negocios ?? []) as NegocioRow[];
@@ -63,22 +65,41 @@ export default async function AdminDashboardPage() {
             Todavía no hay negocios registrados.
           </p>
         ) : (
-          lista.map((n) => (
-            <Link
-              key={n.id}
-              href={`/admin?negocio=${n.id}`}
-              className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/50"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{n.nombre}</p>
-                <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-                  {n.telefono || "Sin teléfono"} · {new Date(n.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" })}
-                </p>
-                <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground/60">{n.id}</p>
+          lista.map((n) => {
+            // telefono_contacto (obligatorio desde /onboarding) es el número
+            // confiable para WhatsApp — telefono es el viejo "de
+            // recuperación", opcional y casi siempre vacío. Cae a telefono
+            // solo para negocios dados de alta antes de este campo.
+            const telefonoWa = n.telefono_contacto || n.telefono;
+            return (
+              <div
+                key={n.id}
+                className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/50"
+              >
+                <Link href={`/admin?negocio=${n.id}`} className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{n.nombre}</p>
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                    {telefonoWa || "Sin teléfono"} · {new Date(n.created_at).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" })}
+                  </p>
+                  <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground/60">{n.id}</p>
+                </Link>
+                {telefonoWa && (
+                  <a
+                    href={waLink(telefonoWa, `Hola, te escribo de Fuera Libreta sobre ${n.nombre}.`)}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`WhatsApp a ${n.nombre}`}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ledger/15 text-ledger transition-colors hover:bg-ledger/25"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </a>
+                )}
+                <Link href={`/admin?negocio=${n.id}`} aria-label={`Ver detalle de ${n.nombre}`} className="shrink-0 text-muted-foreground">
+                  <ArrowUpRight className="h-4 w-4" />
+                </Link>
               </div>
-              <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-            </Link>
-          ))
+            );
+          })
         )}
       </div>
     </main>
