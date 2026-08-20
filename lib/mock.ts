@@ -279,6 +279,8 @@ interface NuevoNegocioInput {
   dueno: string;
   nombre: string;
   telefono: string;
+  /** WhatsApp de contacto pedido en /onboarding (10 dígitos MX) — ver Business.telefonoContacto. */
+  telefonoContacto?: string;
   tipo: BusinessType;
   demo?: boolean;
 }
@@ -291,6 +293,7 @@ export function createBusiness(input: NuevoNegocioInput): Business {
     tipo: input.tipo,
     dueno: input.dueno,
     telefono: input.telefono,
+    telefonoContacto: input.telefonoContacto ?? "",
     is_active: true,
     trial_fin: todayISO(7),
     created_at: todayISO(0),
@@ -368,11 +371,15 @@ export function createEmptyTenant(input: NuevoNegocioInput): TenantData {
  * de la demo (no tiene sentido cambiarlos); nombre y teléfono son los
  * únicos editables en la pantalla de confirmación de /onboarding.
  */
-export function tenantFromDemo(demo: TenantData, overrides: { nombre: string; telefono: string }): TenantData {
+export function tenantFromDemo(
+  demo: TenantData,
+  overrides: { nombre: string; telefono: string; telefonoContacto?: string }
+): TenantData {
   const business = createBusiness({
     dueno: demo.business.dueno,
     nombre: overrides.nombre,
     telefono: overrides.telefono,
+    telefonoContacto: overrides.telefonoContacto,
     tipo: demo.business.tipo,
   });
   const data: TenantData = { business };

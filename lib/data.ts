@@ -49,6 +49,7 @@ export function businessFromRow(row: Row): Business {
     tipo: row.tipo as Business["tipo"],
     dueno: row.dueno as string,
     telefono: (row.telefono as string) ?? "",
+    telefonoContacto: (row.telefono_contacto as string) ?? "",
     whatsapp: (row.whatsapp as string) ?? undefined,
     direccion: (row.direccion as string) ?? undefined,
     is_active: row.is_active as boolean,
@@ -73,6 +74,7 @@ function businessToRow(b: Business): Row {
     tipo: b.tipo,
     dueno: b.dueno,
     telefono: b.telefono,
+    telefono_contacto: b.telefonoContacto || null,
     whatsapp: b.whatsapp ?? null,
     direccion: b.direccion ?? null,
     is_active: b.is_active,
@@ -1008,12 +1010,15 @@ export async function syncTenantDiff(prev: TenantData, next: TenantData): Promis
 
   // A diferencia de barberia/fonda/abarrotes (sub-objetos con listas que se
   // diffean campo por campo), `business` vive directo en la fila `negocios`
-  // — los únicos campos editables desde /app hoy son whatsapp, telefono y
-  // diasRecordatorio (Configuración > General), así que solo esos se
-  // comparan y sincronizan.
+  // — los únicos campos editables desde /app hoy son whatsapp, telefono,
+  // telefonoContacto y diasRecordatorio (Configuración > General), así que
+  // solo esos se comparan y sincronizan.
   const businessChanges: Row = {};
   if (prev.business.whatsapp !== next.business.whatsapp) businessChanges.whatsapp = next.business.whatsapp ?? null;
   if (prev.business.telefono !== next.business.telefono) businessChanges.telefono = next.business.telefono;
+  if (prev.business.telefonoContacto !== next.business.telefonoContacto) {
+    businessChanges.telefono_contacto = next.business.telefonoContacto || null;
+  }
   if (prev.business.diasRecordatorio !== next.business.diasRecordatorio) {
     businessChanges.dias_recordatorio = next.business.diasRecordatorio ?? 28;
   }

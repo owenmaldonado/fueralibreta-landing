@@ -18,6 +18,7 @@ import { LimiteBar } from "@/components/dashboards/limite-bar";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { formatMoney, todayISO, toISODate, uid } from "@/lib/mock";
+import { telefonoMxSchema } from "@/lib/validation";
 import type { Business, HorarioDia } from "@/lib/types";
 
 const SECTIONS = [
@@ -222,6 +223,7 @@ const DIAS_RECORDATORIO_DEFAULT = 28;
 function PerfilSection({ business, update }: { business: Business; update: ReturnType<typeof useSession>["update"] }) {
   const [whatsapp, setWhatsapp] = React.useState(business.whatsapp ?? "");
   const [telefono, setTelefono] = React.useState(business.telefono ?? "");
+  const [telefonoContacto, setTelefonoContacto] = React.useState(business.telefonoContacto ?? "");
   const [diasRecordatorio, setDiasRecordatorio] = React.useState(String(business.diasRecordatorio ?? DIAS_RECORDATORIO_DEFAULT));
 
   // Si update() sincroniza con Supabase en segundo plano y falla, session
@@ -230,26 +232,55 @@ function PerfilSection({ business, update }: { business: Business; update: Retur
   React.useEffect(() => {
     setWhatsapp(business.whatsapp ?? "");
     setTelefono(business.telefono ?? "");
+    setTelefonoContacto(business.telefonoContacto ?? "");
     setDiasRecordatorio(String(business.diasRecordatorio ?? DIAS_RECORDATORIO_DEFAULT));
-  }, [business.whatsapp, business.telefono, business.diasRecordatorio]);
+  }, [business.whatsapp, business.telefono, business.telefonoContacto, business.diasRecordatorio]);
 
+  // Mismo requisito de /onboarding (10 dígitos MX) — este es el número que
+  // usa el panel admin para contactar por WhatsApp, así que no debe poder
+  // quedar en un valor inválido desde aquí tampoco.
+  const telefonoContactoValido = telefonoMxSchema.safeParse(telefonoContacto).success;
   const cambiado =
     whatsapp.trim() !== (business.whatsapp ?? "") ||
     telefono.trim() !== (business.telefono ?? "") ||
+    telefonoContacto.trim() !== (business.telefonoContacto ?? "") ||
     Number(diasRecordatorio) !== (business.diasRecordatorio ?? DIAS_RECORDATORIO_DEFAULT);
 
   function guardar() {
+    if (!telefonoContactoValido) return;
     const nuevoWhatsapp = whatsapp.trim();
     const nuevoTelefono = telefono.trim();
+    const nuevoTelefonoContacto = telefonoContacto.trim();
     const nuevoDias = Number(diasRecordatorio) || DIAS_RECORDATORIO_DEFAULT;
     update((prev) => ({
       ...prev,
-      business: { ...prev.business, whatsapp: nuevoWhatsapp || undefined, telefono: nuevoTelefono, diasRecordatorio: nuevoDias },
+      business: {
+        ...prev.business,
+        whatsapp: nuevoWhatsapp || undefined,
+        telefono: nuevoTelefono,
+        telefonoContacto: nuevoTelefonoContacto,
+        diasRecordatorio: nuevoDias,
+      },
     }));
   }
 
   return (
     <div className="flex flex-col gap-4 px-4 pb-6">
+      <div className="space-y-1.5">
+        <Label>WhatsApp de contacto</Label>
+        <Input
+          type="tel"
+          inputMode="numeric"
+          maxLength={10}
+          value={telefonoContacto}
+          onChange={(e) => setTelefonoContacto(e.target.value.replace(/\D/g, ""))}
+          placeholder="10 dígitos, ej. 3312345678"
+        />
+        {telefonoContacto.trim() && !telefonoContactoValido && (
+          <p className="text-xs text-destructive">Debe tener exactamente 10 dígitos (sin +52).</p>
+        )}
+        <p className="text-xs text-muted-foreground">Con este número te contactamos por WhatsApp si hace falta.</p>
+      </div>
       <div className="space-y-1.5">
         <Label>Número de WhatsApp para recibir citas</Label>
         <Input
@@ -288,7 +319,7 @@ function PerfilSection({ business, update }: { business: Business; update: Retur
           En Clientes, quien tenga más de estos días sin venir se marca con un aviso para recordarle que agende de nuevo.
         </p>
       </div>
-      <Button size="lg" disabled={!cambiado} onClick={guardar} className="self-start">
+      <Button size="lg" disabled={!cambiado || !telefonoContactoValido} onClick={guardar} className="self-start">
         Guardar
       </Button>
     </div>
