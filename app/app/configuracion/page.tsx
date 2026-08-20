@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Clock, Coffee } from "lucide-react";
+import { toast } from "sonner";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -91,56 +92,71 @@ export default function ConfiguracionPage() {
       {tab === "perfil" && <PerfilSection business={session.business} update={update} />}
 
       {tab === "horario" && (
-        <div className="flex flex-col gap-2 px-4 pb-24">
+        <div className="flex flex-col gap-3 px-4 pb-6">
           {[...data.horario].sort((a, b) => ORDEN_DIAS.indexOf(a.dia) - ORDEN_DIAS.indexOf(b.dia)).map((h) => (
-            <div key={h.dia} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:gap-3">
-              <div className="flex items-center gap-3">
-                <span className="w-10 shrink-0 text-sm font-medium">{h.dia}</span>
-                <Switch checked={h.abierto} onCheckedChange={(v) => actualizarDia(h.dia, { abierto: v })} />
-                {!h.abierto && (
-                  <Badge variant="outline" className="shrink-0">
-                    Cerrado
-                  </Badge>
+            // Card por día: SIEMPRE en columna (nunca lado a lado) — con
+            // switch + 2 inputs de hora en una sola fila horizontal, un
+            // nombre de día largo + "Cerrado" ya no cabía en 360px (Flip4).
+            // Apilado, cada fila usa el ancho completo de la card.
+            <div key={h.dia} className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Clock className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="text-sm font-semibold">{h.dia}</span>
+                    <span className="text-sm text-muted-foreground">Abierto</span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {!h.abierto && (
+                      <Badge variant="outline" className="shrink-0">
+                        Cerrado
+                      </Badge>
+                    )}
+                    <Switch checked={h.abierto} onCheckedChange={(v) => actualizarDia(h.dia, { abierto: v })} />
+                  </div>
+                </div>
+                {h.abierto && (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="time"
+                      value={h.inicio}
+                      onChange={(e) => actualizarDia(h.dia, { inicio: e.target.value })}
+                      className="h-10 min-w-0 flex-1 text-sm"
+                    />
+                    <span className="shrink-0 text-center text-xs text-muted-foreground">a</span>
+                    <Input
+                      type="time"
+                      value={h.fin}
+                      onChange={(e) => actualizarDia(h.dia, { fin: e.target.value })}
+                      className="h-10 min-w-0 flex-1 text-sm"
+                    />
+                  </div>
                 )}
               </div>
-              <div className="flex flex-1 items-center gap-2">
-                <Input
-                  type="time"
-                  value={h.inicio}
-                  onChange={(e) => actualizarDia(h.dia, { inicio: e.target.value })}
-                  disabled={!h.abierto}
-                  className="h-9 min-w-0 w-full flex-1 text-sm"
-                />
-                <span className="w-4 shrink-0 text-center text-xs text-muted-foreground">a</span>
-                <Input
-                  type="time"
-                  value={h.fin}
-                  onChange={(e) => actualizarDia(h.dia, { fin: e.target.value })}
-                  disabled={!h.abierto}
-                  className="h-9 min-w-0 w-full flex-1 text-sm"
-                />
-              </div>
+
               {h.abierto && (
-                <div className="flex items-center gap-2 border-t border-border/60 pt-2 sm:border-0 sm:pt-0">
-                  <Switch
-                    checked={Boolean(h.comidaInicio && h.comidaFin)}
-                    onCheckedChange={(v) => toggleComida(h.dia, v)}
-                  />
-                  <span className="shrink-0 text-xs text-muted-foreground">Comida</span>
+                <div className="flex flex-col gap-2 border-t border-border/60 pt-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Coffee className="h-4 w-4 shrink-0 text-primary" />
+                      <span className="text-sm text-muted-foreground">Comida</span>
+                    </div>
+                    <Switch checked={Boolean(h.comidaInicio && h.comidaFin)} onCheckedChange={(v) => toggleComida(h.dia, v)} />
+                  </div>
                   {h.comidaInicio && h.comidaFin && (
-                    <div className="flex flex-1 items-center gap-2">
+                    <div className="flex items-center gap-2">
                       <Input
                         type="time"
                         value={h.comidaInicio}
                         onChange={(e) => actualizarDia(h.dia, { comidaInicio: e.target.value })}
-                        className="h-9 min-w-0 w-full flex-1 text-sm"
+                        className="h-10 min-w-0 flex-1 text-sm"
                       />
-                      <span className="w-4 shrink-0 text-center text-xs text-muted-foreground">a</span>
+                      <span className="shrink-0 text-center text-xs text-muted-foreground">a</span>
                       <Input
                         type="time"
                         value={h.comidaFin}
                         onChange={(e) => actualizarDia(h.dia, { comidaFin: e.target.value })}
-                        className="h-9 min-w-0 w-full flex-1 text-sm"
+                        className="h-10 min-w-0 flex-1 text-sm"
                       />
                     </div>
                   )}
@@ -148,6 +164,21 @@ export default function ConfiguracionPage() {
               )}
             </div>
           ))}
+
+          {/*
+            Cada cambio de arriba ya se guarda solo (update() es optimista +
+            sincroniza a Supabase en segundo plano, mismo patrón que el
+            resto de Configuración) — este botón no manda nada distinto,
+            solo confirma que quedó guardado. Sticky para que quede a la
+            vista sin importar cuánto se haya scrolleado la lista de días.
+          */}
+          <Button
+            size="lg"
+            className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] w-full"
+            onClick={() => toast.success("Horario guardado ✅")}
+          >
+            Guardar cambios
+          </Button>
         </div>
       )}
 
