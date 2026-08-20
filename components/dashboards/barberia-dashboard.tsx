@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { ActionCard } from "./action-card";
 import { EmptyState } from "./empty-state";
 import { CobrarCitaDialog } from "./cobrar-cita-dialog";
-import { CerrarTurnoSheet } from "./barberia-cerrar-turno";
 import { WhatsappRecordatorioButton } from "./whatsapp-recordatorio-button";
 import { daysSince, formatHora12, formatMoney, statsVisitasCliente, todayISO, waLink } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
@@ -22,7 +21,6 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
   const hoy = todayISO(0);
   const plan = usePlan();
   const [cobrando, setCobrando] = React.useState<Appointment | null>(null);
-  const [cerrandoTurno, setCerrandoTurno] = React.useState(false);
   const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy(business.id));
 
   function ignorar(id: string) {
@@ -83,16 +81,8 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
 
   return (
     <>
-      <PageHeader
-        title={`Hola, ${business.dueno.split(" ")[0]}`}
-        subtitle="Esto necesita tu atención hoy"
-        action={
-          <Button size="sm" variant="outline" onClick={() => setCerrandoTurno(true)}>
-            Cerrar turno
-          </Button>
-        }
-      />
-      <div className="flex flex-col gap-3 px-4 pb-6">
+      <PageHeader title={`Hola, ${business.dueno.split(" ")[0]}`} subtitle="Esto necesita tu atención hoy" />
+      <div className="grid gap-4 p-4">
         {citasHoy.length > 0 && (
           <ActionCard
             level="red"
@@ -170,8 +160,6 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
       </div>
 
       <CobrarCitaDialog cita={cobrando} onClose={() => setCobrando(null)} onConfirmar={marcarListoConMetodo} />
-
-      <CerrarTurnoSheet open={cerrandoTurno} onClose={() => setCerrandoTurno(false)} session={session} update={update} />
     </>
   );
 }

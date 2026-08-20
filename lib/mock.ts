@@ -125,6 +125,11 @@ export function fechaCalendarioLocal(fecha: string): string {
   return toISODate(new Date(fecha));
 }
 
+/** Día calendario de HOY en la zona horaria del negocio (no la del dispositivo) — ver hoyEnSuZona en fonda-dashboard.tsx. */
+export function hoyEnZona(timezone?: string): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: timezone || "America/Bahia_Banderas" });
+}
+
 export function daysSince(iso: string | null): number | null {
   if (!iso) return null;
   const then = new Date(iso).getTime();

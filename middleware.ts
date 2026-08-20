@@ -35,6 +35,7 @@ const SEGMENTOS_DE_NEGOCIO = new Set([
   "inventario",
   "mas",
   "menu",
+  "mi-plan",
   "pedidos",
   "productos",
 ]);

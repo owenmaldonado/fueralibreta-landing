@@ -23,7 +23,13 @@ export function Fab({ actions, onSelect }: { actions: FabAction[]; onSelect: (ke
           onClick={() => setOpen(false)}
         />
       )}
-      <div className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-4 z-50 flex flex-col items-end gap-3">
+      {/*
+        bottom-6 puro se enterraría debajo del BottomNav (fixed inset-x-0
+        bottom-0, ~4.25rem de alto) — el offset extra es lo mínimo para que
+        el FAB quede pegado arriba del nav en vez de encimado con sus
+        pestañas, sin perder el "bottom-6 right-6" que se pidió.
+      */}
+      <div className="fixed bottom-[calc(4.75rem+1.5rem+env(safe-area-inset-bottom))] right-6 z-50 flex flex-col items-end gap-3">
         {open &&
           actions.map((action, i) => (
             <button
