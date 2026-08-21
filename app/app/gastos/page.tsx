@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -24,6 +25,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
 import { VentaForm } from "@/components/abarrotes/venta-form";
 import { useSession } from "@/lib/session";
+import { insertGastoDirecto, updateGastoDirecto, deleteGastoDirecto } from "@/lib/data";
 import { formatMoney, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
 import { aggregateByRange, filterByRango, type RangoTiempo } from "@/lib/chart-buckets";
 import { permisosActuales, getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
@@ -290,10 +292,15 @@ export default function GastosPage() {
     return prev;
   }
 
-  function eliminar() {
+  async function eliminar() {
     if (!borrando) return;
-    update((prev) => withGastos(prev, (g) => g.filter((x) => x.id !== borrando.id)));
-    setBorrando(null);
+    try {
+      await deleteGastoDirecto(modulo, borrando.id);
+      update((prev) => withGastos(prev, (g) => g.filter((x) => x.id !== borrando.id)), { yaSincronizado: true });
+      setBorrando(null);
+    } catch {
+      toast.error("No se pudo eliminar el gasto — revisa tu conexión e intenta de nuevo.");
+    }
   }
 
   // Editar/eliminar una venta de Fondita (concepto/monto/hora encajan
@@ -702,11 +709,13 @@ export default function GastosPage() {
       </div>
 
       <Sheet open={addOpen} onOpenChange={setAddOpen}>
-        <GastoForm modulo={modulo} onClose={() => setAddOpen(false)} update={update} />
+        <GastoForm modulo={modulo} negocioId={session.business.id} onClose={() => setAddOpen(false)} update={update} />
       </Sheet>
 
       <Sheet open={!!editando} onOpenChange={(o) => !o && setEditando(null)}>
-        {editando && <GastoForm modulo={modulo} gasto={editando} onClose={() => setEditando(null)} update={update} />}
+        {editando && (
+          <GastoForm modulo={modulo} negocioId={session.business.id} gasto={editando} onClose={() => setEditando(null)} update={update} />
+        )}
       </Sheet>
 
       <ConfirmDialog
@@ -748,11 +757,13 @@ export default function GastosPage() {
 
 function GastoForm({
   modulo,
+  negocioId,
   gasto,
   onClose,
   update,
 }: {
   modulo: "fonda" | "abarrotes";
+  negocioId: string;
   gasto?: Expense;
   onClose: () => void;
   update: ReturnType<typeof useSession>["update"];
@@ -761,35 +772,54 @@ function GastoForm({
   const [monto, setMonto] = React.useState(String(gasto?.monto ?? ""));
   const [fecha, setFecha] = React.useState(gasto?.fecha ?? todayISO(0));
   const [recordatorio, setRecordatorio] = React.useState(gasto?.recordatorio ?? false);
+  const [guardando, setGuardando] = React.useState(false);
 
   const puedeGuardar = categoria.trim().length > 1 && Number(monto) > 0;
 
-  function guardar() {
-    if (!puedeGuardar) return;
-    update((prev) => {
-      const datos = { categoria: categoria.trim(), monto: Number(monto), fecha, recordatorio };
+  // Es dinero real: espera la confirmación de Supabase ANTES de tocar el
+  // estado local — nada de optimista aquí (PR #123, bug crítico de gastos
+  // que desaparecían al refrescar porque el sync en segundo plano fallaba
+  // en silencio). Si insertGastoDirecto/updateGastoDirecto truena, el
+  // sheet se queda abierto con lo que el dueño/vendedor ya escribió, con
+  // un toast explicando que no se guardó — nunca se pinta como guardado.
+  async function guardar() {
+    if (!puedeGuardar || guardando) return;
+    setGuardando(true);
+    const datos = { categoria: categoria.trim(), monto: Number(monto), fecha, recordatorio };
+    try {
       if (gasto) {
-        if (prev.fonda) {
-          return { ...prev, fonda: { ...prev.fonda, gastos: prev.fonda.gastos.map((g) => (g.id === gasto.id ? { ...g, ...datos } : g)) } };
-        }
-        if (prev.abarrotes) {
-          return {
-            ...prev,
-            abarrotes: { ...prev.abarrotes, gastos: prev.abarrotes.gastos.map((g) => (g.id === gasto.id ? { ...g, ...datos } : g)) },
-          };
-        }
-        return prev;
+        const editado: Expense = { ...gasto, ...datos };
+        await updateGastoDirecto(negocioId, modulo, editado);
+        update(
+          (prev) => {
+            if (prev.fonda) return { ...prev, fonda: { ...prev.fonda, gastos: prev.fonda.gastos.map((g) => (g.id === gasto.id ? editado : g)) } };
+            if (prev.abarrotes) {
+              return { ...prev, abarrotes: { ...prev.abarrotes, gastos: prev.abarrotes.gastos.map((g) => (g.id === gasto.id ? editado : g)) } };
+            }
+            return prev;
+          },
+          { yaSincronizado: true }
+        );
+      } else {
+        const nuevo: Expense = { id: uid("exp"), ...datos, ...camposEmpleado() };
+        await insertGastoDirecto(negocioId, modulo, [nuevo]);
+        update(
+          (prev) => {
+            if (modulo === "fonda" && prev.fonda) return { ...prev, fonda: { ...prev.fonda, gastos: [nuevo, ...prev.fonda.gastos] } };
+            if (modulo === "abarrotes" && prev.abarrotes) {
+              return { ...prev, abarrotes: { ...prev.abarrotes, gastos: [nuevo, ...prev.abarrotes.gastos] } };
+            }
+            return prev;
+          },
+          { yaSincronizado: true }
+        );
       }
-      const nuevo: Expense = { id: uid("exp"), ...datos, ...camposEmpleado() };
-      if (modulo === "fonda" && prev.fonda) {
-        return { ...prev, fonda: { ...prev.fonda, gastos: [nuevo, ...prev.fonda.gastos] } };
-      }
-      if (modulo === "abarrotes" && prev.abarrotes) {
-        return { ...prev, abarrotes: { ...prev.abarrotes, gastos: [nuevo, ...prev.abarrotes.gastos] } };
-      }
-      return prev;
-    });
-    onClose();
+      onClose();
+    } catch {
+      toast.error("No se pudo guardar el gasto — revisa tu conexión e intenta de nuevo.");
+    } finally {
+      setGuardando(false);
+    }
   }
 
   return (
@@ -814,8 +844,8 @@ function GastoForm({
         </div>
       </div>
       <SheetFooter>
-        <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>
-          {gasto ? "Guardar cambios" : "Guardar gasto"}
+        <Button size="lg" disabled={!puedeGuardar || guardando} onClick={guardar}>
+          {guardando ? "Guardando..." : gasto ? "Guardar cambios" : "Guardar gasto"}
         </Button>
       </SheetFooter>
     </>
