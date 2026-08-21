@@ -353,59 +353,6 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     }
   }
 
-  // La tabla de Usuarios no tiene negocio_id a la mano (es un dato de
-  // negocios, no de profiles) — se resuelve aquí contra overview.negocios,
-  // que ya está cargado. Si el usuario todavía no tiene negocio (a medio
-  // onboarding), no hay nada que cambiar todavía.
-  function resolveNegocioDeUsuario(p: AdminProfile): AdminNegocio | undefined {
-    return overview?.negocios.find((n) => n.ownerId === p.id);
-  }
-
-  function handleSetPlanDeUsuario(p: AdminProfile, plan: PlanId) {
-    const negocio = resolveNegocioDeUsuario(p);
-    if (!negocio) {
-      toast.error(`${p.email ?? "Este usuario"} todavía no tiene un negocio.`);
-      return;
-    }
-    handleSetNegocioPlan(negocio.id, plan, negocio.nombre);
-  }
-
-  function handleSetTrialDeUsuario(p: AdminProfile, dias: 7 | 14 | 30) {
-    const negocio = resolveNegocioDeUsuario(p);
-    if (!negocio) {
-      toast.error(`${p.email ?? "Este usuario"} todavía no tiene un negocio.`);
-      return;
-    }
-    handleSetNegocioTrial(negocio.id, dias, negocio.nombre);
-  }
-
-  function handleActivarPlanDeUsuario(p: AdminProfile, plan: PlanId) {
-    const negocio = resolveNegocioDeUsuario(p);
-    if (!negocio) {
-      toast.error(`${p.email ?? "Este usuario"} todavía no tiene un negocio.`);
-      return;
-    }
-    handleActivarPlan(negocio.id, plan, negocio.nombre);
-  }
-
-  function handleSetPrecioCustomDeUsuario(p: AdminProfile) {
-    const negocio = resolveNegocioDeUsuario(p);
-    if (!negocio) {
-      toast.error(`${p.email ?? "Este usuario"} todavía no tiene un negocio.`);
-      return;
-    }
-    setPrecioCustomNegocio(negocio);
-  }
-
-  function handleToggleFundadorDeUsuario(p: AdminProfile) {
-    const negocio = resolveNegocioDeUsuario(p);
-    if (!negocio) {
-      toast.error(`${p.email ?? "Este usuario"} todavía no tiene un negocio.`);
-      return;
-    }
-    handleToggleFundador(negocio);
-  }
-
   async function handleToggleBanned(p: AdminProfile) {
     try {
       await setUserBanned(p.id, !p.isBanned);
@@ -595,14 +542,6 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 negocios={overview.negocios}
                 currentUserId={currentUserId}
                 onViewDetail={setDetailUserId}
-                onSetPlan={handleSetPlanDeUsuario}
-                onSetTrial={handleSetTrialDeUsuario}
-                onActivarPlan={handleActivarPlanDeUsuario}
-                onSetPrecioCustom={handleSetPrecioCustomDeUsuario}
-                onToggleFundador={handleToggleFundadorDeUsuario}
-                onToggleBanned={handleToggleBanned}
-                onImpersonate={handleImpersonate}
-                onDeleteRequest={setDeleteUserTarget}
               />
             </div>
           </div>
@@ -696,6 +635,12 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
         onToggleRole={handleToggleRole}
         onToggleFundador={handleToggleFundadorById}
         onSaveFacturacion={handleSaveFacturacion}
+        onImpersonate={handleImpersonate}
+        onSetPlan={handleSetNegocioPlan}
+        onSetTrial={handleSetNegocioTrial}
+        onActivarPlan={handleActivarPlan}
+        onToggleBanned={handleToggleBanned}
+        onDeleteRequest={setDeleteUserTarget}
       />
       <NegocioDetailDialog
         negocio={detailNegocio}
