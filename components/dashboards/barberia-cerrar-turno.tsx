@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { supabase } from "@/lib/supabase";
-import { formatMoney, mensajeDiferencia, todayISO, uid } from "@/lib/mock";
+import { formatMoney, hoyEnZona, mensajeDiferencia, uid } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, CajaEntry, InventoryProduct } from "@/lib/types";
 
@@ -80,7 +80,9 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
   const data = session.barberia!;
   const negocio = session.business;
   const esNegocioReal = Boolean(negocio.ownerId);
-  const hoy = todayISO(0);
+  // "Hoy" del negocio (zona configurada), no del dispositivo — ver
+  // comentario en barberia-dashboard.tsx.
+  const hoy = hoyEnZona(negocio.timezone);
 
   const citasHoyListo = data.citas.filter((c) => c.fecha === hoy && c.estado === "listo");
   const ventasHoyTotal = citasHoyListo.reduce((acc, c) => acc + c.precio, 0);
