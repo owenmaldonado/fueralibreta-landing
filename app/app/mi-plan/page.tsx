@@ -49,19 +49,20 @@ export default function MiPlanPage() {
 
   const { business } = session;
   const tipo = business.tipo;
-  // plan.plan (acceso REAL, ya considera Fundador y el auto-degrade a
-  // básico de un trial nunca pagado que venció — ver planDeAcceso en
-  // lib/planes.ts) en vez de business.plan (lo contratado tal cual está en
-  // la fila, que para un trial PRO de cortesía se queda en "pro" para
-  // siempre en la base de datos aunque ya haya vencido — el degrade es
-  // 100% calculado, nunca reescribe la fila).
+  // plan.plan (acceso REAL, ya considera Fundador y — solo para quien SÍ
+  // pagó alguna vez — la gracia de unos días en Básico después de vencer,
+  // ver planDeAcceso/DIAS_GRACIA_PAGO en lib/planes.ts) en vez de
+  // business.plan (lo contratado tal cual está en la fila). Quien nunca ha
+  // pagado ve business.plan sin cambios mientras no venza — en cuanto
+  // vence se bloquea (middleware.ts), así que esta pantalla ni se llega a
+  // pintar para ese caso.
   const precio = precioPorGiro({ ...business, plan: plan.plan });
   const dias = diasParaTrial(business.trial_fin);
   const esPago = business.ultimoPagoAt != null;
   // Trial PRO de cortesía (activado desde /admin, PR #122): nunca pagó de
   // verdad pero su acceso ahora mismo es Pro/Pro+ — a diferencia del trial
-  // básico normal de todo registro nuevo. Deja de ser cierto solo en
-  // cuanto planDeAcceso ya lo degradó (plan.plan volvió a "basico").
+  // básico normal de todo registro nuevo. Deja de ser cierto en cuanto se
+  // bloquea (ver arriba), momento en el que esta pantalla ya no se pinta.
   const enTrialPro = !plan.esFundador && !esPago && plan.plan !== "basico";
   const mensajeWa = `Hola Owen! Soy ${business.dueno} de ${business.nombre}, tengo una duda sobre mi plan de FueraLibreta`;
   const labelCierre = tipo === "abarrotes" ? "Cerrar día" : "Cerrar turno";
@@ -91,14 +92,11 @@ export default function MiPlanPage() {
                 {plan.esFundador ? (
                   <p className="text-sm font-medium text-ledger">Acceso completo, sin fecha de vencimiento</p>
                 ) : dias < 0 ? (
-                  esPago ? (
-                    <p className="text-sm font-medium text-destructive">Tu plan venció hace {Math.abs(dias)} día{Math.abs(dias) === 1 ? "" : "s"}</p>
-                  ) : (
-                    // Nunca pagó: la prueba (básica o Pro de cortesía) ya
-                    // terminó, pero nunca se bloquea — solo bajó a Básico en
-                    // automático (ver planDeAcceso). Nada que alarme aquí.
-                    <p className="text-sm font-medium text-muted-foreground">Tu prueba gratis terminó — ahora estás en Básico</p>
-                  )
+                  // Nunca pagó + vencido = bloqueado (middleware.ts), esta
+                  // pantalla ni se pinta en ese caso — lo que sigue queda
+                  // solo para quien SÍ pagó alguna vez y está en su gracia
+                  // de unos días antes de bloquearse (ver DIAS_GRACIA_PAGO).
+                  <p className="text-sm font-medium text-destructive">Tu plan venció hace {Math.abs(dias)} día{Math.abs(dias) === 1 ? "" : "s"}</p>
                 ) : dias === 0 ? (
                   <p className="text-sm font-medium text-primary">{esPago ? "Tu plan vence hoy" : "Tu prueba gratis vence hoy"}</p>
                 ) : (

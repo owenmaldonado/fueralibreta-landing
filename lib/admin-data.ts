@@ -432,8 +432,9 @@ export async function updateNegocioTrial(negocioId: string, dias: 7 | 14 | 30): 
 /**
  * "Activar N días PRO" (PR #122) — favor manual del admin, no un pago:
  * sube `plan` a "pro" y empuja `trial_fin`, SIN tocar `ultimo_pago_at`
- * (se queda null si nunca pagó). planDeAcceso ya sabe degradar a básico
- * solo en cuanto venza (lib/planes.ts) — no hace falta ningún cron ni
+ * (se queda null si nunca pagó). Como nunca pagó, bloqueadoPorTrial ya
+ * sabe bloquearlo apenas venza (lib/planes.ts, sin días de gracia — esos
+ * son solo para quien SÍ pagó alguna vez) — no hace falta ningún cron ni
  * volver a tocar esta fila cuando se acabe el trial.
  */
 export async function activarTrialPro(negocioId: string, dias: number): Promise<void> {

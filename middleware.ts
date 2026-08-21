@@ -149,12 +149,14 @@ export async function middleware(req: NextRequest) {
     // ni a /admin mismo, para que el propio admin no se bloquee a sí mismo
     // por el trial de un negocio de prueba que tenga a su nombre.
     //
-    // PR #122: solo bloquea a quien YA PAGÓ de verdad alguna vez
-    // (ultimo_pago_at no nulo) y no renovó — un negocio que nunca ha
-    // pagado (su trial básico de siempre, o un trial PRO de cortesía
-    // activado desde /admin) nunca se bloquea al vencer, solo pierde el
-    // acceso extra (ver planDeAcceso en lib/planes.ts) y se queda en
-    // Básico normal. Mismo criterio que bloqueadoPorTrial — reimplementado
+    // PR #122: bloquea SIEMPRE que no haya pagado nunca (ultimo_pago_at
+    // null), apenas vence trial_fin — el trial básico de todo registro
+    // nuevo y un trial PRO de cortesía activado desde /admin se tratan
+    // igual, sin días de gracia ("si el trial baja a básico feo gratis
+    // para siempre, nadie paga"). Quien SÍ pagó alguna vez (ultimo_pago_at
+    // no null) sí tiene DIAS_GRACIA_PAGO días extra después de vencer
+    // (Básico feo, sin bloquear) antes de bloquearse — mismo criterio que
+    // bloqueadoPorTrial/DIAS_GRACIA_PAGO en lib/planes.ts, reimplementado
     // aquí en vez de importarlo porque el middleware corre en el Edge
     // runtime con su propio bundle, ya independiente de lib/planes.ts.
     if (user && esRutaDeNegocio(url.pathname)) {
@@ -163,11 +165,13 @@ export async function middleware(req: NextRequest) {
         .select("trial_fin,is_active,es_fundador,ultimo_pago_at")
         .eq("owner_id", user.id)
         .maybeSingle();
-      if (negocio && negocio.is_active && !negocio.es_fundador && negocio.ultimo_pago_at) {
+      if (negocio && negocio.is_active && !negocio.es_fundador) {
         const hoy = new Date();
         hoy.setHours(0, 0, 0, 0);
         const trialFin = new Date(`${negocio.trial_fin}T00:00:00`);
-        if (trialFin.getTime() < hoy.getTime()) {
+        const diasGracia = negocio.ultimo_pago_at ? 3 : 0;
+        const limite = trialFin.getTime() + diasGracia * 86_400_000;
+        if (limite < hoy.getTime()) {
           return NextResponse.redirect(new URL("/planes-bloqueado", url.origin));
         }
       }
