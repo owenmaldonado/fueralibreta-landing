@@ -225,6 +225,7 @@ export interface UserDetailNegocio {
   precioCustom: number | null;
   esFundador: boolean;
   notasAdmin: string | null;
+  ultimoPagoAt: string | null;
 }
 
 interface NegocioExtra {
@@ -344,6 +345,7 @@ export async function fetchUserDetail(
       precioCustom: n.precio_custom != null ? Number(n.precio_custom) : null,
       esFundador: (n.es_fundador as boolean) ?? false,
       notasAdmin: (n.notas_admin as string | null) ?? null,
+      ultimoPagoAt: (n.ultimo_pago_at as string | null) ?? null,
     });
   }
 
@@ -425,6 +427,27 @@ export async function updateNegocioTrial(negocioId: string, dias: 7 | 14 | 30): 
     trial_fin: todayISO(dias),
     ...(dias === 30 ? { ultimo_pago_at: new Date().toISOString() } : {}),
   });
+}
+
+/**
+ * "Activar N días PRO" (PR #122) — favor manual del admin, no un pago:
+ * sube `plan` a "pro" y empuja `trial_fin`, SIN tocar `ultimo_pago_at`
+ * (se queda null si nunca pagó). planDeAcceso ya sabe degradar a básico
+ * solo en cuanto venza (lib/planes.ts) — no hace falta ningún cron ni
+ * volver a tocar esta fila cuando se acabe el trial.
+ */
+export async function activarTrialPro(negocioId: string, dias: number): Promise<void> {
+  await patchNegocioAdminFields(negocioId, { plan: "pro", trial_fin: todayISO(dias) });
+}
+
+/**
+ * "+N días PRO" — mismo trial de cortesía, solo empuja `trial_fin`
+ * (mismo criterio "N días a partir de HOY" que el resto de los botones de
+ * trial, no acumulativo sobre lo que quedaba). No toca `plan` (ya está en
+ * "pro" desde activarTrialPro) ni `ultimo_pago_at` (sigue sin ser un pago).
+ */
+export async function extenderTrialPro(negocioId: string, dias: number): Promise<void> {
+  await patchNegocioAdminFields(negocioId, { trial_fin: todayISO(dias) });
 }
 
 /**

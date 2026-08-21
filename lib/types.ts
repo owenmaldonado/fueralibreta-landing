@@ -65,6 +65,8 @@ export interface Business {
   precioCustom: number | null;
   /** Insignia de "Fundador" (marketing/trato especial) — admin-only, mismo trato que `plan`. */
   esFundador: boolean;
+  /** Cuándo se registró por última vez un pago real (PR #122) — admin-only, mismo trato que `plan`. `null` = nunca pagó (sigue en su trial gratis, básico o Pro de cortesía) — ver planDeAcceso/bloqueadoPorTrial en lib/planes.ts, que usan esto para nunca bloquear a quien no ha pagado. */
+  ultimoPagoAt: string | null;
   /** Días sin venir a partir de los cuales Clientes marca a alguien para recordatorio (badge + mensaje de WhatsApp distinto). Configurable en Configuración > General; 28 si no se ha configurado. */
   diasRecordatorio?: number;
   /** ISO datetime de cuándo el dueño aceptó el checkbox de Términos/Aviso de Privacidad en /onboarding. */

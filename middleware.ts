@@ -148,13 +148,22 @@ export async function middleware(req: NextRequest) {
     // pantallas de negocio (esRutaDeNegocio) — nunca al hub de super-admin
     // ni a /admin mismo, para que el propio admin no se bloquee a sí mismo
     // por el trial de un negocio de prueba que tenga a su nombre.
+    //
+    // PR #122: solo bloquea a quien YA PAGÓ de verdad alguna vez
+    // (ultimo_pago_at no nulo) y no renovó — un negocio que nunca ha
+    // pagado (su trial básico de siempre, o un trial PRO de cortesía
+    // activado desde /admin) nunca se bloquea al vencer, solo pierde el
+    // acceso extra (ver planDeAcceso en lib/planes.ts) y se queda en
+    // Básico normal. Mismo criterio que bloqueadoPorTrial — reimplementado
+    // aquí en vez de importarlo porque el middleware corre en el Edge
+    // runtime con su propio bundle, ya independiente de lib/planes.ts.
     if (user && esRutaDeNegocio(url.pathname)) {
       const { data: negocio } = await supabase
         .from("negocios")
-        .select("trial_fin,is_active,es_fundador")
+        .select("trial_fin,is_active,es_fundador,ultimo_pago_at")
         .eq("owner_id", user.id)
         .maybeSingle();
-      if (negocio && negocio.is_active && !negocio.es_fundador) {
+      if (negocio && negocio.is_active && !negocio.es_fundador && negocio.ultimo_pago_at) {
         const hoy = new Date();
         hoy.setHours(0, 0, 0, 0);
         const trialFin = new Date(`${negocio.trial_fin}T00:00:00`);

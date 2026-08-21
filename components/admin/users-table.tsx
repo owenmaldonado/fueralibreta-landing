@@ -44,8 +44,12 @@ export function UsersTable({ profiles, negocios, currentUserId, onViewDetail }: 
       {profiles.map((p) => {
         const isSelf = p.id === currentUserId;
         const negocio = negocioPorOwner.get(p.id);
-        const planAcceso = negocio ? planDeAcceso(negocio.plan, negocio.esFundador) : null;
+        const planAcceso = negocio ? planDeAcceso(negocio) : null;
         const trial = negocio ? formatTrial(negocio.trialFin) : null;
+        // Trial PRO de cortesía (PR #122): nunca pagó, plan contratado ya
+        // subió a pro/pro_plus a mano desde /admin ("Activar N días PRO") —
+        // se pinta distinto del pill normal de plan/precio real.
+        const enTrialPro = Boolean(negocio && !negocio.esFundador && !negocio.ultimoPagoAt && negocio.plan !== "basico");
 
         return (
           <div
@@ -95,7 +99,7 @@ export function UsersTable({ profiles, negocios, currentUserId, onViewDetail }: 
 
                 {negocio ? (
                   <Badge variant={negocio.esFundador ? "ledger" : "default"}>
-                    {PLAN_LABELS[planAcceso!]} · {formatMoney(precioReal(negocio))}/mes
+                    {enTrialPro ? `PRO TRIAL · ${trial!.texto}` : `${PLAN_LABELS[planAcceso!]} · ${formatMoney(precioReal(negocio))}/mes`}
                   </Badge>
                 ) : (
                   <Badge variant="outline">Sin negocio</Badge>

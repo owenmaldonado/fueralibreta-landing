@@ -60,6 +60,7 @@ export function businessFromRow(row: Row): Business {
     plan: normalizarPlan(row.plan as string | null | undefined),
     precioCustom: row.precio_custom != null ? Number(row.precio_custom) : null,
     esFundador: (row.es_fundador as boolean) ?? false,
+    ultimoPagoAt: (row.ultimo_pago_at as string | null) ?? null,
     diasRecordatorio: row.dias_recordatorio != null ? Number(row.dias_recordatorio) : 28,
     acceptedTermsAt: (row.accepted_terms_at as string) ?? undefined,
   };

@@ -43,8 +43,9 @@ export function UserDetailDialog({
   onSaveFacturacion,
   onImpersonate,
   onSetPlan,
-  onSetTrial,
   onActivarPlan,
+  onActivarTrialPro,
+  onExtenderTrialPro,
   onToggleBanned,
   onDeleteRequest,
 }: {
@@ -58,8 +59,11 @@ export function UserDetailDialog({
   ) => void;
   onImpersonate: (profile: AdminProfile) => void;
   onSetPlan: (negocioId: string, plan: PlanId, nombre: string) => void;
-  onSetTrial: (negocioId: string, dias: 7 | 14 | 30, nombre: string) => void;
   onActivarPlan: (negocioId: string, plan: PlanId, nombre: string) => void;
+  /** "Activar N días PRO" (PR #122) — favor de cortesía, nunca un pago (ver activarTrialPro en lib/admin-data.ts). */
+  onActivarTrialPro: (negocioId: string, dias: number, nombre: string) => void;
+  /** "+N días PRO" — extiende un trial PRO ya activo. */
+  onExtenderTrialPro: (negocioId: string, dias: number, nombre: string) => void;
   onToggleBanned: (profile: AdminProfile) => void;
   onDeleteRequest: (profile: AdminProfile) => void;
 }) {
@@ -199,9 +203,16 @@ export function UserDetailDialog({
                         <Button size="sm" variant="outline" onClick={() => onActivarPlan(n.id, "pro", n.nombre)}>
                           <Crown className="h-4 w-4" /> Activar Pro 30d
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => onSetTrial(n.id, 7, n.nombre)}>
-                          <Gift className="h-4 w-4" /> Trial 7d
-                        </Button>
+                        {/* Nunca pagó de verdad y ya tiene el favor activo (n.plan !== "basico"): "+3 días PRO" extiende; si no, "Activar 7 días PRO" lo prende por primera vez — mismo botón, la acción cambia según el estado actual (ver activarTrialPro/extenderTrialPro en lib/admin-data.ts). */}
+                        {!n.esFundador && !n.ultimoPagoAt && n.plan !== "basico" ? (
+                          <Button size="sm" variant="outline" onClick={() => onExtenderTrialPro(n.id, 3, n.nombre)}>
+                            <Gift className="h-4 w-4" /> +3 días PRO
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => onActivarTrialPro(n.id, 7, n.nombre)}>
+                            <Gift className="h-4 w-4" /> Activar 7 días PRO
+                          </Button>
+                        )}
                         <Button size="sm" variant="outline" className="col-span-2" onClick={() => onSetPlan(n.id, "basico", n.nombre)}>
                           Cambiar a Free
                         </Button>

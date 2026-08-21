@@ -304,6 +304,7 @@ export function createBusiness(input: NuevoNegocioInput): Business {
     plan: "basico",
     precioCustom: null,
     esFundador: false,
+    ultimoPagoAt: null,
   };
 }
 
