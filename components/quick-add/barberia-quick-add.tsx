@@ -224,6 +224,7 @@ function NuevaCitaForm({
         fecha,
         hora,
         estado: "pendiente" as const,
+        ...camposEmpleado(),
       };
 
       return { ...prev, barberia: { ...b, clientes, citas: [cita, ...b.citas] } };
