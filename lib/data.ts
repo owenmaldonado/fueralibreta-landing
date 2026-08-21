@@ -63,6 +63,7 @@ export function businessFromRow(row: Row): Business {
     ultimoPagoAt: (row.ultimo_pago_at as string | null) ?? null,
     diasRecordatorio: row.dias_recordatorio != null ? Number(row.dias_recordatorio) : 28,
     acceptedTermsAt: (row.accepted_terms_at as string) ?? undefined,
+    turnoFondaCerradoEn: (row.turno_fonda_cerrado_en as string | null) ?? null,
   };
 }
 
@@ -441,6 +442,7 @@ const pedidoFromRow = (row: Row, itemsRows: Row[]): FondaOrder => ({
   canceladoPor: (row.cancelado_por as string) ?? undefined,
   motivoCancelacion: (row.motivo_cancelacion as string) ?? undefined,
   turnoId: (row.turno_id as string) ?? undefined,
+  creadoEn: (row.created_at as string) ?? undefined,
   items: itemsRows
     .filter((it) => it.pedido_id === row.id)
     .map((it) => ({
@@ -1150,6 +1152,9 @@ export async function syncTenantDiff(prev: TenantData, next: TenantData): Promis
   }
   if (prev.business.diasRecordatorio !== next.business.diasRecordatorio) {
     businessChanges.dias_recordatorio = next.business.diasRecordatorio ?? 28;
+  }
+  if (prev.business.turnoFondaCerradoEn !== next.business.turnoFondaCerradoEn) {
+    businessChanges.turno_fonda_cerrado_en = next.business.turnoFondaCerradoEn ?? null;
   }
   if (Object.keys(businessChanges).length > 0) {
     const { error } = await supabase.from("negocios").update(businessChanges).eq("id", negocioId);

@@ -13,7 +13,7 @@ import { supabase } from "@/lib/supabase";
 import { insertGastoDirecto } from "@/lib/data";
 import { formatMoney, mensajeDiferencia, uid } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
-import { leerTurnoActual, cerrarTurno } from "@/lib/turno-fonda";
+import { cerrarTurno } from "@/lib/turno-fonda";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
 
 type MermaTipo = "acabado" | "sobro_poco" | "sobro_mucho" | "tirado";
@@ -66,21 +66,18 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
   const negocio = session.business;
   const esNegocioReal = Boolean(negocio.ownerId);
 
-  // Mismo criterio que el StatTile "Ventas" del dashboard: mientras haya un
-  // turno abierto, el corte es del turno en curso (turno_id), no del día
-  // calendario — así un cierre pasada la medianoche no se corta a la mitad.
-  const [turnoActual, setTurnoActual] = React.useState(() => leerTurnoActual(negocio.id));
-  React.useEffect(() => {
-    setTurnoActual(leerTurnoActual(negocio.id));
-  }, [negocio.id, open]);
-
-  const pedidosDelTurno = React.useMemo(
-    () =>
-      data.pedidos.filter((p) =>
-        p.estado === "entregado" && (turnoActual ? p.turnoId === turnoActual.turnoId : p.fecha === hoyEnSuZona)
-      ),
-    [data.pedidos, turnoActual, hoyEnSuZona]
-  );
+  // Mismo criterio que el StatTile "Ventas" del dashboard (ver comentario
+  // en fonda-dashboard.tsx): el corte es de todo lo entregado desde el
+  // último cierre COMPARTIDO (negocio.turnoFondaCerradoEn, en `negocios`),
+  // no del turnoId local de este dispositivo — así un vendedor que cobró
+  // en otra tablet sí entra al corte del dueño, y un cierre pasada la
+  // medianoche tampoco se corta a la mitad.
+  const pedidosDelTurno = React.useMemo(() => {
+    const turnoDesde = negocio.turnoFondaCerradoEn ? new Date(negocio.turnoFondaCerradoEn) : new Date(`${hoyEnSuZona}T00:00:00`);
+    return data.pedidos.filter(
+      (p) => p.estado === "entregado" && (p.creadoEn ? new Date(p.creadoEn) >= turnoDesde : p.fecha === hoyEnSuZona)
+    );
+  }, [data.pedidos, negocio.turnoFondaCerradoEn, hoyEnSuZona]);
 
   const ventasHoy = pedidosDelTurno.reduce((acc, p) => acc + p.total, 0);
   const ventasPorEmpleado = React.useMemo(() => {
@@ -256,11 +253,15 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
       }, { yaSincronizado: true });
     }
 
-    // Cierre real del turno: solo aquí se borra turno_actual_fonda de
-    // localStorage (no en un "cancelar" a medio wizard) — la próxima venta
-    // abre un turno_id nuevo desde cero.
+    // Cierre real del turno: solo aquí se toca (no en un "cancelar" a medio
+    // wizard). cerrarTurno(negocio.id) sigue limpiando el turnoId local
+    // (legacy, ya no se usa para filtrar, se deja por si algo más lo lee)
+    // — lo que de verdad reinicia "Ventas de hoy"/Corte en TODOS los
+    // dispositivos es turnoFondaCerradoEn: se guarda con update() para que
+    // syncTenantDiff lo suba a `negocios` y el canal de realtime que esa
+    // tabla ya tiene lo propague al resto de dispositivos del negocio.
     cerrarTurno(negocio.id);
-    setTurnoActual(null);
+    update((prev) => ({ ...prev, business: { ...prev.business, turnoFondaCerradoEn: new Date().toISOString() } }));
     setGuardando(false);
     resetYCerrar();
   }

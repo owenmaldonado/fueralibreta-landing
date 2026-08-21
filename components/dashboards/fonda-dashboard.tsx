@@ -16,7 +16,7 @@ import { supabase } from "@/lib/supabase";
 import { fetchPedidosPendientes } from "@/lib/data";
 import { camposEmpleado } from "@/lib/empleados";
 import { usePlan } from "@/lib/planes";
-import { leerTurnoActual, obtenerOCrearTurno, type TurnoActual } from "@/lib/turno-fonda";
+import { obtenerOCrearTurno } from "@/lib/turno-fonda";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import { cn } from "@/lib/utils";
 import type { TenantData, SessionUpdater, FondaOrder, Dish, DishVariant } from "@/lib/types";
@@ -112,27 +112,25 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
   const gastosPeriodo = data.gastos.filter((g) => g.fecha >= desde && g.fecha <= hasta);
   const gastos = gastosPeriodo.reduce((acc, g) => acc + g.monto, 0);
 
-  // Turno en curso del negocio — vive en localStorage (lib/turno-fonda.ts),
-  // no en la fecha del render: un hard refresh pinta primero desde el
-  // catálogo local (que NUNCA trae pedidos — se reconstruyen vacíos a
-  // propósito, ver lib/local-cache.ts) y luego lo pisa con la carga real;
-  // filtrar "Ventas" de Hoy por turno_id en vez de por fecha hace que el
-  // total no dependa de en qué momento exacto terminó de cargar la sesión
-  // — el turno sigue siendo el mismo aunque la página se recargue 10 veces,
-  // y solo se reinicia al "Cerrar turno" (ver CerrarTurnoSheet).
-  const [turnoActual, setTurnoActual] = React.useState<TurnoActual | null>(null);
-  React.useEffect(() => {
-    setTurnoActual(leerTurnoActual(negocio.id));
-  }, [negocio.id]);
+  // Turno en curso del negocio — YA NO se basa en turnoId de localStorage
+  // (lib/turno-fonda.ts, por DISPOSITIVO): eso hacía que "Ventas de hoy"
+  // solo contara lo cobrado en ESE dispositivo en particular, así que un
+  // vendedor cobrando en su propia tablet nunca sumaba en el dashboard del
+  // dueño en otro dispositivo, aunque el pedido ya estuviera bien guardado
+  // en Supabase. negocio.turnoFondaCerradoEn SÍ vive en `negocios` y llega
+  // igual a todos los dispositivos por el canal de realtime que esa tabla
+  // ya tiene (suscribirseANegocioEnVivo) — "el turno actual" es todo lo
+  // entregado después del último cierre compartido (o desde el inicio de
+  // hoy si nunca se ha cerrado uno todavía).
+  const turnoDesde = negocio.turnoFondaCerradoEn ? new Date(negocio.turnoFondaCerradoEn) : new Date(`${hoyEnSuZona}T00:00:00`);
 
-  // Sin turno abierto todavía (nadie ha vendido nada hoy desde este
-  // dispositivo) cae a filtrar por fecha — así los pedidos de hoy que ya
-  // existían (sincronizados de otro dispositivo, o de antes de esta
-  // columna) siguen contando mientras no se abra un turno nuevo.
+  // Pedidos sin creadoEn (no debería pasar — created_at es not null desde
+  // que existe la tabla — pero por las dudas) caen a filtrar por fecha,
+  // igual que antes cuando no había turno abierto.
   const ventas =
     filtro === "hoy"
       ? data.pedidos
-          .filter((p) => p.estado === "entregado" && (turnoActual ? p.turnoId === turnoActual.turnoId : p.fecha === hoyEnSuZona))
+          .filter((p) => p.estado === "entregado" && (p.creadoEn ? new Date(p.creadoEn) >= turnoDesde : p.fecha === hoyEnSuZona))
           .reduce((acc, p) => acc + p.total, 0)
       : data.pedidos
           .filter((p) => p.estado === "entregado" && p.fecha >= desde && p.fecha <= hasta)
@@ -182,7 +180,6 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
     // pedido programado que se agendó en un turno anterior sí debe contar
     // en "Ventas" del turno donde de verdad se entrega — ver lib/turno-fonda.ts.
     const turno = obtenerOCrearTurno(negocio.id);
-    setTurnoActual(turno);
     if (esNegocioReal) {
       setPendientesVivo((prev) => prev.filter((p) => p.id !== id));
       const { error } = await supabase.from("fonda_pedidos").update({ estado: "entregado", turno_id: turno.turnoId }).eq("id", id);
@@ -230,7 +227,6 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
     // Abre el turno aquí (no antes): recién con la PRIMERA venta real, para
     // no crear un turno_id "fantasma" solo por haber abierto la pantalla.
     const turno = obtenerOCrearTurno(negocio.id);
-    setTurnoActual(turno);
     const pedidoId = uid("ped");
     let pedidoCreado: FondaOrder | null = null;
     let negocioId = "";
