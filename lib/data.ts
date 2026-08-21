@@ -64,6 +64,7 @@ export function businessFromRow(row: Row): Business {
     diasRecordatorio: row.dias_recordatorio != null ? Number(row.dias_recordatorio) : 28,
     acceptedTermsAt: (row.accepted_terms_at as string) ?? undefined,
     turnoFondaCerradoEn: (row.turno_fonda_cerrado_en as string | null) ?? null,
+    timezone: (row.timezone as string) ?? undefined,
   };
 }
 
@@ -84,6 +85,7 @@ function businessToRow(b: Business): Row {
     demo: b.demo ?? false,
     app_slug: b.appSlug,
     accepted_terms_at: b.acceptedTermsAt ?? null,
+    timezone: b.timezone ?? null,
   };
 }
 

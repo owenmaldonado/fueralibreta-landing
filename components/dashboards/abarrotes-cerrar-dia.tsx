@@ -11,7 +11,8 @@ import { Chip, ChipGroup } from "@/components/ui/chip";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { supabase } from "@/lib/supabase";
 import { insertGastoDirecto } from "@/lib/data";
-import { formatMoney, fechaCalendarioLocal, mensajeDiferencia, todayISO, uid } from "@/lib/mock";
+import { formatMoney, fechaCalendarioLocal, mensajeDiferencia, uid } from "@/lib/mock";
+import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
 
@@ -68,9 +69,10 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
   const data = session.abarrotes!;
   const negocio = session.business;
   const esNegocioReal = Boolean(negocio.ownerId);
-  const hoy = todayISO(0);
+  // "Hoy" del negocio, no del dispositivo — ver lib/fecha.ts.
+  const hoy = hoyEnZona(negocio.timezone);
 
-  const ventasHoyList = data.ventas.filter((v) => !v.cancelada && fechaCalendarioLocal(v.fecha) === hoy);
+  const ventasHoyList = data.ventas.filter((v) => !v.cancelada && fechaCalendarioLocal(v.fecha, negocio.timezone) === hoy);
   const ventasHoyTotal = ventasHoyList.reduce((acc, v) => acc + v.total, 0);
   const ventasPorEmpleado = React.useMemo(() => {
     const mapa = new Map<string, number>();

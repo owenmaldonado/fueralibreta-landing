@@ -14,7 +14,8 @@ import { CerrarDiaSheet } from "@/components/dashboards/abarrotes-cerrar-dia";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { diasParaTrial, precioPorGiro, PLAN_LABELS } from "@/lib/planes";
-import { NUMERO_CONTACTO, hoyEnZona, waLink } from "@/lib/mock";
+import { NUMERO_CONTACTO, waLink } from "@/lib/mock";
+import { hoyEnZona } from "@/lib/fecha";
 import { getEmpleadoActual } from "@/lib/empleados";
 
 /**

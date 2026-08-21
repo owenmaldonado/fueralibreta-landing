@@ -27,6 +27,7 @@ import { VentaForm } from "@/components/abarrotes/venta-form";
 import { useSession } from "@/lib/session";
 import { insertGastoDirecto, updateGastoDirecto, deleteGastoDirecto } from "@/lib/data";
 import { formatMoney, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
+import { hoyEnZona } from "@/lib/fecha";
 import { aggregateByRange, filterByRango, type RangoTiempo } from "@/lib/chart-buckets";
 import { permisosActuales, getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
 import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
@@ -167,7 +168,7 @@ export default function GastosPage() {
         }))
       : ventasAbarrotesActivas.map((v) => ({
           id: v.id,
-          fecha: fechaCalendarioLocal(v.fecha),
+          fecha: fechaCalendarioLocal(v.fecha, session.business.timezone),
           monto: v.total,
           label: v.items.length === 1 ? `${v.items[0].cantidad} ${v.items[0].productoNombre}` : `${v.items.length} productos`,
           empleadoNombreCache: v.empleadoNombreCache,
@@ -216,7 +217,7 @@ export default function GastosPage() {
         }))
       : ventasAbarrotesActivas.map((v) => ({
           id: v.id,
-          fecha: fechaCalendarioLocal(v.fecha),
+          fecha: fechaCalendarioLocal(v.fecha, session.business.timezone),
           monto: v.items.reduce((acc, it) => {
             const costo = it.costoUnitario ?? (it.productoId ? costoPorProducto.get(it.productoId) ?? 0 : 0);
             return acc + (it.precioUnitario - costo) * it.cantidad;
@@ -240,7 +241,8 @@ export default function GastosPage() {
   // lógica de buckets.
   const now = rango === "anual" && anioSeleccionado !== anioActual ? new Date(anioSeleccionado, 11, 31) : new Date();
 
-  const hoy = todayISO(0);
+  // "Hoy" del negocio, no del dispositivo — ver lib/fecha.ts.
+  const hoy = hoyEnZona(session.business.timezone);
   const ventasHoy = ventas.filter((v) => v.fecha === hoy).reduce((acc, v) => acc + v.monto, 0);
   const gastosHoy = gastos.filter((g) => g.fecha === hoy).reduce((acc, g) => acc + g.monto, 0);
   const gananciaBrutaHoy = gananciaPorVenta.filter((g) => g.fecha === hoy).reduce((acc, g) => acc + g.monto, 0);
