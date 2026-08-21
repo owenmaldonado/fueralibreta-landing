@@ -64,6 +64,27 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=TU-ANON-KEY
 5. Deploy. Luego conecta el dominio `fueralibreta.com` en **Settings →
    Domains**.
 
+## MCP de Supabase (Claude Code)
+
+Este repo incluye `.mcp.json` con el servidor MCP de Supabase
+(`@supabase/mcp-server-supabase`) apuntando al proyecto
+`hgugqbtajgzcidxjawcj`. El access token **no** está en el archivo — se
+toma de la variable de entorno `SUPABASE_ACCESS_TOKEN` para no dejar el
+token en el historial de git.
+
+Antes de abrir el proyecto con Claude Code, exporta el token
+(genéralo o cópialo desde tu cuenta de Supabase en
+**Account → Access Tokens**):
+
+```bash
+export SUPABASE_ACCESS_TOKEN=sbp_tu_token_aqui
+```
+
+> Un access token de Supabase da acceso amplio a tu cuenta/proyectos.
+> Nunca lo pegues directo en `.mcp.json`, en commits o en chats — si un
+> token se compartió por accidente, revócalo y genera uno nuevo en
+> **Account → Access Tokens**.
+
 ## Estructura
 
 ```
