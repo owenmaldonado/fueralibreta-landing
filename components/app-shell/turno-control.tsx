@@ -10,6 +10,7 @@ import { SeleccionarEmpleado, ROL_LABEL } from "@/components/kiosko/quien-atiend
 import { PinDuenoForm } from "@/components/kiosko/pin-dueno";
 import { useOnlineStatus } from "@/lib/use-online-status";
 import { esperarSincronizacionPendiente } from "@/lib/session";
+import { PERMISOS } from "@/lib/empleados";
 import type { EmpleadoActual } from "@/lib/types";
 
 /**
@@ -30,11 +31,23 @@ export function TurnoControl({
   empleadoActual,
   pinDuenoSet,
   onSesionCambiada,
+  onAbrirCerrarTurno,
 }: {
   negocioId: string;
   empleadoActual: EmpleadoActual | null;
   pinDuenoSet: boolean;
   onSesionCambiada: (empleado: EmpleadoActual | null) => void;
+  /**
+   * Cuando se da (hoy solo barbería, ver TopBar), el botón rojo de
+   * "Atendiendo como X" abre el wizard REAL de Cerrar Turno (Corte +
+   * Propinas/material) en vez de solo volver a modo dueño — así un
+   * vendedor puede cerrar su turno sin que el dueño esté presente; el PIN
+   * de dueño se pide DESPUÉS, al terminar (ver onCompletado en
+   * CerrarTurnoSheet), no antes. Sin este prop (fonda/abarrotes, todavía
+   * sin este flujo) el botón se comporta como siempre: volver a dueño
+   * directo.
+   */
+  onAbrirCerrarTurno?: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
   const [eligiendo, setEligiendo] = React.useState(false);
@@ -156,9 +169,27 @@ export function TurnoControl({
               <Button size="lg" variant="outline" onClick={() => setEligiendo(true)}>
                 Cambiar de usuario
               </Button>
-              <Button size="lg" className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={elegirDueno}>
-                Cerrar turno
-              </Button>
+              {/* Sin permiso puedeCerrarTurno (rol sin esa autorización):
+                  ningún botón rojo — la única salida es "Cambiar de
+                  usuario" y, desde ahí, la tarjeta "Dueño" (pide PIN si el
+                  dueño configuró uno). */}
+              {PERMISOS[empleadoActual!.rol].puedeCerrarTurno &&
+                (onAbrirCerrarTurno ? (
+                  <Button
+                    size="lg"
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={() => {
+                      cerrar();
+                      onAbrirCerrarTurno();
+                    }}
+                  >
+                    Cerrar turno
+                  </Button>
+                ) : (
+                  <Button size="lg" className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={elegirDueno}>
+                    Cerrar turno
+                  </Button>
+                ))}
             </div>
           </>
         )}

@@ -115,6 +115,8 @@ interface PermisosRol {
   editarConfiguracion: boolean;
   borrarVentas: boolean;
   cancelarVentas: boolean;
+  /** Puede disparar el wizard real de "Cerrar turno" (Corte + Propinas/material) desde el botón rojo de TurnoControl, sin que el dueño esté presente — ver components/app-shell/turno-control.tsx. Distinto de verCorteDelDia (ver el resumen ya calculado en el dashboard): esto es poder CERRARLO. */
+  puedeCerrarTurno: boolean;
 }
 
 export const PERMISOS: Record<RolEmpleado, PermisosRol> = {
@@ -130,6 +132,7 @@ export const PERMISOS: Record<RolEmpleado, PermisosRol> = {
     editarConfiguracion: true,
     borrarVentas: true,
     cancelarVentas: true,
+    puedeCerrarTurno: true,
   },
   encargado: {
     verHoy: true,
@@ -143,6 +146,7 @@ export const PERMISOS: Record<RolEmpleado, PermisosRol> = {
     editarConfiguracion: false,
     borrarVentas: false,
     cancelarVentas: true,
+    puedeCerrarTurno: true,
   },
   vendedor: {
     verHoy: true,
@@ -156,6 +160,10 @@ export const PERMISOS: Record<RolEmpleado, PermisosRol> = {
     editarConfiguracion: false,
     borrarVentas: false,
     cancelarVentas: true,
+    // El punto entero de esta tarea: un vendedor SÍ puede cerrar su turno
+    // sin que el dueño esté presente (ver TurnoControl) — solo pide PIN de
+    // dueño DESPUÉS, para volver al panel de dueño, no para cerrar.
+    puedeCerrarTurno: true,
   },
 };
 

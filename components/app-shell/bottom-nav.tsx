@@ -55,7 +55,17 @@ const HREFS_REPORTES = new Set(["/app/gastos", "/app/caja"]);
 
 export function BottomNav({ tipo, rolActual }: { tipo: BusinessType; rolActual?: RolEmpleado }) {
   const pathname = usePathname();
-  const items = NAV_BY_TYPE[tipo].filter((item) => !(rolActual === "vendedor" && HREFS_REPORTES.has(item.href)));
+  const items = NAV_BY_TYPE[tipo].filter((item) => {
+    if (rolActual !== "vendedor") return true;
+    if (HREFS_REPORTES.has(item.href)) return false;
+    // Barbería: "Cerrar turno" para vendedor ahora vive en el botón rojo
+    // de TurnoControl (ver components/app-shell/turno-control.tsx), no en
+    // Mi Plan — que ahí ya no le ofrece nada, así que ni se muestra el
+    // link. Fonda/Abarrotes NO cambiaron: su vendedor sigue usando Mi Plan
+    // para Cerrar turno/día.
+    if (tipo === "barberia" && item.href === "/app/mi-plan") return false;
+    return true;
+  });
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">

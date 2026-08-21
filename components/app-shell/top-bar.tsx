@@ -11,19 +11,23 @@ import { universalSearch } from "@/lib/search";
 import { esperarSincronizacionPendiente } from "@/lib/session";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { PinDuenoForm } from "@/components/kiosko/pin-dueno";
+import { CerrarTurnoSheet as BarberiaCerrarTurnoSheet } from "@/components/dashboards/barberia-cerrar-turno";
 import { ConnectionStatus } from "./connection-status";
 import { PendingSalesBadge } from "./pending-sales-badge";
 import { TurnoControl } from "./turno-control";
-import type { TenantData, EmpleadoActual } from "@/lib/types";
+import type { TenantData, EmpleadoActual, SessionUpdater } from "@/lib/types";
 
 export function TopBar({
   data,
+  update,
   isAdmin,
   empleadoActual,
   pinDuenoSet,
   onSesionCambiada,
 }: {
   data: TenantData;
+  /** Solo hace falta para renderizar CerrarTurnoSheet (barbería, vendedor cerrando su propio turno) — ver onAbrirCerrarTurno abajo. */
+  update: SessionUpdater;
   isAdmin?: boolean;
   /** Quién está atendiendo en este dispositivo AHORA (login opcional por sesión, ver TurnoControl) — null = dueño, sin nadie elegido. */
   empleadoActual?: EmpleadoActual | null;
@@ -34,8 +38,31 @@ export function TopBar({
   const [searching, setSearching] = React.useState(false);
   const [q, setQ] = React.useState("");
   const [pinDueno, setPinDueno] = React.useState(false);
+  // Barbería: el botón rojo de TurnoControl (vendedor "Atendiendo como X")
+  // abre este sheet en vez de volver a dueño directo — ver PROMPT "UX
+  // Vendedores - Cerrar turno". Al terminar de verdad (CerrarTurnoSheet
+  // solo llama onCompletado si el wizard llegó a "¡Turno cerrado!", nunca
+  // si se cancela) recién ahí se pide el PIN de dueño para regresar.
+  const [cerrandoTurnoVendedor, setCerrandoTurnoVendedor] = React.useState(false);
+  const [pidiendoPinVolver, setPidiendoPinVolver] = React.useState(false);
   const router = useRouter();
   const results = React.useMemo(() => universalSearch(data, q), [data, q]);
+
+  /** Mismo criterio que volverADuenoYRecargar en turno-control.tsx — ver ese comentario para el porqué de esperarSincronizacionPendiente(). */
+  async function volverADueno() {
+    onSesionCambiada?.(null);
+    await esperarSincronizacionPendiente();
+    window.location.href = "/app/inicio";
+  }
+
+  function handleCorteCompletado() {
+    setCerrandoTurnoVendedor(false);
+    if (pinDuenoSet) {
+      setPidiendoPinVolver(true);
+    } else {
+      volverADueno();
+    }
+  }
 
   function closeSearch() {
     setSearching(false);
@@ -128,6 +155,7 @@ export function TopBar({
               empleadoActual={empleadoActual ?? null}
               pinDuenoSet={Boolean(pinDuenoSet)}
               onSesionCambiada={(e) => onSesionCambiada?.(e)}
+              onAbrirCerrarTurno={data.business.tipo === "barberia" ? () => setCerrandoTurnoVendedor(true) : undefined}
             />
             <PendingSalesBadge negocioId={data.business.id} />
             <ConnectionStatus negocioId={data.business.id} />
@@ -187,6 +215,25 @@ export function TopBar({
       <Dialog open={pinDueno} onOpenChange={(o) => !o && setPinDueno(false)}>
         <DialogHeader title="Acceso a Empleados" description="Ingresa el PIN maestro del dueño" onClose={() => setPinDueno(false)} />
         <PinDuenoForm negocioId={data.business.id} onExito={handlePinDuenoExito} onCancel={() => setPinDueno(false)} />
+      </Dialog>
+
+      {data.business.tipo === "barberia" && (
+        <BarberiaCerrarTurnoSheet
+          open={cerrandoTurnoVendedor}
+          onClose={() => setCerrandoTurnoVendedor(false)}
+          session={data}
+          update={update}
+          onCompletado={handleCorteCompletado}
+        />
+      )}
+
+      <Dialog open={pidiendoPinVolver} onOpenChange={(o) => !o && setPidiendoPinVolver(false)}>
+        <DialogHeader
+          title="PIN de dueño"
+          description="Turno cerrado — ingresa el PIN maestro para volver al panel de dueño"
+          onClose={() => setPidiendoPinVolver(false)}
+        />
+        <PinDuenoForm negocioId={data.business.id} onExito={volverADueno} onCancel={() => setPidiendoPinVolver(false)} />
       </Dialog>
     </header>
   );

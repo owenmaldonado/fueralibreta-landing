@@ -29,6 +29,8 @@ interface Props {
   onClose: () => void;
   session: TenantData;
   update: SessionUpdater;
+  /** Se dispara SOLO cuando el wizard llegó de verdad a "¡Turno cerrado!" y se cerró desde ahí — nunca si se cancela en Paso 1/2. TopBar lo usa para, en modo vendedor, recién ahí pedir el PIN de dueño y volver al panel — ver components/app-shell/top-bar.tsx. */
+  onCompletado?: () => void;
 }
 
 /** Nombre de producto de Inventario "parecido" al del checkbox de material — coincidencia simple por substring, sin acentos/mayúsculas, suficiente para "Navajas" -> "Navajas de afeitar". */
@@ -64,7 +66,7 @@ function buscarProductoSimilar(nombre: string, productos: InventoryProduct[]): I
  * y abarrotera_cortes): se escribe directo a Supabase solo para negocios
  * reales al terminar el cierre, con todo ya resuelto; nada la lee todavía.
  */
-export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
+export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado }: Props) {
   const [paso, setPaso] = React.useState<1 | 2 | "resumen">(1);
   const [fondoInicial, setFondoInicial] = React.useState("");
   const [efectivoReal, setEfectivoReal] = React.useState("");
@@ -112,6 +114,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
   const diferencia = efectivoValido ? Math.round(Number(efectivoReal) - esperado) : null;
 
   function resetYCerrar() {
+    const completado = paso === "resumen";
     setPaso(1);
     setFondoInicial("");
     setEfectivoReal("");
@@ -124,6 +127,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
     setOtroMonto("");
     setResumen(null);
     onClose();
+    if (completado) onCompletado?.();
   }
 
   function toggleMaterial(nombre: string) {

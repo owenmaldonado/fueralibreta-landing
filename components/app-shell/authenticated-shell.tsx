@@ -319,6 +319,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
     <div className="min-h-screen bg-background pb-24">
       <TopBar
         data={session}
+        update={update}
         isAdmin={isAdmin}
         empleadoActual={empleadoActual}
         pinDuenoSet={pinDuenoSet}
