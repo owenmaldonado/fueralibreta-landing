@@ -39,6 +39,12 @@ export default function MenuPage() {
   const activos = data.platillos.filter((p) => p.activoHoy);
   const inactivos = data.platillos.filter((p) => !p.activoHoy);
   const categorias = Array.from(new Set(activos.map((p) => p.categoria)));
+  // Tope de plan sobre cuántos pueden estar disponibles A LA VEZ (no el
+  // catálogo completo) — ver maxProductosActivos en lib/planes.ts. Solo
+  // gatea ACTIVAR: marcar algo "no disponible hoy" siempre es libre, sin
+  // importar el plan ni cuántos platillos inactivos haya.
+  const capActivos = plan.giroFonda.maxProductosActivos;
+  const capActivosAlcanzado = capActivos != null && activos.length >= capActivos;
 
   // Registro directo en Supabase (fuera del sync genérico de update(), mismo
   // patrón que marcarEntregado en fonda-dashboard.tsx): fondita_menu_dia es
@@ -91,7 +97,7 @@ export default function MenuPage() {
                         onToggle={toggle}
                         onEditar={() => setEditando(p)}
                         onBorrar={() => setBorrando(p)}
-                        menuDiaDisponible={plan.giroFonda.menuDia}
+                        capActivosAlcanzado={capActivosAlcanzado}
                       />
                     ))}
                 </div>
@@ -121,7 +127,7 @@ export default function MenuPage() {
                     onToggle={toggle}
                     onEditar={() => setEditando(p)}
                     onBorrar={() => setBorrando(p)}
-                    menuDiaDisponible={plan.giroFonda.menuDia}
+                    capActivosAlcanzado={capActivosAlcanzado}
                   />
                 ))}
               </div>
@@ -150,28 +156,29 @@ function PlatilloRow({
   onToggle,
   onEditar,
   onBorrar,
-  menuDiaDisponible,
+  capActivosAlcanzado,
 }: {
   platillo: Dish;
   onToggle: (id: string, nuevoEstado: boolean) => void;
   onEditar: () => void;
   onBorrar: () => void;
-  /** básico no puede cambiar día a día qué hay disponible — el checkbox se reemplaza por un candado a /planes. */
-  menuDiaDisponible: boolean;
+  /** Tope de plan sobre platillos activos a la vez — solo bloquea ACTIVAR uno que hoy está inactivo. Desactivar (marcarlo no disponible) nunca se bloquea. */
+  capActivosAlcanzado: boolean;
 }) {
+  const bloqueadoParaActivar = !p.activoHoy && capActivosAlcanzado;
   return (
     <div className="flex animate-in fade-in slide-in-from-top-1 items-center gap-3 rounded-xl border border-border bg-card p-3 duration-300">
       <label className="flex flex-1 items-center gap-2">
-        {menuDiaDisponible ? (
-          <Checkbox checked={p.activoHoy} onCheckedChange={() => onToggle(p.id, !p.activoHoy)} />
-        ) : (
+        {bloqueadoParaActivar ? (
           <Link
             href="/planes"
-            title="Menú del día (activar/desactivar platillos por día) disponible en Pro y Pro+"
+            title="Llegaste al límite de platillos disponibles a la vez de tu plan — más en Pro y Pro+"
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-dashed border-border text-muted-foreground"
           >
             <Lock className="h-3 w-3" />
           </Link>
+        ) : (
+          <Checkbox checked={p.activoHoy} onCheckedChange={() => onToggle(p.id, !p.activoHoy)} />
         )}
         <span className={`text-sm font-medium ${!p.activoHoy && "text-muted-foreground line-through"}`}>{p.nombre}</span>
         {p.estadoMerma && (
