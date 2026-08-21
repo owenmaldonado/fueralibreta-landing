@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { toast } from "sonner";
 
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { supabase } from "@/lib/supabase";
+import { insertGastoDirecto } from "@/lib/data";
 import { formatMoney, mensajeDiferencia, uid } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
 import { leerTurnoActual, cerrarTurno } from "@/lib/turno-fonda";
@@ -138,10 +140,27 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
         fecha: hoyEnSuZona,
         ...camposEmpleado(),
       };
+
+      // Igual que en app/app/gastos/page.tsx: el gasto del corte es dinero
+      // real, así que se espera la confirmación de Supabase ANTES de
+      // tocar el estado local — nada de optimista (ver bug crítico
+      // "gastos no se guardan al refrescar").
+      if (esNegocioReal) {
+        setGuardando(true);
+        try {
+          await insertGastoDirecto(negocio.id, "fonda", [gasto]);
+        } catch {
+          toast.error("No se pudo guardar el gasto del día — revisa tu conexión e intenta de nuevo.");
+          setGuardando(false);
+          return;
+        }
+        setGuardando(false);
+      }
+
       update((prev) => {
         const f = prev.fonda!;
         return { ...prev, fonda: { ...f, gastos: [gasto, ...f.gastos] } };
-      });
+      }, { yaSincronizado: true });
     }
 
     if (esNegocioReal) {
@@ -199,6 +218,23 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
       if (error) console.error("No se pudieron guardar las mermas:", error);
     }
 
+    // La merma "se tiró" con monto es dinero real perdido (Expense), así
+    // que se inserta y se confirma ANTES de tocar el estado local — mismo
+    // criterio que guardarCorte() arriba.
+    if (esNegocioReal && nuevosGastos.length > 0) {
+      try {
+        await insertGastoDirecto(negocio.id, "fonda", nuevosGastos);
+      } catch {
+        toast.error("No se pudo guardar la merma como gasto — revisa tu conexión e intenta de nuevo.");
+        setGuardando(false);
+        return;
+      }
+    }
+
+    // Dos update() separados a propósito: el de platillos es un cambio
+    // normal que syncTenantDiff debe subir como siempre; el de gastos ya
+    // se insertó a mano arriba, así que va con yaSincronizado para no
+    // duplicarlo (ver nota en lib/session.ts).
     update((prev) => {
       const f = prev.fonda!;
       const platillos = f.platillos.map((p) => {
@@ -210,9 +246,15 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
         // "Se acabó" y "Se tiró" no dejan nada para mañana.
         return { ...p, activoHoy: false, estadoMerma: undefined };
       });
-      const gastos = nuevosGastos.length > 0 ? [...nuevosGastos, ...f.gastos] : f.gastos;
-      return { ...prev, fonda: { ...f, platillos, gastos } };
+      return { ...prev, fonda: { ...f, platillos } };
     });
+
+    if (nuevosGastos.length > 0) {
+      update((prev) => {
+        const f = prev.fonda!;
+        return { ...prev, fonda: { ...f, gastos: [...nuevosGastos, ...f.gastos] } };
+      }, { yaSincronizado: true });
+    }
 
     // Cierre real del turno: solo aquí se borra turno_actual_fonda de
     // localStorage (no en un "cancelar" a medio wizard) — la próxima venta
@@ -260,8 +302,8 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
             </div>
           </div>
           <SheetFooter>
-            <Button size="lg" disabled={!efectivoValido} onClick={guardarCorte}>
-              Continuar a Merma
+            <Button size="lg" disabled={!efectivoValido || guardando} onClick={guardarCorte}>
+              {guardando ? "Guardando..." : "Continuar a Merma"}
             </Button>
           </SheetFooter>
         </>

@@ -256,6 +256,38 @@ const cajaToRow = (c: CajaEntry, negocioId: string): Row => ({
   empleado_rol_cache: c.empleadoRolCache ?? null,
 });
 
+/**
+ * Mismo criterio que insertGastoDirecto/updateGastoDirecto/
+ * deleteGastoDirecto (fonda/abarrotes) pero para barberia_caja — ahí un
+ * "gasto" es un CajaEntry con tipo="gasto", no una tabla aparte. Solo
+ * CajaForm lo usa, y solo para tipo==="gasto" (ventas/propinas de Caja
+ * siguen por el camino optimista de siempre — no es lo que se reportó
+ * perdiendo datos).
+ */
+export async function insertCajaEntryDirecto(negocioId: string, entry: CajaEntry): Promise<void> {
+  const { error } = await supabase.from("barberia_caja").insert(cajaToRow(entry, negocioId));
+  if (error) {
+    console.error("[caja] INSERT a barberia_caja falló — el movimiento NO se guardó:", error);
+    throw error;
+  }
+}
+
+export async function updateCajaEntryDirecto(negocioId: string, entry: CajaEntry): Promise<void> {
+  const { error } = await supabase.from("barberia_caja").update(cajaToRow(entry, negocioId)).eq("id", entry.id);
+  if (error) {
+    console.error("[caja] UPDATE a barberia_caja falló — el cambio NO se guardó:", error);
+    throw error;
+  }
+}
+
+export async function deleteCajaEntryDirecto(entryId: string): Promise<void> {
+  const { error } = await supabase.from("barberia_caja").delete().eq("id", entryId);
+  if (error) {
+    console.error("[caja] DELETE en barberia_caja falló — el movimiento sigue existiendo:", error);
+    throw error;
+  }
+}
+
 const productoBarberiaFromRow = (r: Row): InventoryProduct => ({
   id: r.id as string,
   nombre: r.nombre as string,
@@ -449,6 +481,47 @@ const gastoToRow = (g: Expense, negocioId: string): Row => ({
   empleado_nombre_cache: g.empleadoNombreCache ?? null,
   empleado_rol_cache: g.empleadoRolCache ?? null,
 });
+
+/**
+ * Gastos NUNCA pasan por el camino optimista genérico (update() +
+ * syncTenantDiff en segundo plano) — PR #123, bug crítico: un gasto se
+ * pintaba en la lista al toque, pero si el sync en segundo plano fallaba
+ * (columna sin desplegar, RLS, red — el motivo real quedaba solo en la
+ * consola, ver console.error en lib/session.ts) el gasto nunca llegaba a
+ * Supabase y desaparecía en el siguiente refresh, sin que nadie se
+ * enterara hasta que ya era tarde para el corte de caja. Es dinero real:
+ * insertGastoDirecto/updateGastoDirecto/deleteGastoDirecto esperan la
+ * confirmación real de Supabase ANTES de que la pantalla toque el estado
+ * local — si falla, el error se propaga (con el detalle real de Postgres/
+ * PostgREST en consola) para que quien llama pueda avisar con un toast y
+ * NO pintar el gasto como si se hubiera guardado.
+ */
+export async function insertGastoDirecto(negocioId: string, modulo: "fonda" | "abarrotes", gastos: Expense[]): Promise<void> {
+  const tabla = modulo === "fonda" ? "fonda_gastos" : "abarrotes_gastos";
+  const { error } = await supabase.from(tabla).insert(gastos.map((g) => gastoToRow(g, negocioId)));
+  if (error) {
+    console.error(`[gastos] INSERT a ${tabla} falló — el gasto NO se guardó:`, error);
+    throw error;
+  }
+}
+
+export async function updateGastoDirecto(negocioId: string, modulo: "fonda" | "abarrotes", gasto: Expense): Promise<void> {
+  const tabla = modulo === "fonda" ? "fonda_gastos" : "abarrotes_gastos";
+  const { error } = await supabase.from(tabla).update(gastoToRow(gasto, negocioId)).eq("id", gasto.id);
+  if (error) {
+    console.error(`[gastos] UPDATE a ${tabla} falló — el cambio NO se guardó:`, error);
+    throw error;
+  }
+}
+
+export async function deleteGastoDirecto(modulo: "fonda" | "abarrotes", gastoId: string): Promise<void> {
+  const tabla = modulo === "fonda" ? "fonda_gastos" : "abarrotes_gastos";
+  const { error } = await supabase.from(tabla).delete().eq("id", gastoId);
+  if (error) {
+    console.error(`[gastos] DELETE en ${tabla} falló — el gasto sigue existiendo:`, error);
+    throw error;
+  }
+}
 
 async function fetchFondaData(negocioId: string): Promise<FondaData> {
   const [platillosRes, pedidosRes, gastosRes] = await Promise.all([

@@ -351,4 +351,4 @@ export interface TenantData {
  * queda bloqueada sin red por defecto, a menos que sea uno de los flujos de
  * venta explícitamente marcados.
  */
-export type SessionUpdater = (fn: (prev: TenantData) => TenantData, opciones?: { ventaOffline?: boolean }) => void;
+export type SessionUpdater = (fn: (prev: TenantData) => TenantData, opciones?: { ventaOffline?: boolean; yaSincronizado?: boolean }) => void;

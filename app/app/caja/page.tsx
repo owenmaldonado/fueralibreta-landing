@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Banknote, CreditCard, HandCoins, Receipt, Plus, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -20,6 +21,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmpleadoBadge } from "@/components/dashboards/empleado-badge";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
+import { insertCajaEntryDirecto, updateCajaEntryDirecto, deleteCajaEntryDirecto } from "@/lib/data";
 import { formatMoney, uid } from "@/lib/mock";
 import { aggregateTwoByRange, type RangoTiempo } from "@/lib/chart-buckets";
 import { camposEmpleado, permisosActuales, ROL_LABEL } from "@/lib/empleados";
@@ -116,12 +118,28 @@ export default function CajaPage() {
     (m) => ({ a: m.a, b: m.b })
   );
 
-  function eliminar() {
+  async function eliminar() {
     if (!borrando) return;
-    update((prev) => {
-      const b = prev.barberia!;
-      return { ...prev, barberia: { ...b, caja: b.caja.filter((m) => m.id !== borrando.id) } };
-    });
+    // Un gasto es dinero real: se espera la confirmación del DELETE en
+    // Supabase antes de quitarlo de la lista local (ver bug crítico
+    // "gastos no se guardan al refrescar" — mismo criterio que
+    // app/app/gastos/page.tsx). Venta/propina siguen el flujo optimista
+    // normal, que ya tiene su propio manejo offline (usePendingSalesQueue).
+    if (borrando.tipo === "gasto") {
+      try {
+        await deleteCajaEntryDirecto(borrando.id);
+      } catch {
+        toast.error("No se pudo eliminar el gasto — revisa tu conexión e intenta de nuevo.");
+        return;
+      }
+    }
+    update(
+      (prev) => {
+        const b = prev.barberia!;
+        return { ...prev, barberia: { ...b, caja: b.caja.filter((m) => m.id !== borrando.id) } };
+      },
+      { yaSincronizado: borrando.tipo === "gasto" }
+    );
     setBorrando(null);
   }
 
@@ -259,11 +277,11 @@ export default function CajaPage() {
       </div>
 
       <Sheet open={addOpen} onOpenChange={setAddOpen}>
-        <CajaForm onClose={() => setAddOpen(false)} update={update} />
+        <CajaForm negocioId={session.business.id} onClose={() => setAddOpen(false)} update={update} />
       </Sheet>
 
       <Sheet open={!!editando} onOpenChange={(o) => !o && setEditando(null)}>
-        {editando && <CajaForm entry={editando} onClose={() => setEditando(null)} update={update} />}
+        {editando && <CajaForm negocioId={session.business.id} entry={editando} onClose={() => setEditando(null)} update={update} />}
       </Sheet>
 
       <ConfirmDialog
@@ -285,10 +303,12 @@ function toDatetimeLocal(iso: string): string {
 
 function CajaForm({
   entry,
+  negocioId,
   onClose,
   update,
 }: {
   entry?: CajaEntry;
+  negocioId: string;
   onClose: () => void;
   update: ReturnType<typeof useSession>["update"];
 }) {
@@ -297,14 +317,48 @@ function CajaForm({
   const [monto, setMonto] = React.useState(String(entry?.monto ?? ""));
   const [metodo, setMetodo] = React.useState<CajaEntry["metodo"]>(entry?.metodo ?? "efectivo");
   const [fecha, setFecha] = React.useState(entry ? toDatetimeLocal(entry.fecha) : toDatetimeLocal(new Date().toISOString()));
+  const [guardando, setGuardando] = React.useState(false);
 
   const puedeGuardar = Number(monto) > 0 && concepto.trim().length > 0;
 
-  function guardar() {
+  async function guardar() {
     if (!puedeGuardar) return;
+    const datos = { tipo, concepto: concepto.trim(), monto: Number(monto), metodo, fecha };
+
+    // Un gasto es dinero real: se espera la confirmación de Supabase antes
+    // de tocar el estado local — venta/propina siguen el flujo optimista
+    // normal (ya cubierto por usePendingSalesQueue para ventas sin red).
+    if (tipo === "gasto") {
+      setGuardando(true);
+      const actualizado: CajaEntry = entry ? { ...entry, ...datos } : { id: uid("caja"), ...datos, ...camposEmpleado() };
+      try {
+        if (entry) {
+          await updateCajaEntryDirecto(negocioId, actualizado);
+        } else {
+          await insertCajaEntryDirecto(negocioId, actualizado);
+        }
+      } catch {
+        toast.error("No se pudo guardar el gasto — revisa tu conexión e intenta de nuevo.");
+        setGuardando(false);
+        return;
+      }
+      setGuardando(false);
+      update(
+        (prev) => {
+          const b = prev.barberia!;
+          if (entry) {
+            return { ...prev, barberia: { ...b, caja: b.caja.map((m) => (m.id === entry.id ? actualizado : m)) } };
+          }
+          return { ...prev, barberia: { ...b, caja: [actualizado, ...b.caja] } };
+        },
+        { yaSincronizado: true }
+      );
+      onClose();
+      return;
+    }
+
     update((prev) => {
       const b = prev.barberia!;
-      const datos = { tipo, concepto: concepto.trim(), monto: Number(monto), metodo, fecha };
       if (entry) {
         return { ...prev, barberia: { ...b, caja: b.caja.map((m) => (m.id === entry.id ? { ...m, ...datos } : m)) } };
       }
@@ -357,8 +411,8 @@ function CajaForm({
         </div>
       </div>
       <SheetFooter>
-        <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>
-          {entry ? "Guardar cambios" : "Guardar"}
+        <Button size="lg" disabled={!puedeGuardar || guardando} onClick={guardar}>
+          {guardando ? "Guardando..." : entry ? "Guardar cambios" : "Guardar"}
         </Button>
       </SheetFooter>
     </>

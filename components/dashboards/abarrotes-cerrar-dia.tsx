@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { toast } from "sonner";
 
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { supabase } from "@/lib/supabase";
+import { insertGastoDirecto } from "@/lib/data";
 import { formatMoney, fechaCalendarioLocal, mensajeDiferencia, todayISO, uid } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
@@ -138,10 +140,25 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
         fecha: hoy,
         ...camposEmpleado(),
       };
+
+      // Dinero real: se espera la confirmación de Supabase antes de
+      // tocar el estado local (mismo criterio que app/app/gastos/page.tsx).
+      if (esNegocioReal) {
+        setGuardando(true);
+        try {
+          await insertGastoDirecto(negocio.id, "abarrotes", [gasto]);
+        } catch {
+          toast.error("No se pudo guardar el gasto del día — revisa tu conexión e intenta de nuevo.");
+          setGuardando(false);
+          return;
+        }
+        setGuardando(false);
+      }
+
       update((prev) => {
         const a = prev.abarrotes!;
         return { ...prev, abarrotes: { ...a, gastos: [gasto, ...a.gastos] } };
-      });
+      }, { yaSincronizado: true });
     }
     setPaso(2);
   }
@@ -185,6 +202,23 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
       if (error) console.error("No se pudieron guardar las mermas:", error);
     }
 
+    // La merma "caducó/se rompió" con pérdida en $ es dinero real, así que
+    // se inserta y se confirma ANTES de tocar el estado local — mismo
+    // criterio que guardarCorte() arriba.
+    if (esNegocioReal && nuevosGastos.length > 0) {
+      try {
+        await insertGastoDirecto(negocio.id, "abarrotes", nuevosGastos);
+      } catch {
+        toast.error("No se pudo guardar la merma como gasto — revisa tu conexión e intenta de nuevo.");
+        setGuardando(false);
+        return;
+      }
+    }
+
+    // Dos update() separados a propósito: el de productos (stock/porCaducar)
+    // es un cambio normal que syncTenantDiff debe subir como siempre; el de
+    // gastos ya se insertó a mano arriba, así que va con yaSincronizado
+    // para no duplicarlo (ver nota en lib/session.ts).
     update((prev) => {
       const a = prev.abarrotes!;
       const productos = a.productos.map((p) => {
@@ -196,9 +230,15 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
         const cantidad = decision.accion === "caduco" && decision.cantidad ? Number(decision.cantidad) : 0;
         return { ...p, porCaducar: false, stock: cantidad > 0 ? Math.max(0, p.stock - cantidad) : p.stock };
       });
-      const gastos = nuevosGastos.length > 0 ? [...nuevosGastos, ...a.gastos] : a.gastos;
-      return { ...prev, abarrotes: { ...a, productos, gastos } };
+      return { ...prev, abarrotes: { ...a, productos } };
     });
+
+    if (nuevosGastos.length > 0) {
+      update((prev) => {
+        const a = prev.abarrotes!;
+        return { ...prev, abarrotes: { ...a, gastos: [...nuevosGastos, ...a.gastos] } };
+      }, { yaSincronizado: true });
+    }
 
     setGuardando(false);
     resetYCerrar();
@@ -241,8 +281,8 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
             </div>
           </div>
           <SheetFooter>
-            <Button size="lg" disabled={!efectivoValido} onClick={guardarCorte}>
-              Continuar a Merma
+            <Button size="lg" disabled={!efectivoValido || guardando} onClick={guardarCorte}>
+              {guardando ? "Guardando..." : "Continuar a Merma"}
             </Button>
           </SheetFooter>
         </>

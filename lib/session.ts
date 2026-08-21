@@ -756,7 +756,7 @@ export function useSession() {
     };
   }, [loadFromDemoPreview]);
 
-  const update = useCallback((updater: (prev: TenantData) => TenantData, opciones?: { ventaOffline?: boolean }) => {
+  const update = useCallback((updater: (prev: TenantData) => TenantData, opciones?: { ventaOffline?: boolean; yaSincronizado?: boolean }) => {
     const prev = sessionRef.current;
     if (!prev) return;
 
@@ -787,11 +787,20 @@ export function useSession() {
       if (next.business.ownerId) {
         actualizarCacheTenant(next.business.ownerId, next);
       }
+      // yaSincronizado (PR #123, bug crítico de gastos que se perdían al
+      // refrescar): quien llama YA esperó la confirmación real de Supabase
+      // ANTES de tocar el estado local (ver insertGastoDirecto en
+      // lib/data.ts) — si syncTenantDiff volviera a correr aquí, vería el
+      // mismo id como "nuevo" (no estaba en `prev`) e intentaría
+      // insertarlo OTRA VEZ, chocando con la llave primaria. Nunca se usa
+      // para editar/borrar lo que ya existía en `prev` — solo para altas
+      // que el propio llamador ya insertó a mano.
+      //
       // Sin red, syncTenantDiff fallaría de todos modos (esto solo puede
       // llegar aquí si opciones.ventaOffline dejó pasar una venta sin
       // conexión) — la Parte 4 sube lo pendiente cuando regrese la señal,
       // no tiene caso intentarlo ni ensuciar la consola con el error.
-      if (typeof navigator === "undefined" || navigator.onLine) {
+      if (!opciones?.yaSincronizado && (typeof navigator === "undefined" || navigator.onLine)) {
         syncTenantDiff(prev, next).catch((err) => {
           console.error("No se pudo guardar el cambio en Supabase:", err);
         });
