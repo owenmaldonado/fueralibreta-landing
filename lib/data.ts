@@ -212,6 +212,21 @@ export const citaFromRow = (r: Row): Appointment => ({
   canceladoPor: (r.cancelado_por as string) ?? undefined,
   motivoCancelacion: (r.motivo_cancelacion as string) ?? undefined,
 });
+
+/**
+ * Refetch ligero de solo barberia_citas — lo usa el fallback de polling de
+ * lib/session.ts (escucharCitasEnVivo): si el canal de realtime se queda
+ * "SUBSCRIBED" pero deja de entregar postgres_changes (RLS/token de
+ * Realtime desincronizado, sin ningún error visible en consola), esto
+ * vuelve a traer las citas del negocio cada cierto tiempo como red de
+ * seguridad, sin esperar a que el dueño refresque la página a mano.
+ */
+export async function fetchCitasDeNegocio(negocioId: string): Promise<Appointment[]> {
+  const { data, error } = await supabase.from("barberia_citas").select("*").eq("negocio_id", negocioId);
+  if (error) throw error;
+  return (data ?? []).map(citaFromRow);
+}
+
 const citaToRow = (c: Appointment, negocioId: string): Row => ({
   id: c.id,
   negocio_id: negocioId,

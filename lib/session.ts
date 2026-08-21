@@ -4,7 +4,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { supabase, isSupabaseConfigured } from "./supabase";
-import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow, fetchVentaConItems, fetchPedidoConItems, businessFromRow } from "./data";
+import {
+  fetchNegocioByOwner,
+  fetchTenantData,
+  persistTenant,
+  syncTenantDiff,
+  citaFromRow,
+  fetchVentaConItems,
+  fetchPedidoConItems,
+  fetchCitasDeNegocio,
+  businessFromRow,
+} from "./data";
 import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
 import { leerCacheLocal, sincronizarCacheLocalEnSegundoPlano } from "./local-cache";
 import { todayISO, formatHora12 } from "./mock";
@@ -123,7 +133,78 @@ let citasChannel: ReturnType<typeof supabase.channel> | null = null;
 let citasChannelNegocioId: string | null = null;
 const citasListeners = new Set<(evento: EventoCita) => void>();
 
+/**
+ * Arma (o rearma) el canal de citas para `negocioId`. Separado de
+ * suscribirseACitasEnVivo para poder llamarse solo desde el reintento de
+ * abajo sin pasar por el chequeo de citasChannelNegocioId (que en ese punto
+ * ya está en null a propósito) ni tocar citasListeners.
+ *
+ * El `.subscribe(status, err)` con callback es nuevo — antes se llamaba
+ * `.subscribe()` a secas, así que un CHANNEL_ERROR/TIMED_OUT (token de
+ * Realtime vencido, WebSocket caído, etc.) nunca se veía en consola: el
+ * canal se quedaba "muerto" en silencio y el dueño nunca más recibía
+ * eventos hasta refrescar. Con logging + hasta 3 reintentos (3s de
+ * separación) esto se autorepara solo en la mayoría de los casos; si de
+ * plano Realtime sigue sin entregar sin ni siquiera reportar error (mismo
+ * síntoma reportado: "SUBSCRIBED" pero cero payloads, cero errores), el
+ * polling de respaldo en escucharCitasEnVivo (lib/session.ts, useSession)
+ * es la red de seguridad final.
+ */
+function armarCanalCitas(negocioId: string, intento = 0) {
+  const nuevoCanal = supabase
+    .channel(`citas-${negocioId}`)
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
+      (payload) => {
+        console.log("[session] citas realtime: INSERT recibido", payload.new);
+        const cita = citaFromRow(payload.new as Record<string, unknown>);
+        // Un solo toast por evento real de Supabase, aquí y no dentro de
+        // cada listener — con el shell y la pantalla actual (ej. Agenda)
+        // cada uno con su propia instancia de useSession() suscrita al
+        // mismo canal compartido, un toast por listener duplicaría el
+        // aviso (2+ toasts para la misma cita nueva).
+        toast.success(`Nueva cita: ${cita.clienteNombre} · ${formatHora12(cita.hora)}`);
+        citasListeners.forEach((l) => l({ tipo: "insert", cita }));
+      }
+    )
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
+      (payload) => {
+        console.log("[session] citas realtime: UPDATE recibido", payload.new);
+        const cita = citaFromRow(payload.new as Record<string, unknown>);
+        citasListeners.forEach((l) => l({ tipo: "update", cita }));
+      }
+    )
+    .subscribe((status, err) => {
+      console.log("[session] canal de citas:", status, err ?? "");
+      if (status !== "CHANNEL_ERROR" && status !== "TIMED_OUT") return;
+      // citasChannelNegocioId !== negocioId: ya se desmontó o cambió de
+      // negocio mientras esperábamos — no reintentar un canal que ya nadie
+      // quiere.
+      if (citasChannelNegocioId !== negocioId || intento >= 3) {
+        console.error(`[session] canal de citas falló y no se reintenta más (intento ${intento}):`, err);
+        return;
+      }
+      console.error(`[session] canal de citas falló, reintentando en 3s (intento ${intento + 1}/3):`, err);
+      supabase.removeChannel(nuevoCanal);
+      citasChannel = null;
+      citasChannelNegocioId = null;
+      setTimeout(() => {
+        if (citasListeners.size === 0) return;
+        armarCanalCitas(negocioId, intento + 1);
+      }, 3000);
+    });
+  citasChannel = nuevoCanal;
+  citasChannelNegocioId = negocioId;
+}
+
 function suscribirseACitasEnVivo(negocioId: string, onEvento: (evento: EventoCita) => void): () => void {
+  if (!negocioId) {
+    console.error("[session] suscribirseACitasEnVivo: negocioId vacío/undefined, no se arma el canal.");
+    return () => {};
+  }
   if (citasChannelNegocioId !== negocioId) {
     if (citasChannel) supabase.removeChannel(citasChannel);
     // citasChannelNegocioId solo se marca DESPUÉS de armar el canal con
@@ -135,33 +216,7 @@ function suscribirseACitasEnVivo(negocioId: string, onEvento: (evento: EventoCit
     // canal real detrás).
     citasChannel = null;
     citasChannelNegocioId = null;
-    const nuevoCanal = supabase
-      .channel(`citas-${negocioId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
-        (payload) => {
-          const cita = citaFromRow(payload.new as Record<string, unknown>);
-          // Un solo toast por evento real de Supabase, aquí y no dentro de
-          // cada listener — con el shell y la pantalla actual (ej. Agenda)
-          // cada uno con su propia instancia de useSession() suscrita al
-          // mismo canal compartido, un toast por listener duplicaría el
-          // aviso (2+ toasts para la misma cita nueva).
-          toast.success(`Nueva cita: ${cita.clienteNombre} · ${formatHora12(cita.hora)}`);
-          citasListeners.forEach((l) => l({ tipo: "insert", cita }));
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
-        (payload) => {
-          const cita = citaFromRow(payload.new as Record<string, unknown>);
-          citasListeners.forEach((l) => l({ tipo: "update", cita }));
-        }
-      )
-      .subscribe();
-    citasChannel = nuevoCanal;
-    citasChannelNegocioId = negocioId;
+    armarCanalCitas(negocioId);
   }
   citasListeners.add(onEvento);
   return () => {
@@ -350,6 +405,7 @@ export function useSession() {
   const sourceRef = useRef<Source>(null);
   const sessionRef = useRef<TenantData | null>(null);
   const citasUnsubRef = useRef<(() => void) | null>(null);
+  const citasPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ventasUnsubRef = useRef<(() => void) | null>(null);
   const pedidosUnsubRef = useRef<(() => void) | null>(null);
   const negocioUnsubRef = useRef<(() => void) | null>(null);
@@ -367,6 +423,10 @@ export function useSession() {
     function detenerCitasEnVivo() {
       citasUnsubRef.current?.();
       citasUnsubRef.current = null;
+      if (citasPollRef.current) {
+        clearInterval(citasPollRef.current);
+        citasPollRef.current = null;
+      }
     }
 
     function detenerVentasEnVivo() {
@@ -412,6 +472,41 @@ export function useSession() {
           };
         });
       });
+      // Red de seguridad además del canal de arriba: si Realtime se queda
+      // "SUBSCRIBED" pero deja de entregar postgres_changes sin ningún error
+      // (el síntoma reportado — token de Realtime desincronizado tras
+      // refrescar RLS a mano, WebSocket zombie, etc.), esto vuelve a traer
+      // las citas del negocio cada 25s y mete las que falten — mismo
+      // chequeo anti-eco por id que el realtime de arriba, así que no
+      // duplica nada si el canal SÍ está entregando. No sustituye arreglar
+      // el canal (por eso el logging nuevo en armarCanalCitas), pero
+      // garantiza que "esperar un rato" alcance sin necesidad de F5.
+      citasPollRef.current = setInterval(() => {
+        fetchCitasDeNegocio(negocioId)
+          .then((citasFrescas) => {
+            setSessionState((prev) => {
+              if (!prev?.barberia) return prev;
+              const porId = new Map(citasFrescas.map((c) => [c.id, c] as const));
+              // JSON.stringify en vez de === porque fetchCitasDeNegocio
+              // siempre devuelve objetos nuevos (aunque el contenido no haya
+              // cambiado) — sin esta comparación por contenido, `cambio`
+              // sería true cada 25s aunque nada haya cambiado de verdad, y
+              // el árbol completo del dashboard se re-renderizaría sin
+              // necesidad en cada tick del polling.
+              let cambio = false;
+              const actualizadas = prev.barberia.citas.map((c) => {
+                const fresca = porId.get(c.id);
+                if (!fresca || JSON.stringify(fresca) === JSON.stringify(c)) return c;
+                cambio = true;
+                return fresca;
+              });
+              const nuevas = citasFrescas.filter((c) => !prev.barberia!.citas.some((existing) => existing.id === c.id));
+              if (!cambio && nuevas.length === 0) return prev;
+              return { ...prev, barberia: { ...prev.barberia, citas: [...nuevas, ...actualizadas] } };
+            });
+          })
+          .catch((err) => console.error("[session] polling de respaldo de citas falló:", err));
+      }, 25000);
     }
 
     /** Ver comentario de suscribirseAVentasEnVivo arriba. */
