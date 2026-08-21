@@ -247,18 +247,37 @@ function suscribirseAPedidosEnVivo(negocioId: string, onEvento: (pedido: FondaOr
     if (pedidosChannel) supabase.removeChannel(pedidosChannel);
     pedidosChannel = null;
     pedidosChannelNegocioId = null;
-    const avisarCambio = (payload: { new: Record<string, unknown> }) => {
+    // fonda_pedidos y fonda_pedido_items se insertan en dos llamadas
+    // separadas (ver persistTenant/syncTenantDiff en lib/data.ts) — un
+    // INSERT de fonda_pedidos puede llegar por realtime ANTES de que la
+    // segunda llamada (los items) termine. Un solo reintento a los 400ms
+    // (tiempo de sobra para esa segunda llamada) evita pisar un pedido ya
+    // completo en el estado local con una versión momentáneamente sin
+    // items — no aplica a UPDATE (los items ya existían desde el insert).
+    const avisarCambio = (eventType: "INSERT" | "UPDATE") => (payload: { new: Record<string, unknown> }) => {
       const pedidoId = payload.new.id as string;
       fetchPedidoConItems(pedidoId)
-        .then((pedido) => {
-          if (pedido) pedidosListeners.forEach((l) => l(pedido));
+        .then(async (pedido) => {
+          if (pedido && eventType === "INSERT" && pedido.items.length === 0) {
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            pedido = await fetchPedidoConItems(pedidoId);
+          }
+          if (pedido) pedidosListeners.forEach((l) => l(pedido!));
         })
         .catch((err) => console.error("[session] no se pudo cargar el pedido nuevo/actualizado del realtime:", err));
     };
     const nuevoCanal = supabase
       .channel(`fonda-pedidos-${negocioId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "fonda_pedidos", filter: `negocio_id=eq.${negocioId}` }, avisarCambio)
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fonda_pedidos", filter: `negocio_id=eq.${negocioId}` }, avisarCambio)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "fonda_pedidos", filter: `negocio_id=eq.${negocioId}` },
+        avisarCambio("INSERT")
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "fonda_pedidos", filter: `negocio_id=eq.${negocioId}` },
+        avisarCambio("UPDATE")
+      )
       .subscribe();
     pedidosChannel = nuevoCanal;
     pedidosChannelNegocioId = negocioId;
