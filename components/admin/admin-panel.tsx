@@ -43,7 +43,10 @@ import {
   type AdminProfile,
   type AdminNegocio,
   type AdminLead,
+  type Role,
+  type Plan,
 } from "@/lib/admin-data";
+import { supabase } from "@/lib/supabase";
 import { formatMoney } from "@/lib/mock";
 import { PLAN_LABELS, formatTrial, estadoCobranza, type PlanId, type EstadoCobranza } from "@/lib/planes";
 
@@ -123,6 +126,73 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   React.useEffect(() => {
     load();
   }, [load]);
+
+  // Realtime de profiles (4to canal de la app — los otros 3 son
+  // barberia_citas/abarrotes_ventas/negocios, todos por negocio_id dentro
+  // de la sesión de UN dueño en lib/session.ts). Este es propio de /admin:
+  // un canal local a esta página, sin el patrón "canal compartido entre
+  // varias instancias de useSession()" de los otros — AdminPanel es una
+  // sola instancia, no hay riesgo de doble .subscribe() al mismo topic.
+  // Requiere `alter publication supabase_realtime add table profiles;` del
+  // lado de Supabase (ya corrido).
+  React.useEffect(() => {
+    const channel = supabase
+      .channel("admin-profiles")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, (payload) => {
+        const row = payload.new as Record<string, unknown>;
+        const nuevo: AdminProfile = {
+          id: row.id as string,
+          email: (row.email as string) ?? null,
+          avatarUrl: (row.avatar_url as string) ?? null,
+          role: (row.role as Role) ?? "user",
+          plan: (row.plan as Plan) ?? "free",
+          isBanned: Boolean(row.is_banned),
+          createdAt: row.created_at as string,
+          negociosCount: 0,
+        };
+        setOverview((prev) => {
+          if (!prev) return prev;
+          // Eco de un profile que esta misma pestaña ya tenía (ej. otro
+          // admin cargó justo antes de que llegara el evento) — nunca
+          // duplicar la fila ni recontar en las tarjetas de arriba.
+          if (prev.profiles.some((p) => p.id === nuevo.id)) return prev;
+          const profiles = [nuevo, ...prev.profiles];
+          return { ...prev, profiles, metrics: computeAdminMetrics(profiles, prev.negocios, prev.metrics.totalMovimientos) };
+        });
+        toast.success(`Nuevo usuario: ${nuevo.email ?? nuevo.id}`);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (payload) => {
+        const row = payload.new as Record<string, unknown>;
+        setOverview((prev) => {
+          if (!prev) return prev;
+          const profiles = prev.profiles.map((p) =>
+            p.id === row.id
+              ? {
+                  ...p,
+                  email: (row.email as string) ?? p.email,
+                  avatarUrl: (row.avatar_url as string) ?? p.avatarUrl,
+                  role: (row.role as Role) ?? p.role,
+                  plan: (row.plan as Plan) ?? p.plan,
+                  isBanned: Boolean(row.is_banned),
+                }
+              : p
+          );
+          return { ...prev, profiles };
+        });
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "profiles" }, (payload) => {
+        const oldRow = payload.old as Record<string, unknown>;
+        setOverview((prev) => {
+          if (!prev) return prev;
+          const profiles = prev.profiles.filter((p) => p.id !== oldRow.id);
+          return { ...prev, profiles, metrics: computeAdminMetrics(profiles, prev.negocios, prev.metrics.totalMovimientos) };
+        });
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Deep-link desde /app/admin-dashboard (?negocio=<id>): abre directo el
   // detalle de ese negocio en vez de dejar al admin buscarlo a mano.

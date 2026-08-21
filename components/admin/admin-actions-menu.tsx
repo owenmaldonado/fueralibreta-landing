@@ -1,9 +1,11 @@
 "use client";
 
-import { Eye, UserCog, Crown, Clock, Tag, Award, Ban, CheckCircle2, Trash2 } from "lucide-react";
+import { Eye, UserCog, Crown, Clock, Tag, Award, Ban, CheckCircle2, Trash2, MessageCircle, Copy } from "lucide-react";
+import { toast } from "sonner";
 
 import { DropdownMenu, type DropdownItem } from "@/components/ui/dropdown-menu";
 import { PLAN_ORDEN, PLAN_LABELS, type PlanId } from "@/lib/planes";
+import { waLink } from "@/lib/mock";
 import type { AdminNegocio, AdminProfile } from "@/lib/admin-data";
 
 /**
@@ -49,6 +51,26 @@ export function AdminActionsMenu({
   className,
 }: AdminActionsMenuProps) {
   const items: DropdownItem[] = [
+    ...(negocio?.ownerPhone
+      ? [
+          {
+            label: `📱 WhatsApp ${negocio.ownerPhone}`,
+            icon: <MessageCircle className="h-4 w-4" />,
+            onClick: () =>
+              window.open(waLink(negocio.ownerPhone, `Hola, te escribo de Fuera Libreta sobre ${negocio.nombre}.`), "_blank"),
+          },
+          {
+            label: "📋 Copiar",
+            icon: <Copy className="h-4 w-4" />,
+            onClick: () => {
+              navigator.clipboard
+                .writeText(negocio.ownerPhone)
+                .then(() => toast.success("Número copiado"))
+                .catch(() => toast.error("No se pudo copiar"));
+            },
+          },
+        ]
+      : []),
     ...(profile && !isSelf
       ? [{ label: "Ver como usuario", icon: <UserCog className="h-4 w-4" />, onClick: onImpersonate }]
       : []),
