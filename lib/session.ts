@@ -14,11 +14,13 @@ import {
   fetchPedidoConItems,
   fetchCitasDeNegocio,
   businessFromRow,
+  gastoFromRow,
+  cajaFromRow,
 } from "./data";
 import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
 import { leerCacheLocal, sincronizarCacheLocalEnSegundoPlano } from "./local-cache";
 import { todayISO, formatHora12 } from "./mock";
-import type { Appointment, Business, GrocerySale, FondaOrder, TenantData } from "./types";
+import type { Appointment, Business, GrocerySale, FondaOrder, Expense, CajaEntry, TenantData } from "./types";
 
 type Source = "supabase" | "demo" | null;
 
@@ -391,6 +393,114 @@ function suscribirseANegocioEnVivo(negocioId: string, onEvento: (business: Busin
 }
 
 /**
+ * fonda_gastos/abarrotes_gastos/barberia_caja nunca tuvieron NINGÚN canal de
+ * realtime (a diferencia de citas/ventas/pedidos/negocios, arriba) — un
+ * gasto (o una entrada de caja) registrado desde OTRO dispositivo/pestaña
+ * de la misma sesión (p. ej. el dueño viendo el dashboard en su celular
+ * mientras alguien más registra un gasto en la tablet del negocio, o dos
+ * pestañas del mismo dueño) nunca se veía sin recargar. No es un problema
+ * de RLS entre dueño/empleado: el modo PIN de empleado (lib/empleados.ts)
+ * nunca crea su propia sesión de Auth — auth.uid() sigue siendo el del
+ * dueño sin importar quién esté "activo" en el dispositivo (ver
+ * fonda_gastos_owner/abarrotes_gastos_owner, que usan is_negocio_owner()
+ * igual que el resto) — así que el insert de un empleado ya llegaba bien a
+ * Supabase; lo único que faltaba era avisarle a las demás pestañas/
+ * dispositivos que había uno nuevo. Mismo patrón de canal compartido por
+ * negocio que el resto de este archivo, un canal por tabla ya que
+ * fonda_gastos/abarrotes_gastos/barberia_caja son tablas separadas con
+ * forma distinta (Expense vs CajaEntry).
+ */
+let gastosChannel: ReturnType<typeof supabase.channel> | null = null;
+let gastosChannelKey: string | null = null;
+const gastosListeners = new Set<(evento: { tipo: "insert" | "update"; gasto: Expense }) => void>();
+
+function suscribirseAGastosEnVivo(negocioId: string, tabla: "fonda_gastos" | "abarrotes_gastos", onEvento: (evento: { tipo: "insert" | "update"; gasto: Expense }) => void): () => void {
+  const key = `${tabla}-${negocioId}`;
+  if (gastosChannelKey !== key) {
+    if (gastosChannel) supabase.removeChannel(gastosChannel);
+    gastosChannel = null;
+    gastosChannelKey = null;
+    const nuevoCanal = supabase
+      .channel(`gastos-${key}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: tabla, filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const gasto = gastoFromRow(payload.new as Record<string, unknown>);
+          gastosListeners.forEach((l) => l({ tipo: "insert", gasto }));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: tabla, filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const gasto = gastoFromRow(payload.new as Record<string, unknown>);
+          gastosListeners.forEach((l) => l({ tipo: "update", gasto }));
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") console.error(`[session] canal de ${tabla} falló:`, err);
+      });
+    gastosChannel = nuevoCanal;
+    gastosChannelKey = key;
+  }
+  gastosListeners.add(onEvento);
+  return () => {
+    gastosListeners.delete(onEvento);
+    if (gastosListeners.size === 0 && gastosChannel) {
+      supabase.removeChannel(gastosChannel);
+      gastosChannel = null;
+      gastosChannelKey = null;
+    }
+  };
+}
+
+let cajaChannel: ReturnType<typeof supabase.channel> | null = null;
+let cajaChannelNegocioId: string | null = null;
+const cajaListeners = new Set<(evento: { tipo: "insert" | "update"; entry: CajaEntry }) => void>();
+
+/** Mismo patrón que suscribirseAGastosEnVivo, para barberia_caja (propinas/gastos de barbería, forma CajaEntry en vez de Expense). */
+function suscribirseACajaEnVivo(negocioId: string, onEvento: (evento: { tipo: "insert" | "update"; entry: CajaEntry }) => void): () => void {
+  if (cajaChannelNegocioId !== negocioId) {
+    if (cajaChannel) supabase.removeChannel(cajaChannel);
+    cajaChannel = null;
+    cajaChannelNegocioId = null;
+    const nuevoCanal = supabase
+      .channel(`barberia-caja-${negocioId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "barberia_caja", filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const entry = cajaFromRow(payload.new as Record<string, unknown>);
+          cajaListeners.forEach((l) => l({ tipo: "insert", entry }));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "barberia_caja", filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const entry = cajaFromRow(payload.new as Record<string, unknown>);
+          cajaListeners.forEach((l) => l({ tipo: "update", entry }));
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") console.error("[session] canal de barberia_caja falló:", err);
+      });
+    cajaChannel = nuevoCanal;
+    cajaChannelNegocioId = negocioId;
+  }
+  cajaListeners.add(onEvento);
+  return () => {
+    cajaListeners.delete(onEvento);
+    if (cajaListeners.size === 0 && cajaChannel) {
+      supabase.removeChannel(cajaChannel);
+      cajaChannel = null;
+      cajaChannelNegocioId = null;
+    }
+  };
+}
+
+/**
  * Sesión del negocio activo. Dos fuentes posibles:
  *
  * - "supabase": el usuario está logueado y ya tiene un negocio real en la
@@ -409,6 +519,8 @@ export function useSession() {
   const ventasUnsubRef = useRef<(() => void) | null>(null);
   const pedidosUnsubRef = useRef<(() => void) | null>(null);
   const negocioUnsubRef = useRef<(() => void) | null>(null);
+  const gastosUnsubRef = useRef<(() => void) | null>(null);
+  const cajaUnsubRef = useRef<(() => void) | null>(null);
   sessionRef.current = session;
 
   const loadFromDemoPreview = useCallback(() => {
@@ -442,6 +554,16 @@ export function useSession() {
     function detenerNegocioEnVivo() {
       negocioUnsubRef.current?.();
       negocioUnsubRef.current = null;
+    }
+
+    function detenerGastosEnVivo() {
+      gastosUnsubRef.current?.();
+      gastosUnsubRef.current = null;
+    }
+
+    function detenerCajaEnVivo() {
+      cajaUnsubRef.current?.();
+      cajaUnsubRef.current = null;
     }
 
     /**
@@ -544,6 +666,43 @@ export function useSession() {
       detenerNegocioEnVivo();
       negocioUnsubRef.current = suscribirseANegocioEnVivo(negocioId, (business) => {
         setSessionState((prev) => (prev ? { ...prev, business } : prev));
+      });
+    }
+
+    /** Ver comentario de suscribirseAGastosEnVivo arriba — mismo chequeo anti-eco por id que ventas/pedidos, INSERT agrega y UPDATE reemplaza (un gasto editado desde otro dispositivo también se refleja). */
+    function escucharGastosEnVivo(negocioId: string, tabla: "fonda_gastos" | "abarrotes_gastos") {
+      detenerGastosEnVivo();
+      gastosUnsubRef.current = suscribirseAGastosEnVivo(negocioId, tabla, ({ tipo, gasto }) => {
+        setSessionState((prev) => {
+          const modulo = tabla === "fonda_gastos" ? prev?.fonda : prev?.abarrotes;
+          if (!modulo) return prev;
+          if (tipo === "insert") {
+            if (modulo.gastos.some((g) => g.id === gasto.id)) return prev;
+            const gastos = [gasto, ...modulo.gastos];
+            return tabla === "fonda_gastos"
+              ? { ...prev!, fonda: { ...prev!.fonda!, gastos } }
+              : { ...prev!, abarrotes: { ...prev!.abarrotes!, gastos } };
+          }
+          const gastos = modulo.gastos.map((g) => (g.id === gasto.id ? gasto : g));
+          return tabla === "fonda_gastos"
+            ? { ...prev!, fonda: { ...prev!.fonda!, gastos } }
+            : { ...prev!, abarrotes: { ...prev!.abarrotes!, gastos } };
+        });
+      });
+    }
+
+    /** Ver comentario de suscribirseACajaEnVivo arriba. */
+    function escucharCajaEnVivo(negocioId: string) {
+      detenerCajaEnVivo();
+      cajaUnsubRef.current = suscribirseACajaEnVivo(negocioId, ({ tipo, entry }) => {
+        setSessionState((prev) => {
+          if (!prev?.barberia) return prev;
+          if (tipo === "insert") {
+            if (prev.barberia.caja.some((e) => e.id === entry.id)) return prev;
+            return { ...prev, barberia: { ...prev.barberia, caja: [entry, ...prev.barberia.caja] } };
+          }
+          return { ...prev, barberia: { ...prev.barberia, caja: prev.barberia.caja.map((e) => (e.id === entry.id ? entry : e)) } };
+        });
       });
     }
 
@@ -714,17 +873,32 @@ export function useSession() {
             } catch (err) {
               console.error("[session] no se pudo suscribir a citas en vivo (la sesión sigue cargada bien):", err);
             }
+            try {
+              escucharCajaEnVivo(tenant.business.id);
+            } catch (err) {
+              console.error("[session] no se pudo suscribir a caja en vivo (la sesión sigue cargada bien):", err);
+            }
           } else if (tenant.business.tipo === "abarrotes") {
             try {
               escucharVentasEnVivo(tenant.business.id);
             } catch (err) {
               console.error("[session] no se pudo suscribir a ventas en vivo (la sesión sigue cargada bien):", err);
             }
+            try {
+              escucharGastosEnVivo(tenant.business.id, "abarrotes_gastos");
+            } catch (err) {
+              console.error("[session] no se pudo suscribir a gastos en vivo (la sesión sigue cargada bien):", err);
+            }
           } else if (tenant.business.tipo === "fonda") {
             try {
               escucharPedidosEnVivo(tenant.business.id);
             } catch (err) {
               console.error("[session] no se pudo suscribir a pedidos en vivo (la sesión sigue cargada bien):", err);
+            }
+            try {
+              escucharGastosEnVivo(tenant.business.id, "fonda_gastos");
+            } catch (err) {
+              console.error("[session] no se pudo suscribir a gastos en vivo (la sesión sigue cargada bien):", err);
             }
           }
           // Aplica a los 3 verticales — un cambio de plan desde /admin debe
@@ -821,6 +995,8 @@ export function useSession() {
         detenerVentasEnVivo();
         detenerPedidosEnVivo();
         detenerNegocioEnVivo();
+        detenerGastosEnVivo();
+        detenerCajaEnVivo();
         limpiarCacheTenant();
         return;
       }
@@ -848,6 +1024,8 @@ export function useSession() {
       detenerVentasEnVivo();
       detenerPedidosEnVivo();
       detenerNegocioEnVivo();
+      detenerGastosEnVivo();
+      detenerCajaEnVivo();
     };
   }, [loadFromDemoPreview]);
 

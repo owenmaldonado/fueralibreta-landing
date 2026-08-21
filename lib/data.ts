@@ -247,7 +247,7 @@ const citaToRow = (c: Appointment, negocioId: string): Row => ({
   motivo_cancelacion: c.motivoCancelacion ?? null,
 });
 
-const cajaFromRow = (r: Row): CajaEntry => ({
+export const cajaFromRow = (r: Row): CajaEntry => ({
   id: r.id as string,
   tipo: r.tipo as CajaEntry["tipo"],
   concepto: r.concepto as string,
@@ -475,7 +475,7 @@ export async function fetchPedidoConItems(pedidoId: string): Promise<FondaOrder 
   return pedidoFromRow(pedidoRow, itemsRows ?? []);
 }
 
-const gastoFromRow = (r: Row): Expense => ({
+export const gastoFromRow = (r: Row): Expense => ({
   id: r.id as string,
   categoria: r.categoria as string,
   monto: Number(r.monto),
