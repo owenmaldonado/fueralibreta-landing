@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { SeleccionarEmpleado, ROL_LABEL } from "@/components/kiosko/quien-atiende";
 import { PinDuenoForm } from "@/components/kiosko/pin-dueno";
 import { useOnlineStatus } from "@/lib/use-online-status";
+import { esperarSincronizacionPendiente } from "@/lib/session";
 import type { EmpleadoActual } from "@/lib/types";
 
 /**
@@ -58,9 +59,17 @@ export function TurnoControl({
    * de dejar que React re-renderice solo — así queda descartado cualquier
    * estado en memoria residual de la sesión anterior (listeners de
    * realtime, caché de useSession, lo que sea), no solo la cookie.
+   *
+   * esperarSincronizacionPendiente() ANTES del reload: un gasto/venta/cita
+   * que el vendedor acaba de guardar se sube a Supabase en segundo plano
+   * (update() en lib/session.ts nunca espera esa escritura, para que la
+   * pantalla se sienta instantánea) — sin este await, `window.location.href`
+   * cancela ese fetch a medias si el vendedor regresa a modo dueño enseguida,
+   * y lo que acababa de guardar desaparece sin ningún error visible.
    */
-  function volverADuenoYRecargar() {
+  async function volverADuenoYRecargar() {
     onSesionCambiada(null);
+    await esperarSincronizacionPendiente();
     window.location.href = "/app/inicio";
   }
 

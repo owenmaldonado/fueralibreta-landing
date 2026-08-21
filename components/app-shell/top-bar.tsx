@@ -8,6 +8,7 @@ import { Search, LogOut, X, ShieldCheck, Users } from "lucide-react";
 import { clearEmpleadoActual } from "@/lib/empleados";
 import { cerrarSesion } from "@/lib/logout";
 import { universalSearch } from "@/lib/search";
+import { esperarSincronizacionPendiente } from "@/lib/session";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { PinDuenoForm } from "@/components/kiosko/pin-dueno";
 import { ConnectionStatus } from "./connection-status";
@@ -77,10 +78,13 @@ export function TopBar({
    * tropiece por accidente, y solo cierra sesión de EMPLEADO — nunca la de
    * Supabase Auth real.
    */
-  function resetEmergencia(e: React.MouseEvent) {
+  async function resetEmergencia(e: React.MouseEvent) {
     if (!e.shiftKey) return;
     e.preventDefault();
     clearEmpleadoActual();
+    // Ver esperarSincronizacionPendiente en turno-control.tsx: mismo riesgo
+    // de cancelar a medias un guardado en segundo plano.
+    await esperarSincronizacionPendiente();
     window.location.href = "/app/inicio";
   }
 

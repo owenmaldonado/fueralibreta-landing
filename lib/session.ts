@@ -48,6 +48,37 @@ function limpiarCacheTenant() {
 }
 
 /**
+ * update() (más abajo) dispara syncTenantDiff() en SEGUNDO PLANO — nadie
+ * espera esa promesa, así que un gasto/venta/cita nuevo se ve al instante
+ * en pantalla (optimista) mientras el INSERT real todavía viaja a
+ * Supabase. Eso está bien mientras la pestaña siga viva, pero
+ * TurnoControl/TopBar usan `window.location.href = ...` para volver a modo
+ * DUEÑO (a propósito — descarta cualquier estado de React residual, ver
+ * comentario de volverADuenoYRecargar) y una navegación dura CANCELA
+ * cualquier fetch todavía en vuelo. Si el vendedor guarda algo y de
+ * inmediato regresa a modo dueño, el INSERT nunca llegaba a terminar: se
+ * veía guardado un instante y luego "no se guardó nada" para el dueño.
+ * Este set + esperarSincronizacionPendiente() (exportada abajo) es lo que
+ * deja que esas navegaciones esperen a que lo pendiente termine de verdad
+ * antes de descartar la página.
+ */
+const escriturasPendientes = new Set<Promise<unknown>>();
+
+/**
+ * Se llama ANTES de cualquier `window.location.href = ...` que cambie de
+ * identidad (volver a dueño, "salida de emergencia") — nunca antes de un
+ * simple cambio de pantalla dentro de /app, donde React sigue vivo y no
+ * hay nada que cancelar. Timeout corto: si algo se queda pegado (red muy
+ * mala) no debe dejar al dueño atorado sin poder volver a su propio modo.
+ */
+export async function esperarSincronizacionPendiente(timeoutMs = 4000): Promise<void> {
+  if (escriturasPendientes.size === 0) return;
+  const todas = Promise.allSettled(Array.from(escriturasPendientes));
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
+  await Promise.race([todas, timeout]);
+}
+
+/**
  * /demo/[tipo] -> "Generar mi demo" navega a /app/inicio?preview=true. Sin
  * esto, un usuario YA logueado (o un admin) que genera un demo cae en
  * resolveForUser(userId) con userId real: eso ignora por completo el
@@ -1074,9 +1105,11 @@ export function useSession() {
       // conexión) — la Parte 4 sube lo pendiente cuando regrese la señal,
       // no tiene caso intentarlo ni ensuciar la consola con el error.
       if (!opciones?.yaSincronizado && (typeof navigator === "undefined" || navigator.onLine)) {
-        syncTenantDiff(prev, next).catch((err) => {
+        const escritura = syncTenantDiff(prev, next).catch((err) => {
           console.error("No se pudo guardar el cambio en Supabase:", err);
         });
+        escriturasPendientes.add(escritura);
+        escritura.finally(() => escriturasPendientes.delete(escritura));
       }
     }
   }, []);
