@@ -71,9 +71,12 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
   // pendientesVivo contra eso en cada cambio: agrega los pedidos nuevos que
   // este tab acaba de crear y no estaban en el fetch original, y quita los
   // que este tab sepa que ya se marcaron entregados (desde aquí mismo o
-  // desde /app/pedidos). Los pedidos de OTRO dispositivo que este tab
-  // nunca sincronizó (sin realtime para fonda_pedidos) se conservan tal
-  // cual — ausentes de session.fonda no es lo mismo que "ya entregados".
+  // desde /app/pedidos). Pedidos de OTRO dispositivo (ej. un vendedor en su
+  // propia sesión) ya llegan por el canal de realtime de fonda_pedidos (PR
+  // #119, ver escucharPedidosEnVivo en lib/session.ts) y entran a
+  // session.fonda.pedidos solos — este efecto es el respaldo por si ese
+  // canal tarda o se cae: mientras tanto, conserva lo que ya se pintó aquí
+  // en vez de asumir "ausente de session.fonda" == "ya entregado".
   React.useEffect(() => {
     if (filtro !== "hoy" || !esNegocioReal) return;
     setPendientesVivo((prev) => {

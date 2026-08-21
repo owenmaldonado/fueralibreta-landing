@@ -4,11 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { supabase, isSupabaseConfigured } from "./supabase";
-import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow, fetchVentaConItems, businessFromRow } from "./data";
+import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow, fetchVentaConItems, fetchPedidoConItems, businessFromRow } from "./data";
 import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
 import { leerCacheLocal, sincronizarCacheLocalEnSegundoPlano } from "./local-cache";
 import { todayISO, formatHora12 } from "./mock";
-import type { Appointment, Business, GrocerySale, TenantData } from "./types";
+import type { Appointment, Business, GrocerySale, FondaOrder, TenantData } from "./types";
 
 type Source = "supabase" | "demo" | null;
 
@@ -227,6 +227,54 @@ function suscribirseAVentasEnVivo(negocioId: string, onEvento: (venta: GrocerySa
 }
 
 /**
+ * Mismo patrón que suscribirseAVentasEnVivo, para fonda_pedidos — antes esta
+ * suscripción no existía (el único mecanismo era fetchPedidosPendientes en
+ * fonda-dashboard.tsx, que solo trae pedidos con estado="pendiente" al
+ * montar la pantalla), así que un pedido cobrado/entregado desde OTRO
+ * dispositivo (ej. un vendedor con su propia sesión en otra tablet de la
+ * misma fonda) nunca llegaba a este tab: ni aparecía en la lista, ni sumaba
+ * en las gráficas de ingresos/pedidos que leen session.fonda.pedidos. Con
+ * INSERT y UPDATE (a diferencia de ventas, que solo escucha INSERT: un
+ * pedido sí cambia de estado después de creado — "pendiente" -> "entregado"
+ * es justo el cambio que hay que reflejar para que cuente en ingresos).
+ */
+let pedidosChannel: ReturnType<typeof supabase.channel> | null = null;
+let pedidosChannelNegocioId: string | null = null;
+const pedidosListeners = new Set<(pedido: FondaOrder) => void>();
+
+function suscribirseAPedidosEnVivo(negocioId: string, onEvento: (pedido: FondaOrder) => void): () => void {
+  if (pedidosChannelNegocioId !== negocioId) {
+    if (pedidosChannel) supabase.removeChannel(pedidosChannel);
+    pedidosChannel = null;
+    pedidosChannelNegocioId = null;
+    const avisarCambio = (payload: { new: Record<string, unknown> }) => {
+      const pedidoId = payload.new.id as string;
+      fetchPedidoConItems(pedidoId)
+        .then((pedido) => {
+          if (pedido) pedidosListeners.forEach((l) => l(pedido));
+        })
+        .catch((err) => console.error("[session] no se pudo cargar el pedido nuevo/actualizado del realtime:", err));
+    };
+    const nuevoCanal = supabase
+      .channel(`fonda-pedidos-${negocioId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "fonda_pedidos", filter: `negocio_id=eq.${negocioId}` }, avisarCambio)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "fonda_pedidos", filter: `negocio_id=eq.${negocioId}` }, avisarCambio)
+      .subscribe();
+    pedidosChannel = nuevoCanal;
+    pedidosChannelNegocioId = negocioId;
+  }
+  pedidosListeners.add(onEvento);
+  return () => {
+    pedidosListeners.delete(onEvento);
+    if (pedidosListeners.size === 0 && pedidosChannel) {
+      supabase.removeChannel(pedidosChannel);
+      pedidosChannel = null;
+      pedidosChannelNegocioId = null;
+    }
+  };
+}
+
+/**
  * Mismo patrón otra vez, para UPDATE en negocios — sobre todo para
  * negocios.plan: /admin lo cambia con service_role desde OTRA sesión (la
  * del admin, no la de este dueño), así que sin esto un upgrade/downgrade
@@ -284,6 +332,7 @@ export function useSession() {
   const sessionRef = useRef<TenantData | null>(null);
   const citasUnsubRef = useRef<(() => void) | null>(null);
   const ventasUnsubRef = useRef<(() => void) | null>(null);
+  const pedidosUnsubRef = useRef<(() => void) | null>(null);
   const negocioUnsubRef = useRef<(() => void) | null>(null);
   sessionRef.current = session;
 
@@ -304,6 +353,11 @@ export function useSession() {
     function detenerVentasEnVivo() {
       ventasUnsubRef.current?.();
       ventasUnsubRef.current = null;
+    }
+
+    function detenerPedidosEnVivo() {
+      pedidosUnsubRef.current?.();
+      pedidosUnsubRef.current = null;
     }
 
     function detenerNegocioEnVivo() {
@@ -352,6 +406,21 @@ export function useSession() {
           // sin este chequeo saldría duplicada en la lista.
           if (prev.abarrotes.ventas.some((v) => v.id === venta.id)) return prev;
           return { ...prev, abarrotes: { ...prev.abarrotes, ventas: [venta, ...prev.abarrotes.ventas] } };
+        });
+      });
+    }
+
+    /** Ver comentario de suscribirseAPedidosEnVivo arriba. INSERT agrega (con el mismo chequeo anti-eco de ventas); UPDATE reemplaza el pedido existente por su versión fresca — así "entregado" desde otro dispositivo también se refleja aquí. */
+    function escucharPedidosEnVivo(negocioId: string) {
+      detenerPedidosEnVivo();
+      pedidosUnsubRef.current = suscribirseAPedidosEnVivo(negocioId, (pedido) => {
+        setSessionState((prev) => {
+          if (!prev?.fonda) return prev;
+          const existe = prev.fonda.pedidos.some((p) => p.id === pedido.id);
+          const pedidos = existe
+            ? prev.fonda.pedidos.map((p) => (p.id === pedido.id ? pedido : p))
+            : [pedido, ...prev.fonda.pedidos];
+          return { ...prev, fonda: { ...prev.fonda, pedidos } };
         });
       });
     }
@@ -537,6 +606,12 @@ export function useSession() {
             } catch (err) {
               console.error("[session] no se pudo suscribir a ventas en vivo (la sesión sigue cargada bien):", err);
             }
+          } else if (tenant.business.tipo === "fonda") {
+            try {
+              escucharPedidosEnVivo(tenant.business.id);
+            } catch (err) {
+              console.error("[session] no se pudo suscribir a pedidos en vivo (la sesión sigue cargada bien):", err);
+            }
           }
           // Aplica a los 3 verticales — un cambio de plan desde /admin debe
           // reflejarse sin recargar sin importar el tipo de negocio.
@@ -630,6 +705,7 @@ export function useSession() {
         setReady(true);
         detenerCitasEnVivo();
         detenerVentasEnVivo();
+        detenerPedidosEnVivo();
         detenerNegocioEnVivo();
         limpiarCacheTenant();
         return;
@@ -656,6 +732,7 @@ export function useSession() {
       authSub.unsubscribe();
       detenerCitasEnVivo();
       detenerVentasEnVivo();
+      detenerPedidosEnVivo();
       detenerNegocioEnVivo();
     };
   }, [loadFromDemoPreview]);

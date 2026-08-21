@@ -297,8 +297,18 @@ export const LIMITES_BARBERIA: Record<PlanId, LimitesBarberia> = {
 export interface LimitesFonda {
   variantes: boolean;
   mesas: number | null;
-  menuDia: boolean;
+  /** Catálogo total (platillos activos + no disponibles/historial). `null` = sin límite. */
   maxProductos: number | null;
+  /**
+   * Cuántos platillos pueden estar "disponible hoy" AL MISMO TIEMPO. Antes
+   * (PR #119) el toggle diario completo se bloqueaba en básico detrás de un
+   * candado a /planes — impedía incluso marcar algo como agotado sin borrar
+   * y recrear el platillo. Ahora SOLO se gatea activar un platillo cuando ya
+   * se llegó a este tope; desactivar (marcarlo "no disponible hoy") siempre
+   * es libre, sin importar el plan ni cuántos haya en el historial. `null` =
+   * sin límite.
+   */
+  maxProductosActivos: number | null;
   comandas: boolean;
   /** Mismo criterio que giroAbarrotes.grafica: básico solo ve el rango Semanal en /app/gastos, Mensual/Anual quedan detrás de BloqueoPlan. */
   grafica: "semanal" | "anual";
@@ -307,9 +317,9 @@ export interface LimitesFonda {
 }
 
 export const LIMITES_FONDA: Record<PlanId, LimitesFonda> = {
-  basico: { variantes: false, mesas: 1, menuDia: false, maxProductos: 100, comandas: false, grafica: "semanal", maxPedidos: 100 },
-  pro: { variantes: true, mesas: null, menuDia: true, maxProductos: 500, comandas: false, grafica: "anual", maxPedidos: null },
-  pro_plus: { variantes: true, mesas: null, menuDia: true, maxProductos: null, comandas: true, grafica: "anual", maxPedidos: null },
+  basico: { variantes: false, mesas: 1, maxProductos: 100, maxProductosActivos: 45, comandas: false, grafica: "semanal", maxPedidos: 100 },
+  pro: { variantes: true, mesas: null, maxProductos: 500, maxProductosActivos: null, comandas: false, grafica: "anual", maxPedidos: null },
+  pro_plus: { variantes: true, mesas: null, maxProductos: null, maxProductosActivos: null, comandas: true, grafica: "anual", maxPedidos: null },
 };
 
 /** Beneficios en texto plano por giro — alimenta las cards de /planes y /planes-bloqueado sin repetir la lista a mano en 3 lugares. */

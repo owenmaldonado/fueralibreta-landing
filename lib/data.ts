@@ -373,6 +373,54 @@ const itemToRow = (it: OrderItem, pedidoId: string): Row => ({
   extra_monto: it.extraMonto ?? null,
 });
 
+const pedidoFromRow = (row: Row, itemsRows: Row[]): FondaOrder => ({
+  id: row.id as string,
+  clienteNombre: row.cliente_nombre as string,
+  clienteTelefono: (row.cliente_telefono as string) ?? undefined,
+  fecha: row.fecha as string,
+  hora: (row.hora as string).slice(0, 5),
+  horaEntrega: (row.hora_entrega as string | null)?.slice(0, 5) ?? undefined,
+  estado: row.estado as FondaOrder["estado"],
+  total: Number(row.total),
+  empleadoId: (row.empleado_id as string) ?? undefined,
+  empleadoNombreCache: (row.empleado_nombre_cache as string) ?? undefined,
+  canceladoPor: (row.cancelado_por as string) ?? undefined,
+  motivoCancelacion: (row.motivo_cancelacion as string) ?? undefined,
+  turnoId: (row.turno_id as string) ?? undefined,
+  items: itemsRows
+    .filter((it) => it.pedido_id === row.id)
+    .map((it) => ({
+      id: it.id as string,
+      platilloId: (it.platillo_id as string) ?? "",
+      platilloNombre: it.platillo_nombre as string,
+      cantidad: it.cantidad as number,
+      nota: (it.nota as string) ?? undefined,
+      varianteNombre: (it.variante_nombre as string) ?? undefined,
+      precioUnitario: it.precio_unitario != null ? Number(it.precio_unitario) : undefined,
+      costoUnitario: it.costo_unitario != null ? Number(it.costo_unitario) : undefined,
+      extraConcepto: (it.extra_concepto as string) ?? undefined,
+      extraMonto: it.extra_monto != null ? Number(it.extra_monto) : undefined,
+    })),
+});
+
+/**
+ * Trae un solo pedido + sus items — la usa el canal de realtime de
+ * fonda_pedidos (suscribirseAPedidosEnVivo en lib/session.ts), mismo patrón
+ * que fetchVentaConItems para abarrotes_ventas: el payload de un INSERT/
+ * UPDATE de Supabase solo trae la fila de fonda_pedidos, sin sus
+ * fonda_pedido_items (tabla aparte).
+ */
+export async function fetchPedidoConItems(pedidoId: string): Promise<FondaOrder | null> {
+  const { data: pedidoRow, error: pedidoError } = await supabase.from("fonda_pedidos").select("*").eq("id", pedidoId).maybeSingle();
+  if (pedidoError) throw pedidoError;
+  if (!pedidoRow) return null;
+
+  const { data: itemsRows, error: itemsError } = await supabase.from("fonda_pedido_items").select("*").eq("pedido_id", pedidoId);
+  if (itemsError) throw itemsError;
+
+  return pedidoFromRow(pedidoRow, itemsRows ?? []);
+}
+
 const gastoFromRow = (r: Row): Expense => ({
   id: r.id as string,
   categoria: r.categoria as string,
@@ -415,35 +463,7 @@ async function fetchFondaData(negocioId: string): Promise<FondaData> {
     itemsData = itemsRes.data ?? [];
   }
 
-  const pedidos: FondaOrder[] = (pedidosRes.data ?? []).map((row) => ({
-    id: row.id as string,
-    clienteNombre: row.cliente_nombre as string,
-    clienteTelefono: (row.cliente_telefono as string) ?? undefined,
-    fecha: row.fecha as string,
-    hora: (row.hora as string).slice(0, 5),
-    horaEntrega: (row.hora_entrega as string | null)?.slice(0, 5) ?? undefined,
-    estado: row.estado as FondaOrder["estado"],
-    total: Number(row.total),
-    empleadoId: (row.empleado_id as string) ?? undefined,
-    empleadoNombreCache: (row.empleado_nombre_cache as string) ?? undefined,
-    canceladoPor: (row.cancelado_por as string) ?? undefined,
-    motivoCancelacion: (row.motivo_cancelacion as string) ?? undefined,
-    turnoId: (row.turno_id as string) ?? undefined,
-    items: itemsData
-      .filter((it) => it.pedido_id === row.id)
-      .map((it) => ({
-        id: it.id as string,
-        platilloId: (it.platillo_id as string) ?? "",
-        platilloNombre: it.platillo_nombre as string,
-        cantidad: it.cantidad as number,
-        nota: (it.nota as string) ?? undefined,
-        varianteNombre: (it.variante_nombre as string) ?? undefined,
-        precioUnitario: it.precio_unitario != null ? Number(it.precio_unitario) : undefined,
-        costoUnitario: it.costo_unitario != null ? Number(it.costo_unitario) : undefined,
-        extraConcepto: (it.extra_concepto as string) ?? undefined,
-        extraMonto: it.extra_monto != null ? Number(it.extra_monto) : undefined,
-      })),
-  }));
+  const pedidos: FondaOrder[] = (pedidosRes.data ?? []).map((row) => pedidoFromRow(row, itemsData));
 
   const platillos: Dish[] = (platillosRes.data ?? []).map((row) => {
     const dish = platilloFromRow(row);
