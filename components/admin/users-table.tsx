@@ -29,6 +29,10 @@ interface UsersTableProps {
   onDeleteRequest: (profile: AdminProfile) => void;
 }
 
+// Mismas 10 columnas de siempre, solo más aire (py-5) y badges con más
+// carácter — nada de info se movió a un modal ni se quitó.
+const CELL = "py-5";
+
 export function UsersTable({
   profiles,
   negocios,
@@ -58,18 +62,18 @@ export function UsersTable({
   return (
     <Table className="min-w-[1360px]">
       <TableHeader>
-        <TableRow>
-          <TableHead>Usuario</TableHead>
-          <TableHead>WhatsApp</TableHead>
-          <TableHead>Rol</TableHead>
-          <TableHead className="text-center">Negocios</TableHead>
-          <TableHead>Plan contratado</TableHead>
-          <TableHead>Plan de acceso</TableHead>
-          <TableHead>Precio real</TableHead>
-          <TableHead>Trial</TableHead>
-          <TableHead>Registro</TableHead>
-          <TableHead>Estado</TableHead>
-          <TableHead className="text-right">Acciones</TableHead>
+        <TableRow className="hover:bg-transparent">
+          <TableHead className="py-3">Usuario</TableHead>
+          <TableHead className="py-3">WhatsApp</TableHead>
+          <TableHead className="py-3">Rol</TableHead>
+          <TableHead className="py-3 text-center">Negocios</TableHead>
+          <TableHead className="py-3">Plan contratado</TableHead>
+          <TableHead className="py-3">Plan de acceso</TableHead>
+          <TableHead className="py-3">Precio real</TableHead>
+          <TableHead className="py-3">Trial</TableHead>
+          <TableHead className="py-3">Registro</TableHead>
+          <TableHead className="py-3">Estado</TableHead>
+          <TableHead className="py-3 text-right">Acciones</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -80,12 +84,12 @@ export function UsersTable({
           const trial = negocio ? formatTrial(negocio.trialFin) : null;
 
           return (
-            <TableRow key={p.id}>
-              <TableCell>
-                <div className="flex items-center gap-2.5">
+            <TableRow key={p.id} className="hover:bg-secondary/50">
+              <TableCell className={CELL}>
+                <div className="flex items-center gap-3">
                   <Avatar src={p.avatarUrl} label={p.email ?? "?"} />
                   <div className="min-w-0">
-                    <p className="max-w-[200px] truncate text-sm font-medium">{p.email ?? "Sin email"}</p>
+                    <p className="max-w-[200px] truncate text-sm font-semibold">{p.email ?? "Sin email"}</p>
                     <div className="flex gap-1.5">
                       {isSelf && <p className="text-[10px] font-mono uppercase tracking-widest text-primary">Tú</p>}
                       {negocio?.esFundador && (
@@ -95,9 +99,9 @@ export function UsersTable({
                   </div>
                 </div>
               </TableCell>
-              <TableCell>
+              <TableCell className={CELL}>
                 {negocio?.ownerPhone ? (
-                  <Button asChild size="sm" variant="ledger">
+                  <Button asChild size="sm" variant="ledger" className="rounded-full">
                     <a href={waLink(negocio.ownerPhone, `Hola, te escribo de Fuera Libreta sobre ${negocio.nombre}.`)} target="_blank" rel="noreferrer">
                       <MessageCircle className="h-3.5 w-3.5" /> {negocio.ownerPhone}
                     </a>
@@ -106,35 +110,37 @@ export function UsersTable({
                   <span className="text-sm text-muted-foreground">Sin WhatsApp</span>
                 )}
               </TableCell>
-              <TableCell>
+              <TableCell className={CELL}>
                 <Badge variant={p.role === "admin" ? "default" : "outline"}>{p.role === "admin" ? "Admin" : "User"}</Badge>
               </TableCell>
-              <TableCell className="text-center font-mono text-sm">{p.negociosCount}</TableCell>
-              <TableCell>{negocio ? <Badge variant="outline">{PLAN_LABELS[negocio.plan]}</Badge> : "—"}</TableCell>
-              <TableCell>
+              <TableCell className={cn(CELL, "text-center font-mono text-sm")}>{p.negociosCount}</TableCell>
+              <TableCell className={CELL}>
+                {negocio ? <Badge variant="default">{PLAN_LABELS[negocio.plan]}</Badge> : <span className="text-sm text-muted-foreground">—</span>}
+              </TableCell>
+              <TableCell className={CELL}>
                 {planAcceso ? (
                   <Badge variant={negocio?.esFundador ? "ledger" : "default"}>{PLAN_LABELS[planAcceso]}</Badge>
                 ) : (
-                  "—"
+                  <span className="text-sm text-muted-foreground">—</span>
                 )}
               </TableCell>
-              <TableCell className="font-mono text-sm">
-                {negocio ? `${formatMoney(precioReal(negocio))}/mes` : "—"}
+              <TableCell className={cn(CELL, "font-mono text-sm")}>
+                {negocio ? `${formatMoney(precioReal(negocio))}/mes` : <span className="text-muted-foreground">—</span>}
               </TableCell>
-              <TableCell className="text-sm">
+              <TableCell className={cn(CELL, "text-sm")}>
                 {trial ? (
-                  <span className={trial.vencido ? "text-destructive" : "text-foreground"}>{trial.texto}</span>
+                  <span className={trial.vencido ? "font-medium text-destructive" : "text-foreground"}>{trial.texto}</span>
                 ) : (
-                  "—"
+                  <span className="text-muted-foreground">—</span>
                 )}
               </TableCell>
-              <TableCell className="text-sm text-muted-foreground">
+              <TableCell className={cn(CELL, "text-sm text-muted-foreground")}>
                 {new Date(p.createdAt).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}
               </TableCell>
-              <TableCell>
+              <TableCell className={CELL}>
                 <span
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold",
                     p.isBanned ? "bg-destructive/15 text-destructive" : "bg-ledger/15 text-ledger"
                   )}
                 >
@@ -142,7 +148,7 @@ export function UsersTable({
                   {p.isBanned ? "Baneado" : "Activo"}
                 </span>
               </TableCell>
-              <TableCell className="text-right">
+              <TableCell className={cn(CELL, "text-right")}>
                 <AdminActionsMenu
                   profile={p}
                   negocio={negocio}
