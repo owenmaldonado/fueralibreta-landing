@@ -19,6 +19,7 @@ export interface FacturaNegocio {
   precioCustom: number | null;
   esFundador: boolean;
   notasAdmin: string | null;
+  ultimoPagoAt: string | null;
 }
 
 /**
@@ -53,7 +54,7 @@ export function NegocioBillingCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [negocio.id]);
 
-  const planAcceso = planDeAcceso(negocio.plan, negocio.esFundador);
+  const planAcceso = planDeAcceso(negocio);
   const trial = formatTrial(negocio.trialFin);
 
   function guardar() {
@@ -82,6 +83,10 @@ export function NegocioBillingCard({
           <p className="font-medium">
             {PLAN_LABELS[planAcceso]}
             {negocio.esFundador && <span className="text-primary"> (cortesía Fundador)</span>}
+            {/* Trial PRO de cortesía (PR #122): nunca pagó, plan contratado > básico, activado a mano desde /admin ("Activar N días PRO") — no confundir con un cliente real que sí pagó ese plan. */}
+            {!negocio.esFundador && !negocio.ultimoPagoAt && negocio.plan !== "basico" && (
+              <span className="text-primary"> (prueba PRO{trial.vencido ? ", vencida" : `, ${trial.texto}`})</span>
+            )}
           </p>
         </div>
       </div>

@@ -165,7 +165,7 @@ export function OrgsTable({
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-1.5 whitespace-nowrap text-xs">
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${ESTADO_DOT[estadoNegocio({ trialFin: n.trialFin, esFundador: n.esFundador, isActive: n.isActive })]}`} />
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${ESTADO_DOT[estadoNegocio({ trialFin: n.trialFin, esFundador: n.esFundador, isActive: n.isActive, ultimoPagoAt: n.ultimoPagoAt })]}`} />
                   {n.esFundador ? "Fundador" : formatTrial(n.trialFin).texto}
                 </div>
               </TableCell>

@@ -32,6 +32,8 @@ import {
   updateNegocioPlan,
   updateNegocioTrial,
   activarPlanConDias,
+  activarTrialPro,
+  extenderTrialPro,
   updateNegocioPrecioCustom,
   updateNegocioFundador,
   updateNegocioFacturacion,
@@ -77,6 +79,10 @@ const COBRANZA_OPCIONES: { value: CobranzaFilterValue; label: string; dot: strin
   { value: "por_vencer", label: "Por vencer <3d", dot: "🟡" },
   { value: "activo", label: "Activos", dot: "🟢" },
   { value: "trial", label: "Trial", dot: "⚪" },
+  // Trial PRO de cortesía (PR #122, "Activar N días PRO" desde el detalle
+  // de usuario) — nunca es urgente cobrarle (nunca pagó), pero Owen quiere
+  // verlo aparte de "Trial" básico para saber a quién le regaló el favor.
+  { value: "trial_pro", label: "Trial PRO", dot: "🟣" },
 ];
 
 function pasaFiltroPlan(negocio: AdminNegocio | undefined, filtro: PlanEstadoFilter): boolean {
@@ -280,6 +286,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
       por_vencer: 0,
       activo: 0,
       trial: 0,
+      trial_pro: 0,
     };
     for (const n of negociosBaseCobranza) counts[estadoCobranza(n)]++;
     return counts;
@@ -343,6 +350,28 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
       load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo activar el plan.");
+    }
+  }
+
+  /** "Activar N días PRO" (PR #122) — favor de cortesía, no un pago (ver activarTrialPro en lib/admin-data.ts). */
+  async function handleActivarTrialPro(negocioId: string, dias: number, nombre: string) {
+    try {
+      await activarTrialPro(negocioId, dias);
+      toast.success(`${nombre}: trial PRO activado por ${dias} días.`);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo activar el trial PRO.");
+    }
+  }
+
+  /** "+N días PRO" — extiende un trial PRO ya activo, sin volver a tocar el plan. */
+  async function handleExtenderTrialPro(negocioId: string, dias: number, nombre: string) {
+    try {
+      await extenderTrialPro(negocioId, dias);
+      toast.success(`${nombre}: trial PRO extendido ${dias} días.`);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo extender el trial PRO.");
     }
   }
 
@@ -664,8 +693,9 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
         onSaveFacturacion={handleSaveFacturacion}
         onImpersonate={handleImpersonate}
         onSetPlan={handleSetNegocioPlan}
-        onSetTrial={handleSetNegocioTrial}
         onActivarPlan={handleActivarPlan}
+        onActivarTrialPro={handleActivarTrialPro}
+        onExtenderTrialPro={handleExtenderTrialPro}
         onToggleBanned={handleToggleBanned}
         onDeleteRequest={setDeleteUserTarget}
       />

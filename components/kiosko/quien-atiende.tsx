@@ -8,10 +8,10 @@ import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";
-import { setEmpleadoActual, verificarPin } from "@/lib/empleados";
+import { setEmpleadoActual, verificarPin, ROL_LABEL } from "@/lib/empleados";
 import type { Empleado, EmpleadoActual, RolEmpleado } from "@/lib/types";
 
-export const ROL_LABEL: Record<RolEmpleado, string> = { dueno: "Dueño", encargado: "Encargado", vendedor: "Vendedor" };
+export { ROL_LABEL };
 
 /** 3 fallos = 30s de bloqueo local, 3 más (6 en total) = 5min — por empleado, guardado en localStorage para que sobreviva un refresh del dispositivo compartido. */
 const UMBRAL_BLOQUEO_CORTO = 3;

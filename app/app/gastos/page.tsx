@@ -16,6 +16,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Chip, ChipGroup } from "@/components/ui/chip";
+import { EmpleadoBadge } from "@/components/dashboards/empleado-badge";
+import { ROL_LABEL } from "@/lib/empleados";
 import { Tabs } from "@/components/ui/tabs";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -24,11 +26,11 @@ import { VentaForm } from "@/components/abarrotes/venta-form";
 import { useSession } from "@/lib/session";
 import { formatMoney, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
 import { aggregateByRange, filterByRango, type RangoTiempo } from "@/lib/chart-buckets";
-import { permisosActuales, getEmpleadoActual } from "@/lib/empleados";
+import { permisosActuales, getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
 import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
 import { usePlan } from "@/lib/planes";
 import { cn } from "@/lib/utils";
-import type { Expense, TenantData, FondaOrder, GrocerySale } from "@/lib/types";
+import type { Expense, TenantData, FondaOrder, GrocerySale, RolEmpleado } from "@/lib/types";
 
 const RANGO_TABS = [
   { value: "semanal", label: "Semanal" },
@@ -54,7 +56,12 @@ interface Movimiento {
   fecha: string;
   monto: number;
   label: string;
+  empleadoNombreCache?: string;
+  empleadoRolCache?: RolEmpleado;
 }
+
+/** Valor de personaFiltro para "sin empleado_nombre_cache" — un movimiento hecho por el dueño directo, sin pasar por el kiosko. */
+const PERSONA_DUENO = "__dueno__";
 
 function formatFechaCorta(fecha: string): string {
   const d = /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? new Date(`${fecha}T00:00:00`) : new Date(fecha);
@@ -81,6 +88,12 @@ export default function GastosPage() {
   // primer render del servidor con el del cliente. Mismo patrón que
   // Inventario, de donde se movió esta lista (ver VentaForm).
   const [puedeBorrarVentas, setPuedeBorrarVentas] = React.useState(true);
+  // Trazabilidad vendedor/encargado (PR #121): filtro por persona, frontend
+  // puro — no cambia ninguna query, solo acota los arreglos ya cargados
+  // (gastos/pedidosEntregados/ventasAbarrotesActivas más abajo) ANTES de
+  // que alimenten totales, gráfica y lista, así los 3 quedan acotados a la
+  // vez sin tener que tocar aggregateByRange/filterByRango.
+  const [personaFiltro, setPersonaFiltro] = React.useState<string>("todos");
 
   React.useEffect(() => {
     setPuedeBorrarVentas(permisosActuales().borrarVentas);
@@ -95,7 +108,7 @@ export default function GastosPage() {
   if (!ready || !session) return <LoadingBlock />;
 
   const modulo = session.fonda ? "fonda" : "abarrotes";
-  const gastos: Expense[] = session.fonda?.gastos ?? session.abarrotes?.gastos ?? [];
+  const gastosSinFiltroPersona: Expense[] = session.fonda?.gastos ?? session.abarrotes?.gastos ?? [];
 
   // Un pedido de fonda solo cuenta como venta una vez "entregado" — mientras
   // está pendiente todavía no es dinero cobrado.
@@ -106,20 +119,57 @@ export default function GastosPage() {
   // de aquí en adelante (el stat de hoy, el selector de año, los filtros de
   // rango y las gráficas) ya trabaja con el día correcto sin tener que
   // repetir la conversión en cada sitio.
-  const pedidosEntregados = (session.fonda?.pedidos ?? []).filter((p) => p.estado === "entregado");
+  const pedidosEntregadosSinFiltroPersona = (session.fonda?.pedidos ?? []).filter((p) => p.estado === "entregado");
   // cancelada excluye una venta de Abarrotes de ventas/ganancias sin
   // borrarla (un rol "vendedor" no puede borrar, solo cancelar — ver
   // PERMISOS en lib/empleados.ts); fonda ya queda afuera con el filtro de
   // "entregado" de arriba, "cancelado" nunca entra ahí.
-  const ventasAbarrotesActivas = (session.abarrotes?.ventas ?? []).filter((v) => !v.cancelada);
+  const ventasAbarrotesActivasSinFiltroPersona = (session.abarrotes?.ventas ?? []).filter((v) => !v.cancelada);
+
+  // Roster de personas para los chips — SIEMPRE del universo completo (sin
+  // aplicar personaFiltro todavía), para que las opciones no desaparezcan
+  // en cuanto se selecciona una. Un mismo nombre puede aparecer con rol
+  // "dueno" en un movimiento viejo y otro rol después (cambió de puesto) —
+  // se queda con el último rol visto, solo importa para la etiqueta del chip.
+  const rolPorPersona = new Map<string, RolEmpleado>();
+  let hayMovimientosDeDueno = false;
+  for (const m of [...gastosSinFiltroPersona, ...pedidosEntregadosSinFiltroPersona, ...ventasAbarrotesActivasSinFiltroPersona]) {
+    if (m.empleadoNombreCache) rolPorPersona.set(m.empleadoNombreCache, m.empleadoRolCache ?? "vendedor");
+    else hayMovimientosDeDueno = true;
+  }
+  const personasDisponibles = Array.from(rolPorPersona.keys()).sort();
+  // El filtro por persona solo se muestra si el negocio de verdad activó
+  // multiusuario — sin esto, un negocio de una sola persona vería un chip
+  // "Todos" solitario sin ninguna otra opción, ruido puro (spec: "si no hay
+  // vendedores/encargados, NO muestres nada extra").
+  const hayEquipo = personasDisponibles.length > 0;
+
+  function coincidePersona(nombre?: string): boolean {
+    if (personaFiltro === "todos") return true;
+    if (personaFiltro === PERSONA_DUENO) return !nombre;
+    return nombre === personaFiltro;
+  }
+
+  const gastos = gastosSinFiltroPersona.filter((g) => coincidePersona(g.empleadoNombreCache));
+  const pedidosEntregados = pedidosEntregadosSinFiltroPersona.filter((p) => coincidePersona(p.empleadoNombreCache));
+  const ventasAbarrotesActivas = ventasAbarrotesActivasSinFiltroPersona.filter((v) => coincidePersona(v.empleadoNombreCache));
   const ventas: Movimiento[] =
     modulo === "fonda"
-      ? pedidosEntregados.map((p) => ({ id: p.id, fecha: p.fecha, monto: p.total, label: p.clienteNombre || "Pedido" }))
+      ? pedidosEntregados.map((p) => ({
+          id: p.id,
+          fecha: p.fecha,
+          monto: p.total,
+          label: p.clienteNombre || "Pedido",
+          empleadoNombreCache: p.empleadoNombreCache,
+          empleadoRolCache: p.empleadoRolCache,
+        }))
       : ventasAbarrotesActivas.map((v) => ({
           id: v.id,
           fecha: fechaCalendarioLocal(v.fecha),
           monto: v.total,
           label: v.items.length === 1 ? `${v.items[0].cantidad} ${v.items[0].productoNombre}` : `${v.items.length} productos`,
+          empleadoNombreCache: v.empleadoNombreCache,
+          empleadoRolCache: v.empleadoRolCache,
         }));
 
   // Ganancia = margen (precio_venta - costo) por línea vendida, NO ventas
@@ -159,6 +209,8 @@ export default function GastosPage() {
             return acc + (platillo.precio + extra - platillo.costo) * it.cantidad;
           }, 0),
           label: p.clienteNombre || "Pedido",
+          empleadoNombreCache: p.empleadoNombreCache,
+          empleadoRolCache: p.empleadoRolCache,
         }))
       : ventasAbarrotesActivas.map((v) => ({
           id: v.id,
@@ -168,6 +220,8 @@ export default function GastosPage() {
             return acc + (it.precioUnitario - costo) * it.cantidad;
           }, 0),
           label: v.items.length === 1 ? `${v.items[0].cantidad} ${v.items[0].productoNombre}` : `${v.items.length} productos`,
+          empleadoNombreCache: v.empleadoNombreCache,
+          empleadoRolCache: v.empleadoRolCache,
         }));
 
   // Años con al menos un movimiento (para el selector de histórico), más el
@@ -209,7 +263,15 @@ export default function GastosPage() {
 
   const combinados = [
     ...ventasFiltradas.map((v) => ({ ...v, tipo: "venta" as const })),
-    ...gastosFiltrados.map((g) => ({ id: g.id, fecha: g.fecha, monto: g.monto, label: g.categoria, tipo: "gasto" as const })),
+    ...gastosFiltrados.map((g) => ({
+      id: g.id,
+      fecha: g.fecha,
+      monto: g.monto,
+      label: g.categoria,
+      tipo: "gasto" as const,
+      empleadoNombreCache: g.empleadoNombreCache,
+      empleadoRolCache: g.empleadoRolCache,
+    })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   // Tres pasadas independientes de aggregateByRange (mismo rango + now, así
@@ -306,6 +368,26 @@ export default function GastosPage() {
       <div className="px-4">
         <Tabs value={chartTab} onValueChange={(v) => setChartTab(v as ChartTab)} tabs={CHART_TABS} />
       </div>
+
+      {hayEquipo && (
+        <div className="px-4 pt-3">
+          <ChipGroup>
+            <Chip selected={personaFiltro === "todos"} onClick={() => setPersonaFiltro("todos")}>
+              Todos
+            </Chip>
+            {hayMovimientosDeDueno && (
+              <Chip selected={personaFiltro === PERSONA_DUENO} onClick={() => setPersonaFiltro(PERSONA_DUENO)}>
+                Dueño
+              </Chip>
+            )}
+            {personasDisponibles.map((nombre) => (
+              <Chip key={nombre} selected={personaFiltro === nombre} onClick={() => setPersonaFiltro(nombre)}>
+                {nombre} · {ROL_LABEL[rolPorPersona.get(nombre)!]}
+              </Chip>
+            ))}
+          </ChipGroup>
+        </div>
+      )}
 
       {modulo === "abarrotes" && (
         <div className="mx-4 mt-3 rounded-xl border border-border bg-card px-3 py-4">
@@ -449,6 +531,9 @@ export default function GastosPage() {
                     {formatFechaCorta(g.fecha)}
                     {g.recordatorio && " · recordatorio activo"}
                   </p>
+                  <div className="mt-1">
+                    <EmpleadoBadge nombre={g.empleadoNombreCache} rol={g.empleadoRolCache} />
+                  </div>
                 </div>
                 <span className="shrink-0 font-mono text-sm text-destructive">-{formatMoney(g.monto)}</span>
                 <div className="flex shrink-0 items-center gap-0.5">
@@ -483,6 +568,9 @@ export default function GastosPage() {
                   {modulo === "abarrotes" && (
                     <PendingSaleStatus negocioId={session.business.id} fila={ventasPendientesPorId.get(v.id)} />
                   )}
+                  <div className="mt-1">
+                    <EmpleadoBadge nombre={v.empleadoNombreCache} rol={v.empleadoRolCache} />
+                  </div>
                 </div>
                 <span className="shrink-0 font-mono text-sm text-ledger">+{formatMoney(v.monto)}</span>
                 {modulo === "fonda" && (
@@ -538,6 +626,9 @@ export default function GastosPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{g.label}</p>
                   <p className="text-xs text-muted-foreground">{formatFechaCorta(g.fecha)}</p>
+                  <div className="mt-1">
+                    <EmpleadoBadge nombre={g.empleadoNombreCache} rol={g.empleadoRolCache} />
+                  </div>
                 </div>
                 <span className={cn("shrink-0 font-mono text-sm", g.monto >= 0 ? "text-ledger" : "text-destructive")}>
                   {formatMoney(g.monto)}
@@ -555,6 +646,9 @@ export default function GastosPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{m.label}</p>
                   <p className="text-xs text-muted-foreground">{formatFechaCorta(m.fecha)}</p>
+                  <div className="mt-1">
+                    <EmpleadoBadge nombre={m.empleadoNombreCache} rol={m.empleadoRolCache} />
+                  </div>
                 </div>
                 <span className={cn("shrink-0 font-mono text-sm", m.tipo === "venta" ? "text-ledger" : "text-destructive")}>
                   {m.tipo === "venta" ? "+" : "-"}
@@ -686,7 +780,7 @@ function GastoForm({
         }
         return prev;
       }
-      const nuevo: Expense = { id: uid("exp"), ...datos };
+      const nuevo: Expense = { id: uid("exp"), ...datos, ...camposEmpleado() };
       if (modulo === "fonda" && prev.fonda) {
         return { ...prev, fonda: { ...prev.fonda, gastos: [nuevo, ...prev.fonda.gastos] } };
       }

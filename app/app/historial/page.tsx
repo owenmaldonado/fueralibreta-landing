@@ -3,6 +3,7 @@
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { EmptyState } from "@/components/dashboards/empty-state";
+import { EmpleadoBadge } from "@/components/dashboards/empleado-badge";
 import { useSession } from "@/lib/session";
 import { formatHora12, formatMoney } from "@/lib/mock";
 
@@ -33,6 +34,9 @@ export default function HistorialPage() {
                 <p className="text-xs text-muted-foreground">
                   {c.fecha} {formatHora12(c.hora)} · {c.servicioNombre}
                 </p>
+                <div className="mt-1">
+                  <EmpleadoBadge nombre={c.empleadoNombreCache} rol={c.empleadoRolCache} />
+                </div>
               </div>
               <span className="shrink-0 font-mono text-sm text-ledger">{formatMoney(c.precio)}</span>
             </div>

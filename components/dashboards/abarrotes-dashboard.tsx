@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { ActionCard } from "./action-card";
 import { EmptyState } from "./empty-state";
 import { StatTile } from "./stat-tile";
+import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { formatMoney, fechaCalendarioLocal, todayISO, waLink } from "@/lib/mock";
 import { avisosIgnoradosHoy, ignorarAvisoHoy } from "@/lib/dismissed-alerts";
 import { usePlan } from "@/lib/planes";
@@ -32,9 +33,25 @@ export function AbarrotesDashboard({ session }: { session: TenantData; update: S
   // convierte al día calendario del dispositivo (no una zona hardcodeada)
   // antes de comparar, para que una venta ya tarde en el día no cuente
   // como "de mañana" ni "Ventas de hoy" salga en $0.
-  const ventasHoy = data.ventas
-    .filter((v) => fechaCalendarioLocal(v.fecha) === hoy)
-    .reduce((acc, v) => acc + v.total, 0);
+  // Mismo filtro de siempre para "Ventas hoy" (sin excluir cancelada — no
+  // es parte de este cambio, se deja tal cual estaba). ventasDeHoy solo se
+  // usa para "Equipo hoy" abajo.
+  const ventasDeHoy = data.ventas.filter((v) => fechaCalendarioLocal(v.fecha) === hoy);
+  const ventasHoy = ventasDeHoy.reduce((acc, v) => acc + v.total, 0);
+
+  // "Equipo hoy" (PR #121, trazabilidad vendedor/encargado) — quién vendió
+  // qué hoy; VentasPorEmpleado se auto-oculta si hay menos de 2 personas
+  // distintas (negocio sin multiusuario, o un solo vendedor activo hoy).
+  const equipoHoy = Array.from(
+    ventasDeHoy
+      .reduce((mapa, v) => {
+        const nombre = v.empleadoNombreCache ?? "Dueño";
+        const actual = mapa.get(nombre) ?? { nombre, monto: 0, cantidad: 0 };
+        mapa.set(nombre, { nombre, monto: actual.monto + v.total, cantidad: actual.cantidad + 1 });
+        return mapa;
+      }, new Map<string, { nombre: string; monto: number; cantidad: number }>())
+      .values()
+  );
 
   const nada = bajos.length === 0 && porCaducar.length === 0 && fiadosConSaldo.length === 0 && gastosPendientes.length === 0;
 
@@ -43,6 +60,7 @@ export function AbarrotesDashboard({ session }: { session: TenantData; update: S
       <PageHeader title="Hoy" subtitle="Pendientes de tu negocio" />
       <div className="grid gap-4 p-4">
         <StatTile label="Ventas hoy" value={formatMoney(ventasHoy)} />
+        <VentasPorEmpleado datos={equipoHoy} titulo="Equipo hoy" />
         {porCaducar.map((p) => (
           <ActionCard
             key={p.id}

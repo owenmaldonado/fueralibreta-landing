@@ -49,9 +49,21 @@ export default function MiPlanPage() {
 
   const { business } = session;
   const tipo = business.tipo;
-  const precio = precioPorGiro(business);
+  // plan.plan (acceso REAL, ya considera Fundador y — solo para quien SÍ
+  // pagó alguna vez — la gracia de unos días en Básico después de vencer,
+  // ver planDeAcceso/DIAS_GRACIA_PAGO en lib/planes.ts) en vez de
+  // business.plan (lo contratado tal cual está en la fila). Quien nunca ha
+  // pagado ve business.plan sin cambios mientras no venza — en cuanto
+  // vence se bloquea (middleware.ts), así que esta pantalla ni se llega a
+  // pintar para ese caso.
+  const precio = precioPorGiro({ ...business, plan: plan.plan });
   const dias = diasParaTrial(business.trial_fin);
-  const esPago = plan.planContratado !== "basico";
+  const esPago = business.ultimoPagoAt != null;
+  // Trial PRO de cortesía (activado desde /admin, PR #122): nunca pagó de
+  // verdad pero su acceso ahora mismo es Pro/Pro+ — a diferencia del trial
+  // básico normal de todo registro nuevo. Deja de ser cierto en cuanto se
+  // bloquea (ver arriba), momento en el que esta pantalla ya no se pinta.
+  const enTrialPro = !plan.esFundador && !esPago && plan.plan !== "basico";
   const mensajeWa = `Hola Owen! Soy ${business.dueno} de ${business.nombre}, tengo una duda sobre mi plan de FueraLibreta`;
   const labelCierre = tipo === "abarrotes" ? "Cerrar día" : "Cerrar turno";
 
@@ -65,9 +77,14 @@ export default function MiPlanPage() {
               <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Plan actual</p>
               <div className="mt-1 flex items-center gap-2">
                 <p className="font-display text-2xl font-bold tracking-tight">
-                  {plan.esFundador ? "Fundador" : PLAN_LABELS[plan.planContratado]}
+                  {plan.esFundador ? "Fundador" : PLAN_LABELS[plan.plan]}
                 </p>
                 {plan.esFundador && <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">👑</span>}
+                {enTrialPro && (
+                  <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary">
+                    Prueba {dias >= 0 ? `${dias}d` : "gratis"}
+                  </span>
+                )}
               </div>
               <p className="mt-0.5 text-sm text-muted-foreground">${precio}/mes</p>
 
@@ -75,7 +92,11 @@ export default function MiPlanPage() {
                 {plan.esFundador ? (
                   <p className="text-sm font-medium text-ledger">Acceso completo, sin fecha de vencimiento</p>
                 ) : dias < 0 ? (
-                  <p className="text-sm font-medium text-destructive">Tu {esPago ? "plan" : "prueba gratis"} venció hace {Math.abs(dias)} día{Math.abs(dias) === 1 ? "" : "s"}</p>
+                  // Nunca pagó + vencido = bloqueado (middleware.ts), esta
+                  // pantalla ni se pinta en ese caso — lo que sigue queda
+                  // solo para quien SÍ pagó alguna vez y está en su gracia
+                  // de unos días antes de bloquearse (ver DIAS_GRACIA_PAGO).
+                  <p className="text-sm font-medium text-destructive">Tu plan venció hace {Math.abs(dias)} día{Math.abs(dias) === 1 ? "" : "s"}</p>
                 ) : dias === 0 ? (
                   <p className="text-sm font-medium text-primary">{esPago ? "Tu plan vence hoy" : "Tu prueba gratis vence hoy"}</p>
                 ) : (

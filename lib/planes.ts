@@ -93,15 +93,42 @@ export function alcanzoLimite(planId: PlanId, limite: keyof PlanLimites, cantida
 }
 
 /**
+ * Días de gracia DESPUÉS de vencer `trial_fin` en los que un negocio que
+ * YA PAGÓ alguna vez (ultimoPagoAt no nulo) sigue viendo la app — en
+ * Básico, no en su plan real — antes de bloquearse. Nunca aplica a quien
+ * no ha pagado nunca: para esos, bloqueado = apenas vence trial_fin, sin
+ * ningún día de gracia (ver planDeAcceso/bloqueadoPorTrial abajo). "Si el
+ * trial baja a básico feo gratis para siempre, nadie paga" — corrección
+ * de PR #122, revierte el primer diseño (que degradaba a básico en vez de
+ * bloquear también a quien nunca pagó).
+ */
+export const DIAS_GRACIA_PAGO = 3;
+
+/**
  * Plan de ACCESO real: un negocio Fundador ve todo Pro+ sin importar el
- * plan que tiene contratado/facturado (`planContratado`) — el trato de
+ * plan que tiene contratado/facturado (`negocio.plan`) — el trato de
  * Fundador es "acceso completo, precio congelado". Todo lo que llama
  * usePlan() (PlanGate, límites de Inventario/ventas, etc.) ya gatea sobre
  * el resultado de esto, así que ser Fundador cambia comportamiento real,
  * no solo una insignia visual.
+ *
+ * Dos casos, según si alguna vez pagó de verdad (`ultimoPagoAt`):
+ * - Nunca pagó (trial básico de todo registro nuevo, o trial PRO de
+ *   cortesía activado desde /admin, "Activar N días PRO"): ve
+ *   `negocio.plan` tal cual mientras no venza `trial_fin` — en cuanto
+ *   vence, bloqueadoPorTrial ya lo saca de la app (redirect a
+ *   /planes-bloqueado), así que el valor que esta función devuelva
+ *   después de vencido no se llega a usar en la práctica.
+ * - Ya pagó alguna vez: mientras esté dentro de trial_fin + DIAS_GRACIA_PAGO
+ *   sigue viendo su plan real; pasado trial_fin (pero todavía dentro de la
+ *   gracia) cae a "basico" — la app se ve fea pero sigue usable unos días
+ *   mientras Owen cobra por WhatsApp — y pasada la gracia, bloqueadoPorTrial
+ *   también lo saca.
  */
-export function planDeAcceso(planContratado: PlanId, esFundador: boolean): PlanId {
-  return esFundador ? "pro_plus" : planContratado;
+export function planDeAcceso(negocio: { plan: PlanId; esFundador: boolean; trialFin: string; ultimoPagoAt: string | null }): PlanId {
+  if (negocio.esFundador) return "pro_plus";
+  if (!negocio.ultimoPagoAt) return negocio.plan;
+  return diasParaTrial(negocio.trialFin) < 0 ? "basico" : negocio.plan;
 }
 
 /** Precio real que paga el negocio: su precio_custom congelado si lo tiene, si no el de lista de su plan CONTRATADO (no el de acceso). */
@@ -133,40 +160,58 @@ export function formatTrial(trialFin: string): { texto: string; vencido: boolean
  * "Activar 30 días" en el menú de acciones), exactamente igual que extender
  * el trial gratuito. Un negocio Fundador nunca se bloquea por esto — el
  * trato de Fundador es acceso completo sin importar fechas.
+ *
+ * Bloqueo = siempre que no haya pagado, apenas vence su trial_fin (básico
+ * de siempre o PRO de cortesía, sin distinción — "si el trial baja a
+ * básico feo gratis para siempre, nadie paga"). Básico feo SIN bloqueo es
+ * solo la gracia de DIAS_GRACIA_PAGO para quien YA PAGÓ alguna vez y no
+ * renovó — pasada esa gracia, también se bloquea.
  */
-export function bloqueadoPorTrial(negocio: { trialFin: string; esFundador: boolean; isActive: boolean }): boolean {
+export function bloqueadoPorTrial(negocio: { trialFin: string; esFundador: boolean; isActive: boolean; ultimoPagoAt: string | null }): boolean {
   if (negocio.esFundador) return false;
   if (!negocio.isActive) return false; // "Pausado" a mano ya tiene su propia pantalla (Cuenta suspendida) — no duplicar el mensaje aquí.
-  return diasParaTrial(negocio.trialFin) < 0;
+  const dias = diasParaTrial(negocio.trialFin);
+  if (!negocio.ultimoPagoAt) return dias < 0;
+  return dias < -DIAS_GRACIA_PAGO;
 }
 
 export type EstadoNegocio = "activo" | "por_vencer" | "bloqueado";
 
-/** Para la columna Estado de /admin: 🔴 bloqueado (vencido o pausado), 🟡 por vencer (≤3 días), 🟢 el resto. */
-export function estadoNegocio(negocio: { trialFin: string; esFundador: boolean; isActive: boolean }): EstadoNegocio {
+/** Para la columna Estado de /admin: 🔴 bloqueado, 🟡 por vencer (≤3 días, o dentro de la gracia de pago si ya pagó antes), 🟢 el resto. Mismo criterio que bloqueadoPorTrial. */
+export function estadoNegocio(negocio: { trialFin: string; esFundador: boolean; isActive: boolean; ultimoPagoAt: string | null }): EstadoNegocio {
   if (!negocio.isActive) return "bloqueado";
   if (negocio.esFundador) return "activo";
   const dias = diasParaTrial(negocio.trialFin);
-  if (dias < 0) return "bloqueado";
-  if (dias <= 3) return "por_vencer";
+  if (!negocio.ultimoPagoAt) {
+    if (dias < 0) return "bloqueado";
+    if (dias <= 3) return "por_vencer";
+    return "activo";
+  }
+  if (dias < -DIAS_GRACIA_PAGO) return "bloqueado";
+  if (dias <= 3) return "por_vencer"; // vencido-en-gracia también cuenta como "por vencer" (urgente, todavía no bloqueado)
   return "activo";
 }
 
-export type EstadoCobranza = "vencido" | "por_vencer" | "trial" | "activo";
+export type EstadoCobranza = "vencido" | "por_vencer" | "trial" | "trial_pro" | "activo";
 
 /**
- * Bucket para los 4 tabs de cobranza de /admin (Negocios): a diferencia de
- * estadoNegocio() (que solo separa bloqueado/por_vencer/activo para la
- * columna Estado), esta separa además a quienes siguen en básico sin haber
- * pagado todavía ("trial") de quienes ya son clientes de pago en buen
- * estado ("activo") — así Owen entra y ve de un vistazo a quién cobrarle,
- * sin tener que revisar negocio por negocio cada mes.
+ * Bucket para los tabs de cobranza de /admin (Negocios) — a quién cobrarle
+ * de un vistazo, sin revisar negocio por negocio cada mes. "trial"
+ * (básico, gratis, de todo registro nuevo) y "trial_pro" (acceso Pro de
+ * cortesía activado a mano desde /admin, "Activar N días PRO") agrupan a
+ * quien nunca ha pagado — no es "cobranza" real (nunca fueron clientes de
+ * pago), aunque su trial ya se haya bloqueado solo. "vencido"/
+ * "por_vencer"/"activo" son para quien SÍ pagó alguna vez — ahí sí importa
+ * la fecha real de renovación (y la gracia de DIAS_GRACIA_PAGO antes de
+ * bloquear).
  */
-export function estadoCobranza(negocio: { trialFin: string; esFundador: boolean; isActive: boolean; plan: PlanId }): EstadoCobranza {
-  const base = estadoNegocio(negocio);
-  if (base === "bloqueado") return "vencido";
-  if (base === "por_vencer") return "por_vencer";
-  if (!negocio.esFundador && negocio.plan === "basico") return "trial";
+export function estadoCobranza(negocio: { trialFin: string; esFundador: boolean; isActive: boolean; plan: PlanId; ultimoPagoAt: string | null }): EstadoCobranza {
+  if (negocio.esFundador) return "activo";
+  if (!negocio.isActive) return "vencido";
+  if (!negocio.ultimoPagoAt) return negocio.plan === "basico" ? "trial" : "trial_pro";
+  const dias = diasParaTrial(negocio.trialFin);
+  if (dias < 0) return "vencido";
+  if (dias <= 3) return "por_vencer";
   return "activo";
 }
 
@@ -200,7 +245,9 @@ export function usePlan() {
   const planContratado = normalizarPlan(session?.business.plan);
   const esFundador = session?.business.esFundador ?? false;
   const esDemo = session?.business.demo ?? false;
-  const planId = planDeAcceso(planContratado, esFundador);
+  const trialFin = session?.business.trial_fin ?? "";
+  const ultimoPagoAt = session?.business.ultimoPagoAt ?? null;
+  const planId = planDeAcceso({ plan: planContratado, esFundador, trialFin, ultimoPagoAt });
   const def = PLANES[planId];
 
   // TEMPORAL: gráficas destapadas para demo y para Básico — sin bloqueos de

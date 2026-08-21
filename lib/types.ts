@@ -65,6 +65,8 @@ export interface Business {
   precioCustom: number | null;
   /** Insignia de "Fundador" (marketing/trato especial) — admin-only, mismo trato que `plan`. */
   esFundador: boolean;
+  /** Cuándo se registró por última vez un pago real (PR #122) — admin-only, mismo trato que `plan`. `null` = nunca pagó (sigue en su trial gratis, básico o Pro de cortesía) — ver planDeAcceso/bloqueadoPorTrial en lib/planes.ts, que usan esto para nunca bloquear a quien no ha pagado. */
+  ultimoPagoAt: string | null;
   /** Días sin venir a partir de los cuales Clientes marca a alguien para recordatorio (badge + mensaje de WhatsApp distinto). Configurable en Configuración > General; 28 si no se ha configurado. */
   diasRecordatorio?: number;
   /** ISO datetime de cuándo el dueño aceptó el checkbox de Términos/Aviso de Privacidad en /onboarding. */
@@ -126,6 +128,8 @@ export interface Appointment {
   /** Quién atendió/cobró (ver Multiusuario > modo PIN, lib/empleados.ts) — ausente en citas de antes de este campo o cobradas por el dueño directo. */
   empleadoId?: string;
   empleadoNombreCache?: string;
+  /** Rol de esa persona AL MOMENTO de la cita (mismo criterio que empleadoNombreCache — un cambio de rol después no reescribe el historial). Ausente en citas de antes de este campo. */
+  empleadoRolCache?: RolEmpleado;
   /** Cancelación por un rol "vendedor" (no puede borrar, solo cancelar — ver PERMISOS en lib/empleados.ts). */
   canceladoPor?: string;
   motivoCancelacion?: string;
@@ -140,6 +144,7 @@ export interface CajaEntry {
   fecha: string; // ISO datetime
   empleadoId?: string;
   empleadoNombreCache?: string;
+  empleadoRolCache?: RolEmpleado;
 }
 
 export interface InventoryProduct {
@@ -209,6 +214,7 @@ export interface FondaOrder {
   /** Quién atendió/cobró (ver Multiusuario > modo PIN, lib/empleados.ts) — ausente en pedidos de antes de este campo o cobrados por el dueño directo. */
   empleadoId?: string;
   empleadoNombreCache?: string;
+  empleadoRolCache?: RolEmpleado;
   /** Cancelación por un rol "vendedor" (no puede borrar, solo cancelar — ver PERMISOS en lib/empleados.ts). */
   canceladoPor?: string;
   motivoCancelacion?: string;
@@ -222,6 +228,10 @@ export interface Expense {
   monto: number;
   fecha: string; // ISO date
   recordatorio?: boolean;
+  /** Quién registró el gasto (ver Multiusuario > modo PIN, lib/empleados.ts) — a diferencia de ventas/citas, gastos nunca tuvo esto hasta trazabilidad vendedor/encargado (PR #121). Ausente en gastos de antes de este campo o registrados por el dueño directo sin multiusuario activo. */
+  empleadoId?: string;
+  empleadoNombreCache?: string;
+  empleadoRolCache?: RolEmpleado;
 }
 
 // ---------- Abarrotes ----------
@@ -289,6 +299,7 @@ export interface GrocerySale {
   fecha: string; // ISO datetime
   empleadoId?: string;
   empleadoNombreCache?: string;
+  empleadoRolCache?: RolEmpleado;
   /** Ausente = venta activa. Un rol "vendedor" no puede borrar ventas, solo cancelarlas (ver PERMISOS en lib/empleados.ts) — se excluye de ventas/ganancias igual que si se hubiera borrado, pero queda el registro. */
   cancelada?: boolean;
   canceladoPor?: string;

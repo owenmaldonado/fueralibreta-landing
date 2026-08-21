@@ -9,6 +9,8 @@ import { Sheet, SheetHeader } from "@/components/ui/sheet";
 import { StatTile } from "./stat-tile";
 import { EmptyState } from "./empty-state";
 import { BloqueoPlan } from "./bloqueo-plan";
+import { EmpleadoBadge } from "./empleado-badge";
+import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { formatMoney, formatHora12, hoyEnZona, toISODate, uid } from "@/lib/mock";
 import { supabase } from "@/lib/supabase";
 import { fetchPedidosPendientes } from "@/lib/data";
@@ -149,6 +151,27 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
       : data.pedidos.filter((p) => p.fecha >= desde && p.fecha <= hasta).sort((a, b) => a.hora.localeCompare(b.hora));
   const pendientesPeriodo = pedidosPeriodo.filter((p) => p.estado === "pendiente");
 
+  // "Equipo hoy" (PR #121, trazabilidad vendedor/encargado): quién vendió
+  // qué hoy — solo pedidos ya entregados (dinero de verdad cobrado), y solo
+  // vale la pena mostrarlo si hay 2+ personas distintas (VentasPorEmpleado
+  // se auto-oculta si no). "Sin dato" (negocio sin multiusuario activo, o
+  // pedidos de antes de empleado_nombre_cache) cae a "Dueño" — mismo
+  // criterio que fonda-cerrar-turno.tsx.
+  const equipoHoy =
+    filtro === "hoy"
+      ? Array.from(
+          pedidosPeriodo
+            .filter((p) => p.estado === "entregado")
+            .reduce((mapa, p) => {
+              const nombre = p.empleadoNombreCache ?? "Dueño";
+              const actual = mapa.get(nombre) ?? { nombre, monto: 0, cantidad: 0 };
+              mapa.set(nombre, { nombre, monto: actual.monto + p.total, cantidad: actual.cantidad + 1 });
+              return mapa;
+            }, new Map<string, { nombre: string; monto: number; cantidad: number }>())
+            .values()
+        )
+      : [];
+
   const tituloHoy = `Hoy es ${new Date(`${hoyEnSuZona}T00:00:00`).toLocaleDateString("es-MX", {
     weekday: "long",
     day: "numeric",
@@ -260,6 +283,7 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
         <Tabs value={filtro} onValueChange={(v) => setFiltro(v as FiltroDia)} tabs={FILTROS} />
         <StatTile label="Ventas" value={formatMoney(ventas)} />
         <StatTile label="Gastos" value={formatMoney(gastos)} />
+        <VentasPorEmpleado datos={equipoHoy} titulo="Equipo hoy" />
         {filtro === "hoy" && activos.length > 0 && (
           <div>
             <p className="mb-2 px-1 font-mono text-xs uppercase tracking-widest text-muted-foreground">Venta rápida</p>
@@ -312,6 +336,9 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
                         </li>
                       ))}
                     </ul>
+                    <div className="mt-1.5">
+                      <EmpleadoBadge nombre={p.empleadoNombreCache} rol={p.empleadoRolCache} />
+                    </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <span className="font-mono text-sm">{formatMoney(p.total)}</span>
