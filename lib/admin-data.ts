@@ -123,10 +123,11 @@ export async function fetchAdminOverview(currentUserId: string): Promise<AdminOv
     ownerId: n.owner_id,
     ownerEmail: n.owner_id ? (profilesById.get(n.owner_id)?.email ?? null) : null,
     // telefono_contacto (pedido obligatorio en /onboarding desde ahora) es
-    // el número confiable para contactar por WhatsApp — telefono es el
-    // viejo "de recuperación", opcional y casi siempre vacío. Cae a
-    // telefono solo para negocios dados de alta antes de este campo.
-    ownerPhone: (n.telefono_contacto as string) || n.telefono || "",
+    // el número confiable para contactar por WhatsApp. Si un negocio viejo
+    // no lo tiene, cae a whatsapp (el de citas, casi siempre un número real
+    // del dueño) y por último a telefono ("de recuperación", opcional y
+    // casi siempre vacío).
+    ownerPhone: (n.telefono_contacto as string) || (n.whatsapp as string) || n.telefono || "",
     isActive: n.is_active,
     createdAt: n.created_at,
     plan: normalizarPlan(n.plan),

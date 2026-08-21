@@ -1,14 +1,16 @@
 "use client";
 
 import * as React from "react";
+import { MessageCircle } from "lucide-react";
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { AdminActionsMenu } from "./admin-actions-menu";
 import type { AdminProfile, AdminNegocio } from "@/lib/admin-data";
 import { PLAN_LABELS, planDeAcceso, precioReal, formatTrial, type PlanId } from "@/lib/planes";
-import { formatMoney } from "@/lib/mock";
+import { formatMoney, waLink } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 
 interface UsersTableProps {
@@ -54,10 +56,11 @@ export function UsersTable({
   }
 
   return (
-    <Table className="min-w-[1180px]">
+    <Table className="min-w-[1360px]">
       <TableHeader>
         <TableRow>
           <TableHead>Usuario</TableHead>
+          <TableHead>WhatsApp</TableHead>
           <TableHead>Rol</TableHead>
           <TableHead className="text-center">Negocios</TableHead>
           <TableHead>Plan contratado</TableHead>
@@ -91,6 +94,17 @@ export function UsersTable({
                     </div>
                   </div>
                 </div>
+              </TableCell>
+              <TableCell>
+                {negocio?.ownerPhone ? (
+                  <Button asChild size="sm" variant="ledger">
+                    <a href={waLink(negocio.ownerPhone, `Hola, te escribo de Fuera Libreta sobre ${negocio.nombre}.`)} target="_blank" rel="noreferrer">
+                      <MessageCircle className="h-3.5 w-3.5" /> {negocio.ownerPhone}
+                    </a>
+                  </Button>
+                ) : (
+                  <span className="text-sm text-muted-foreground">Sin WhatsApp</span>
+                )}
               </TableCell>
               <TableCell>
                 <Badge variant={p.role === "admin" ? "default" : "outline"}>{p.role === "admin" ? "Admin" : "User"}</Badge>
