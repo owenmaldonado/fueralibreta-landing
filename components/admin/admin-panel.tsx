@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { Search, ShieldAlert, RefreshCcw } from "lucide-react";
+import { Search, ShieldAlert, RefreshCcw, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 
 import { Input } from "@/components/ui/input";
@@ -50,11 +50,15 @@ import { supabase } from "@/lib/supabase";
 import { formatMoney } from "@/lib/mock";
 import { PLAN_LABELS, formatTrial, estadoCobranza, type PlanId, type EstadoCobranza } from "@/lib/planes";
 
-type RoleFilter = "todos" | "admin" | "user";
-/** "trial" = todavía dentro de su periodo de prueba (trial_fin no vencido); "fundadores" = es_fundador = true. Reemplaza al viejo filtro por profiles.plan (free/pro) — ahora todo el filtrado de plan es a nivel negocio. */
+/** "trial" = todavía dentro de su periodo de prueba (trial_fin no vencido); "fundadores" = es_fundador = true. Reemplaza al viejo filtro por profiles.plan (free/pro) — ahora todo el filtrado de plan es a nivel negocio. Solo se usa ya en Negocios — Usuarios se quedó sin filtros de plan/rol (PR #119), solo buscador + orden. */
 type PlanEstadoFilter = "todos" | "basico" | "pro" | "pro_plus" | "trial" | "fundadores";
 type SortOrder = "recientes" | "antiguos";
 type LeadEstadoFilter = "todos" | "nuevo" | "contactado" | "convertido";
+/** Tabs "de todos los días" arriba, el resto (Leads/Consentimientos/Catálogo — siempre en 0, nadie los revisa a diario) detrás de un disclosure "Avanzado" para no robarles espacio. */
+type MainTab = "usuarios" | "negocios";
+type AdvancedTab = "leads" | "consentimientos" | "catalogo";
+const ADVANCED_TABS = new Set<string>(["leads", "consentimientos", "catalogo"]);
+const TAB_STORAGE_KEY = "admin_tab";
 
 const PLAN_ESTADO_OPCIONES: { value: PlanEstadoFilter; label: string }[] = [
   { value: "todos", label: "Todos" },
@@ -65,7 +69,10 @@ const PLAN_ESTADO_OPCIONES: { value: PlanEstadoFilter; label: string }[] = [
   { value: "fundadores", label: "Fundadores" },
 ];
 
-const COBRANZA_OPCIONES: { value: EstadoCobranza; label: string; dot: string }[] = [
+/** "Todos" primero y default — antes el default era "por_vencer", que en cuentas de prueba (0 negocios por vencer) dejaba la tabla vacía sin que se notara que era un filtro y no un bug. */
+type CobranzaFilterValue = EstadoCobranza | "todos";
+const COBRANZA_OPCIONES: { value: CobranzaFilterValue; label: string; dot: string }[] = [
+  { value: "todos", label: "Todos", dot: "⚪" },
   { value: "vencido", label: "Vencidos", dot: "🔴" },
   { value: "por_vencer", label: "Por vencer <3d", dot: "🟡" },
   { value: "activo", label: "Activos", dot: "🟢" },
@@ -84,19 +91,22 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   const searchParams = useSearchParams();
   const [overview, setOverview] = React.useState<AdminOverview | null>(null);
   const [loading, setLoading] = React.useState(true);
-  // Abre directo en Negocios (no Usuarios) para que Owen entre y vea a
-  // quién cobrarle sin un clic extra — ver cobranzaFilter abajo.
-  const [tab, setTab] = React.useState("negocios");
+  // Default = Usuarios (PR #119): "negocios" con el filtro de cobranza en
+  // "por_vencer" dejaba a Owen viendo "Sin negocios que coincidan" en cuanto
+  // no había nada por vencer justo ese día — parecía un bug. El tab activo
+  // se recuerda en localStorage (ver useEffect de abajo), pero el primer
+  // valor SIEMPRE es Usuarios hasta que se restaura lo guardado.
+  const [tab, setTab] = React.useState<string>("usuarios");
+  // Leads/Consentimientos/Catálogo casi nunca tienen nada que revisar
+  // (0 hasta que alguien llena el form público o el banner de cookies) —
+  // viven colapsados detrás de "Avanzado" en vez de ocupar un tab principal.
+  const [advancedOpen, setAdvancedOpen] = React.useState(false);
 
   const [q, setQ] = React.useState("");
-  const [roleFilter, setRoleFilter] = React.useState<RoleFilter>("todos");
-  const [planFilter, setPlanFilter] = React.useState<PlanEstadoFilter>("todos");
   const [sortOrder, setSortOrder] = React.useState<SortOrder>("recientes");
   const [orgQuery, setOrgQuery] = React.useState("");
   const [orgPlanFilter, setOrgPlanFilter] = React.useState<PlanEstadoFilter>("todos");
-  // Default "por_vencer": es la razón por la que Owen entra a /admin cada
-  // mes — a quién cobrarle antes de que se le bloquee la cuenta.
-  const [cobranzaFilter, setCobranzaFilter] = React.useState<EstadoCobranza>("por_vencer");
+  const [cobranzaFilter, setCobranzaFilter] = React.useState<CobranzaFilterValue>("todos");
   const [leadQuery, setLeadQuery] = React.useState("");
   const [leadEstadoFilter, setLeadEstadoFilter] = React.useState<LeadEstadoFilter>("todos");
   // Las cards de arriba (Total usuarios, Negocios activos...) cuentan al
@@ -126,6 +136,30 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   React.useEffect(() => {
     load();
   }, [load]);
+
+  // Restaura el tab guardado (si hay uno) al montar — default sigue siendo
+  // "usuarios" mientras tanto, así el primer render en servidor y el primer
+  // render en cliente coinciden y no hay flash/mismatch de hidratación.
+  React.useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(TAB_STORAGE_KEY);
+      if (saved) {
+        setTab(saved);
+        if (ADVANCED_TABS.has(saved)) setAdvancedOpen(true);
+      }
+    } catch {
+      // localStorage no disponible (modo privado estricto, etc.) — se queda en el default.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem(TAB_STORAGE_KEY, tab);
+    } catch {
+      // idem — no truena la pantalla si no se puede guardar.
+    }
+  }, [tab]);
 
   // Realtime de profiles (4to canal de la app — los otros 3 son
   // barberia_citas/abarrotes_ventas/negocios, todos por negocio_id dentro
@@ -207,14 +241,6 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     }
   }, [overview, searchParams]);
 
-  const negocioPorOwner = React.useMemo(() => {
-    const map = new Map<string, AdminNegocio>();
-    for (const n of overview?.negocios ?? []) {
-      if (n.ownerId && !map.has(n.ownerId)) map.set(n.ownerId, n);
-    }
-    return map;
-  }, [overview]);
-
   const filteredProfiles = React.useMemo(() => {
     if (!overview) return [];
     let list = overview.profiles;
@@ -223,12 +249,10 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
       const needle = q.trim().toLowerCase();
       list = list.filter((p) => p.email?.toLowerCase().includes(needle));
     }
-    if (roleFilter !== "todos") list = list.filter((p) => p.role === roleFilter);
-    if (planFilter !== "todos") list = list.filter((p) => pasaFiltroPlan(negocioPorOwner.get(p.id), planFilter));
     return [...list].sort((a, b) =>
       sortOrder === "recientes" ? b.createdAt.localeCompare(a.createdAt) : a.createdAt.localeCompare(b.createdAt)
     );
-  }, [overview, excludeSelf, currentUserId, q, roleFilter, planFilter, sortOrder, negocioPorOwner]);
+  }, [overview, excludeSelf, currentUserId, q, sortOrder]);
 
   // Base para los contadores reales de los 4 tabs de cobranza — antes de
   // aplicarles el propio filtro de cobranza (si no, cada tab siempre
@@ -250,7 +274,13 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   }, [overview, excludeSelf, currentUserId, orgQuery, orgPlanFilter]);
 
   const cobranzaCounts = React.useMemo(() => {
-    const counts: Record<EstadoCobranza, number> = { vencido: 0, por_vencer: 0, activo: 0, trial: 0 };
+    const counts: Record<CobranzaFilterValue, number> = {
+      todos: negociosBaseCobranza.length,
+      vencido: 0,
+      por_vencer: 0,
+      activo: 0,
+      trial: 0,
+    };
     for (const n of negociosBaseCobranza) counts[estadoCobranza(n)]++;
     return counts;
   }, [negociosBaseCobranza]);
@@ -259,7 +289,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
     // vence ASC: el que vence hoy (o ya venció hace más días) va primero —
     // así la fila de arriba siempre es la más urgente de cobrar.
     return negociosBaseCobranza
-      .filter((n) => estadoCobranza(n) === cobranzaFilter)
+      .filter((n) => cobranzaFilter === "todos" || estadoCobranza(n) === cobranzaFilter)
       .sort((a, b) => a.trialFin.localeCompare(b.trialFin));
   }, [negociosBaseCobranza, cobranzaFilter]);
 
@@ -484,10 +514,10 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
           <MetricsCards metrics={metrics} />
         </div>
 
-        <div className="mt-8">
+        <div className="mt-8 flex flex-wrap items-center gap-2">
           <Tabs
-            value={tab}
-            onValueChange={setTab}
+            value={tab === "usuarios" || tab === "negocios" ? tab : ""}
+            onValueChange={(v) => setTab(v as MainTab)}
             tabs={[
               {
                 value: "usuarios",
@@ -497,13 +527,28 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 value: "negocios",
                 label: `Negocios · ${(excludeSelf ? overview.negocios.filter((n) => n.ownerId !== currentUserId) : overview.negocios).length}`,
               },
-              { value: "leads", label: `Leads · ${overview.leads.length}` },
-              { value: "consentimientos", label: `Consentimientos · ${overview.consentimientos.length}` },
-              { value: "catalogo", label: "Catálogo" },
             ]}
-            className="max-w-lg"
+            className="max-w-xs"
           />
+          <Button variant="outline" size="sm" onClick={() => setAdvancedOpen((v) => !v)}>
+            Avanzado {advancedOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
         </div>
+
+        {advancedOpen && (
+          <div className="mt-2">
+            <Tabs
+              value={ADVANCED_TABS.has(tab) ? tab : ""}
+              onValueChange={(v) => setTab(v as AdvancedTab)}
+              tabs={[
+                { value: "leads", label: `Leads · ${overview.leads.length}` },
+                { value: "consentimientos", label: `Consentimientos · ${overview.consentimientos.length}` },
+                { value: "catalogo", label: "Catálogo" },
+              ]}
+              className="max-w-lg"
+            />
+          </div>
+        )}
 
         {tab === "usuarios" ? (
           <div className="mt-4">
@@ -512,24 +557,6 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por email..." className="pl-9" />
               </div>
-              <ChipGroup>
-                <Chip selected={roleFilter === "todos"} onClick={() => setRoleFilter("todos")}>
-                  Todos
-                </Chip>
-                <Chip selected={roleFilter === "admin"} onClick={() => setRoleFilter("admin")}>
-                  Admin
-                </Chip>
-                <Chip selected={roleFilter === "user"} onClick={() => setRoleFilter("user")}>
-                  User
-                </Chip>
-              </ChipGroup>
-              <ChipGroup>
-                {PLAN_ESTADO_OPCIONES.map((o) => (
-                  <Chip key={o.value} selected={planFilter === o.value} onClick={() => setPlanFilter(o.value)}>
-                    {o.label}
-                  </Chip>
-                ))}
-              </ChipGroup>
               <Select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as SortOrder)} className="w-44">
                 <option value="recientes">Más recientes</option>
                 <option value="antiguos">Más antiguos</option>
