@@ -589,7 +589,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
               </Select>
             </div>
 
-            <div className="mt-4 overflow-hidden rounded-2xl border border-border">
+            <div className="mt-4 max-w-full overflow-hidden rounded-2xl border border-border">
               <UsersTable
                 profiles={filteredProfiles}
                 negocios={overview.negocios}
@@ -633,7 +633,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 ))}
               </ChipGroup>
             </div>
-            <div className="mt-4 overflow-hidden rounded-2xl border border-border">
+            <div className="mt-4 max-w-full overflow-hidden rounded-2xl border border-border">
               <OrgsTable
                 negocios={filteredNegocios}
                 profiles={overview.profiles}
@@ -677,7 +677,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 </Chip>
               </ChipGroup>
             </div>
-            <div className="mt-4 overflow-hidden rounded-2xl border border-border">
+            <div className="mt-4 max-w-full overflow-hidden rounded-2xl border border-border">
               <LeadsTable leads={filteredLeads} onMarkContactado={handleMarkLeadContactado} onConvertir={handleConvertirLead} />
             </div>
           </div>
