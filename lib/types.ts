@@ -268,6 +268,10 @@ export interface Fiado {
   telefono: string;
   saldo: number;
   historial: FiadoMovimiento[];
+  /** Quién dio de alta el fiado (ver Multiusuario > modo PIN, lib/empleados.ts) — snapshot al momento del alta, igual que en ventas/gastos: un cambio de rol futuro no reescribe el historial. Ausente en fiados de antes de este campo o dados de alta por el dueño sin multiusuario activo. */
+  empleadoId?: string;
+  empleadoNombreCache?: string;
+  empleadoRolCache?: RolEmpleado;
 }
 
 export interface Apartado {
