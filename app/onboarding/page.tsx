@@ -228,8 +228,13 @@ export default function OnboardingPage() {
     setCreating(true);
     setError(null);
     try {
-      const tenant = tenantFromDemo(demoTenant, { nombre: nombre.trim(), telefono: "", telefonoContacto: telefonoParsed.data });
+      const tenant = tenantFromDemo(demoTenant, { nombre: nombre.trim(), telefono: telefonoParsed.data, telefonoContacto: telefonoParsed.data });
       tenant.business.acceptedTermsAt = new Date().toISOString();
+      // whatsapp de citas (barbería) arranca con el mismo número que se
+      // acaba de dar — antes quedaba NULL y el botón "Confirmar por
+      // WhatsApp" de /b/[slug] no funcionaba hasta configurarlo a mano.
+      // Sigue siendo editable después en Configuración > Perfil.
+      tenant.business.whatsapp = telefonoParsed.data;
       await claim(tenant, userId);
       await Promise.all([marcarPlanPro(userId), guardarTelefonoPerfil(userId, telefonoParsed.data)]);
       clearPlanElegido();
@@ -251,8 +256,11 @@ export default function OnboardingPage() {
     setCreating(true);
     setError(null);
     try {
-      const tenant = createEmptyTenant({ dueno, nombre: nombre.trim(), telefono: "", telefonoContacto: telefonoParsed.data, tipo });
+      const tenant = createEmptyTenant({ dueno, nombre: nombre.trim(), telefono: telefonoParsed.data, telefonoContacto: telefonoParsed.data, tipo });
       tenant.business.acceptedTermsAt = new Date().toISOString();
+      // Ver comentario igual en crearDesdeDemo(): whatsapp de citas arranca
+      // con el mismo número, en vez de quedar NULL hasta configurarlo aparte.
+      tenant.business.whatsapp = telefonoParsed.data;
       await claim(tenant, userId);
       await Promise.all([marcarPlanPro(userId), guardarTelefonoPerfil(userId, telefonoParsed.data)]);
       clearPlanElegido();

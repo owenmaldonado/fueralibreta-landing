@@ -7,7 +7,7 @@ import { supabase, isSupabaseConfigured } from "./supabase";
 import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow, fetchVentaConItems, businessFromRow } from "./data";
 import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
 import { leerCacheLocal, sincronizarCacheLocalEnSegundoPlano } from "./local-cache";
-import { todayISO } from "./mock";
+import { todayISO, formatHora12 } from "./mock";
 import type { Appointment, Business, GrocerySale, TenantData } from "./types";
 
 type Source = "supabase" | "demo" | null;
@@ -142,6 +142,12 @@ function suscribirseACitasEnVivo(negocioId: string, onEvento: (evento: EventoCit
         { event: "INSERT", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
         (payload) => {
           const cita = citaFromRow(payload.new as Record<string, unknown>);
+          // Un solo toast por evento real de Supabase, aquí y no dentro de
+          // cada listener — con el shell y la pantalla actual (ej. Agenda)
+          // cada uno con su propia instancia de useSession() suscrita al
+          // mismo canal compartido, un toast por listener duplicaría el
+          // aviso (2+ toasts para la misma cita nueva).
+          toast.success(`Nueva cita: ${cita.clienteNombre} · ${formatHora12(cita.hora)}`);
           citasListeners.forEach((l) => l({ tipo: "insert", cita }));
         }
       )
