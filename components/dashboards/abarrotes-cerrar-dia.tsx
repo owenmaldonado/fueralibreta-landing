@@ -136,6 +136,7 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
         categoria: gastoConcepto.trim() || "Gasto del día",
         monto: Number(gastoMonto),
         fecha: hoy,
+        ...camposEmpleado(),
       };
       update((prev) => {
         const a = prev.abarrotes!;
@@ -175,7 +176,7 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
       });
 
       if (decision.accion === "caduco" && cantidad && cantidad > 0 && perdida && perdida > 0) {
-        nuevosGastos.push({ id: uid("exp"), categoria: `Merma: ${p.nombre} x${cantidad}`, monto: perdida, fecha: hoy });
+        nuevosGastos.push({ id: uid("exp"), categoria: `Merma: ${p.nombre} x${cantidad}`, monto: perdida, fecha: hoy, ...camposEmpleado() });
       }
     }
 

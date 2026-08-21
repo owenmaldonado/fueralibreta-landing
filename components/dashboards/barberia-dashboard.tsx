@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ActionCard } from "./action-card";
 import { EmptyState } from "./empty-state";
 import { CobrarCitaDialog } from "./cobrar-cita-dialog";
+import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { WhatsappRecordatorioButton } from "./whatsapp-recordatorio-button";
 import { daysSince, formatHora12, formatMoney, statsVisitasCliente, todayISO, waLink } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
@@ -50,6 +51,21 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
   const productosBajos = data.productos.filter((p) => p.stock <= p.minimo && !ignorados.has(`bajo-${p.id}`));
 
   const nada = citasHoy.length === 0 && clientesAlerta.length === 0 && cumples.length === 0 && productosBajos.length === 0;
+
+  // "Equipo hoy" (PR #121, trazabilidad vendedor/encargado): cortes ya
+  // cobrados hoy ("listo", no "pendiente" como citasHoy arriba) por quién —
+  // VentasPorEmpleado se auto-oculta con menos de 2 personas distintas.
+  const cortesHoy = data.citas.filter((c) => c.fecha === hoy && c.estado === "listo");
+  const equipoHoy = Array.from(
+    cortesHoy
+      .reduce((mapa, c) => {
+        const nombre = c.empleadoNombreCache ?? "Dueño";
+        const actual = mapa.get(nombre) ?? { nombre, monto: 0, cantidad: 0 };
+        mapa.set(nombre, { nombre, monto: actual.monto + c.precio, cantidad: actual.cantidad + 1 });
+        return mapa;
+      }, new Map<string, { nombre: string; monto: number; cantidad: number }>())
+      .values()
+  );
 
   function marcarListoConMetodo(citaId: string, metodo: "efectivo" | "transferencia") {
     let negocioId = "";
@@ -131,6 +147,8 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
           />
         ))}
         {nada && <EmptyState />}
+
+        <VentasPorEmpleado datos={equipoHoy} titulo="Equipo hoy" />
 
         {citasHoy.length > 0 && (
           <div className="mt-2">

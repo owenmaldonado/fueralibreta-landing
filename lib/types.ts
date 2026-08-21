@@ -126,6 +126,8 @@ export interface Appointment {
   /** Quién atendió/cobró (ver Multiusuario > modo PIN, lib/empleados.ts) — ausente en citas de antes de este campo o cobradas por el dueño directo. */
   empleadoId?: string;
   empleadoNombreCache?: string;
+  /** Rol de esa persona AL MOMENTO de la cita (mismo criterio que empleadoNombreCache — un cambio de rol después no reescribe el historial). Ausente en citas de antes de este campo. */
+  empleadoRolCache?: RolEmpleado;
   /** Cancelación por un rol "vendedor" (no puede borrar, solo cancelar — ver PERMISOS en lib/empleados.ts). */
   canceladoPor?: string;
   motivoCancelacion?: string;
@@ -140,6 +142,7 @@ export interface CajaEntry {
   fecha: string; // ISO datetime
   empleadoId?: string;
   empleadoNombreCache?: string;
+  empleadoRolCache?: RolEmpleado;
 }
 
 export interface InventoryProduct {
@@ -209,6 +212,7 @@ export interface FondaOrder {
   /** Quién atendió/cobró (ver Multiusuario > modo PIN, lib/empleados.ts) — ausente en pedidos de antes de este campo o cobrados por el dueño directo. */
   empleadoId?: string;
   empleadoNombreCache?: string;
+  empleadoRolCache?: RolEmpleado;
   /** Cancelación por un rol "vendedor" (no puede borrar, solo cancelar — ver PERMISOS en lib/empleados.ts). */
   canceladoPor?: string;
   motivoCancelacion?: string;
@@ -222,6 +226,10 @@ export interface Expense {
   monto: number;
   fecha: string; // ISO date
   recordatorio?: boolean;
+  /** Quién registró el gasto (ver Multiusuario > modo PIN, lib/empleados.ts) — a diferencia de ventas/citas, gastos nunca tuvo esto hasta trazabilidad vendedor/encargado (PR #121). Ausente en gastos de antes de este campo o registrados por el dueño directo sin multiusuario activo. */
+  empleadoId?: string;
+  empleadoNombreCache?: string;
+  empleadoRolCache?: RolEmpleado;
 }
 
 // ---------- Abarrotes ----------
@@ -289,6 +297,7 @@ export interface GrocerySale {
   fecha: string; // ISO datetime
   empleadoId?: string;
   empleadoNombreCache?: string;
+  empleadoRolCache?: RolEmpleado;
   /** Ausente = venta activa. Un rol "vendedor" no puede borrar ventas, solo cancelarlas (ver PERMISOS en lib/empleados.ts) — se excluye de ventas/ganancias igual que si se hubiera borrado, pero queda el registro. */
   cancelada?: boolean;
   canceladoPor?: string;

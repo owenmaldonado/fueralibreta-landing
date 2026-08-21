@@ -18,7 +18,15 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { supabase } from "@/lib/supabase";
-import { generarPinDisponible, pinEsObvio, pinDuenoConfigurado, setPinDueno, borrarPinDueno, solicitarResetPinDueno } from "@/lib/empleados";
+import {
+  generarPinDisponible,
+  pinEsObvio,
+  pinDuenoConfigurado,
+  setPinDueno,
+  borrarPinDueno,
+  solicitarResetPinDueno,
+  ROL_LABEL,
+} from "@/lib/empleados";
 import type { Empleado, RolEmpleado } from "@/lib/types";
 
 const ROLES: { rol: RolEmpleado; label: string }[] = [
@@ -26,8 +34,6 @@ const ROLES: { rol: RolEmpleado; label: string }[] = [
   { rol: "encargado", label: "Encargado" },
   { rol: "vendedor", label: "Vendedor" },
 ];
-
-const ROL_LABEL: Record<RolEmpleado, string> = { dueno: "Dueño", encargado: "Encargado", vendedor: "Vendedor" };
 
 /**
  * Ajustes > Empleados — solo dueño (protegida por middleware.ts, ver

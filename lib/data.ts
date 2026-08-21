@@ -207,6 +207,7 @@ export const citaFromRow = (r: Row): Appointment => ({
   metodo: (r.metodo as Appointment["metodo"]) ?? undefined,
   empleadoId: (r.empleado_id as string) ?? undefined,
   empleadoNombreCache: (r.empleado_nombre_cache as string) ?? undefined,
+  empleadoRolCache: (r.empleado_rol_cache as Appointment["empleadoRolCache"]) ?? undefined,
   canceladoPor: (r.cancelado_por as string) ?? undefined,
   motivoCancelacion: (r.motivo_cancelacion as string) ?? undefined,
 });
@@ -225,6 +226,7 @@ const citaToRow = (c: Appointment, negocioId: string): Row => ({
   metodo: c.metodo ?? null,
   empleado_id: c.empleadoId ?? null,
   empleado_nombre_cache: c.empleadoNombreCache ?? null,
+  empleado_rol_cache: c.empleadoRolCache ?? null,
   cancelado_por: c.canceladoPor ?? null,
   motivo_cancelacion: c.motivoCancelacion ?? null,
 });
@@ -238,6 +240,7 @@ const cajaFromRow = (r: Row): CajaEntry => ({
   fecha: r.fecha as string,
   empleadoId: (r.empleado_id as string) ?? undefined,
   empleadoNombreCache: (r.empleado_nombre_cache as string) ?? undefined,
+  empleadoRolCache: (r.empleado_rol_cache as CajaEntry["empleadoRolCache"]) ?? undefined,
 });
 const cajaToRow = (c: CajaEntry, negocioId: string): Row => ({
   id: c.id,
@@ -249,6 +252,7 @@ const cajaToRow = (c: CajaEntry, negocioId: string): Row => ({
   fecha: c.fecha,
   empleado_id: c.empleadoId ?? null,
   empleado_nombre_cache: c.empleadoNombreCache ?? null,
+  empleado_rol_cache: c.empleadoRolCache ?? null,
 });
 
 const productoBarberiaFromRow = (r: Row): InventoryProduct => ({
@@ -356,6 +360,7 @@ const pedidoToRow = (p: FondaOrder, negocioId: string): Row => ({
   total: p.total,
   empleado_id: p.empleadoId ?? null,
   empleado_nombre_cache: p.empleadoNombreCache ?? null,
+  empleado_rol_cache: p.empleadoRolCache ?? null,
   cancelado_por: p.canceladoPor ?? null,
   motivo_cancelacion: p.motivoCancelacion ?? null,
   turno_id: p.turnoId ?? null,
@@ -384,6 +389,7 @@ const pedidoFromRow = (row: Row, itemsRows: Row[]): FondaOrder => ({
   total: Number(row.total),
   empleadoId: (row.empleado_id as string) ?? undefined,
   empleadoNombreCache: (row.empleado_nombre_cache as string) ?? undefined,
+  empleadoRolCache: (row.empleado_rol_cache as FondaOrder["empleadoRolCache"]) ?? undefined,
   canceladoPor: (row.cancelado_por as string) ?? undefined,
   motivoCancelacion: (row.motivo_cancelacion as string) ?? undefined,
   turnoId: (row.turno_id as string) ?? undefined,
@@ -427,6 +433,9 @@ const gastoFromRow = (r: Row): Expense => ({
   monto: Number(r.monto),
   fecha: r.fecha as string,
   recordatorio: (r.recordatorio as boolean) ?? false,
+  empleadoId: (r.empleado_id as string) ?? undefined,
+  empleadoNombreCache: (r.empleado_nombre_cache as string) ?? undefined,
+  empleadoRolCache: (r.empleado_rol_cache as Expense["empleadoRolCache"]) ?? undefined,
 });
 const gastoToRow = (g: Expense, negocioId: string): Row => ({
   id: g.id,
@@ -435,6 +444,9 @@ const gastoToRow = (g: Expense, negocioId: string): Row => ({
   monto: g.monto,
   fecha: g.fecha,
   recordatorio: g.recordatorio ?? false,
+  empleado_id: g.empleadoId ?? null,
+  empleado_nombre_cache: g.empleadoNombreCache ?? null,
+  empleado_rol_cache: g.empleadoRolCache ?? null,
 });
 
 async function fetchFondaData(negocioId: string): Promise<FondaData> {
@@ -560,6 +572,7 @@ const ventaToRow = (v: GrocerySale, negocioId: string): Row => ({
   fecha: v.fecha,
   empleado_id: v.empleadoId ?? null,
   empleado_nombre_cache: v.empleadoNombreCache ?? null,
+  empleado_rol_cache: v.empleadoRolCache ?? null,
   cancelada: v.cancelada ?? false,
   cancelado_por: v.canceladoPor ?? null,
   motivo_cancelacion: v.motivoCancelacion ?? null,
@@ -626,6 +639,7 @@ const ventaFromRow = (row: Row, itemsRows: Row[]): GrocerySale => ({
   fecha: row.fecha as string,
   empleadoId: (row.empleado_id as string) ?? undefined,
   empleadoNombreCache: (row.empleado_nombre_cache as string) ?? undefined,
+  empleadoRolCache: (row.empleado_rol_cache as GrocerySale["empleadoRolCache"]) ?? undefined,
   cancelada: (row.cancelada as boolean) ?? false,
   canceladoPor: (row.cancelado_por as string) ?? undefined,
   motivoCancelacion: (row.motivo_cancelacion as string) ?? undefined,

@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/dashboards/empty-state";
 import { CobrarCitaDialog } from "@/components/dashboards/cobrar-cita-dialog";
 import { LimiteBar } from "@/components/dashboards/limite-bar";
 import { WhatsappRecordatorioButton } from "@/components/dashboards/whatsapp-recordatorio-button";
+import { EmpleadoBadge } from "@/components/dashboards/empleado-badge";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { formatHora12, formatMoney, todayISO, waLink } from "@/lib/mock";
@@ -374,6 +375,9 @@ function CitaRow({
           {c.servicioNombre} · {formatMoney(c.precio)}
         </p>
         <PendingSaleStatus negocioId={negocioId} fila={fila} />
+        <div className="mt-1">
+          <EmpleadoBadge nombre={c.empleadoNombreCache} rol={c.empleadoRolCache} />
+        </div>
       </div>
       {c.estado === "pendiente" ? (
         <Button size="sm" variant="ledger" onClick={() => onCobrar(c)}>

@@ -1,6 +1,9 @@
 import { supabase } from "./supabase";
 import type { EmpleadoActual, RolEmpleado } from "./types";
 
+/** Vive aquí (no en components/kiosko/quien-atiende.tsx, que la re-exporta para no romper a quien ya la importaba de ahí) porque componentes de solo lectura como EmpleadoBadge la necesitan sin arrastrar todo el flujo de PIN del kiosko. */
+export const ROL_LABEL: Record<RolEmpleado, string> = { dueno: "Dueño", encargado: "Encargado", vendedor: "Vendedor" };
+
 /**
  * Multiusuario (modo PIN) — ver negocio_empleados/auditoria_pin en
  * supabase/migrations/20260815000000_esquema.sql, la Edge Function supabase/functions/verificar-pin, y el
@@ -85,16 +88,19 @@ export function enModoEmpleado(): boolean {
 }
 
 /**
- * empleado_id/empleado_nombre_cache para adjuntar a una venta/pedido/cita
- * nueva. Si hay alguien identificado en este dispositivo (empleado o el
- * propio dueño vía kiosko) se llena con eso; si el negocio nunca activó
- * multiusuario (nadie pasó por el kiosko todavía) se queda vacío, igual
- * que antes de esta feature — nunca bloquea ni inventa un empleado.
+ * empleado_id/empleado_nombre_cache/empleado_rol_cache para adjuntar a una
+ * venta/pedido/cita/gasto nuevo. Si hay alguien identificado en este
+ * dispositivo (empleado o el propio dueño vía kiosko) se llena con eso; si
+ * el negocio nunca activó multiusuario (nadie pasó por el kiosko todavía)
+ * se queda vacío, igual que antes de esta feature — nunca bloquea ni
+ * inventa un empleado. empleadoRolCache (PR #121, trazabilidad
+ * vendedor/encargado) es lo que decide el badge amarillo (vendedor/
+ * encargado) vs gris (dueño) en las listas de movimientos.
  */
-export function camposEmpleado(): { empleadoId?: string; empleadoNombreCache?: string } {
+export function camposEmpleado(): { empleadoId?: string; empleadoNombreCache?: string; empleadoRolCache?: RolEmpleado } {
   const actual = getEmpleadoActual();
   if (!actual) return {};
-  return { empleadoId: actual.id, empleadoNombreCache: actual.nombre };
+  return { empleadoId: actual.id, empleadoNombreCache: actual.nombre, empleadoRolCache: actual.rol };
 }
 
 interface PermisosRol {

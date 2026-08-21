@@ -131,7 +131,13 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
     const gastoNum = gastoMonto.trim() === "" ? null : Number(gastoMonto);
 
     if (gastoNum && gastoNum > 0) {
-      const gasto: Expense = { id: uid("exp"), categoria: gastoConcepto.trim() || "Gasto del día", monto: gastoNum, fecha: hoyEnSuZona };
+      const gasto: Expense = {
+        id: uid("exp"),
+        categoria: gastoConcepto.trim() || "Gasto del día",
+        monto: gastoNum,
+        fecha: hoyEnSuZona,
+        ...camposEmpleado(),
+      };
       update((prev) => {
         const f = prev.fonda!;
         return { ...prev, fonda: { ...f, gastos: [gasto, ...f.gastos] } };
@@ -184,7 +190,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
       });
 
       if (decision.tipo === "tirado" && montoTirado && montoTirado > 0) {
-        nuevosGastos.push({ id: uid("exp"), categoria: `Merma: ${p.nombre}`, monto: montoTirado, fecha: hoyEnSuZona });
+        nuevosGastos.push({ id: uid("exp"), categoria: `Merma: ${p.nombre}`, monto: montoTirado, fecha: hoyEnSuZona, ...camposEmpleado() });
       }
     }
 

@@ -17,15 +17,19 @@ import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Tabs } from "@/components/ui/tabs";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { EmpleadoBadge } from "@/components/dashboards/empleado-badge";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { formatMoney, uid } from "@/lib/mock";
 import { aggregateTwoByRange, type RangoTiempo } from "@/lib/chart-buckets";
-import { camposEmpleado, permisosActuales } from "@/lib/empleados";
+import { camposEmpleado, permisosActuales, ROL_LABEL } from "@/lib/empleados";
 import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
 import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
 import { cn } from "@/lib/utils";
-import type { CajaEntry } from "@/lib/types";
+import type { CajaEntry, RolEmpleado } from "@/lib/types";
+
+/** Valor de personaFiltro para "sin empleado_nombre_cache" — un movimiento hecho por el dueño directo, sin pasar por el kiosko. */
+const PERSONA_DUENO = "__dueno__";
 
 const ICONS = { venta: Banknote, propina: HandCoins, gasto: Receipt };
 
@@ -44,6 +48,10 @@ export default function CajaPage() {
   const [rango, setRango] = React.useState<RangoTiempo>("semanal");
   // Multiusuario: un rol "vendedor" no puede borrar movimientos de Caja.
   const [puedeBorrar, setPuedeBorrar] = React.useState(true);
+  // Trazabilidad vendedor/encargado (PR #121) — mismo patrón que
+  // app/app/gastos/page.tsx: filtro frontend puro, acota data.caja/cortes
+  // ANTES de que alimenten totales, gráfica y lista.
+  const [personaFiltro, setPersonaFiltro] = React.useState<string>("todos");
 
   React.useEffect(() => {
     setPuedeBorrar(permisosActuales().borrarVentas);
@@ -61,24 +69,44 @@ export default function CajaPage() {
   // Los cortes marcados como "listo" en Agenda/Hoy también son ingresos —
   // viven en barberia_citas, no en barberia_caja, así que hay que sumarlos
   // aparte a Ingresos/Ganancia neta/Efectivo/Transferencia.
-  const cortes = data.citas.filter((c) => c.estado === "listo");
+  const cortesSinFiltroPersona = data.citas.filter((c) => c.estado === "listo");
+
+  // Roster de personas para los chips (PR #121, trazabilidad vendedor/
+  // encargado) — del universo completo, antes de aplicar personaFiltro.
+  const rolPorPersona = new Map<string, RolEmpleado>();
+  let hayMovimientosDeDueno = false;
+  for (const m of [...data.caja, ...cortesSinFiltroPersona]) {
+    if (m.empleadoNombreCache) rolPorPersona.set(m.empleadoNombreCache, m.empleadoRolCache ?? "vendedor");
+    else hayMovimientosDeDueno = true;
+  }
+  const personasDisponibles = Array.from(rolPorPersona.keys()).sort();
+  const hayEquipo = personasDisponibles.length > 0;
+
+  function coincidePersona(nombre?: string): boolean {
+    if (personaFiltro === "todos") return true;
+    if (personaFiltro === PERSONA_DUENO) return !nombre;
+    return nombre === personaFiltro;
+  }
+
+  const cajaFiltrada = data.caja.filter((e) => coincidePersona(e.empleadoNombreCache));
+  const cortes = cortesSinFiltroPersona.filter((c) => coincidePersona(c.empleadoNombreCache));
   const totalCortes = cortes.reduce((acc, c) => acc + c.precio, 0);
 
-  const ventas = data.caja.filter((e) => e.tipo === "venta").reduce((acc, e) => acc + e.monto, 0);
-  const propinas = data.caja.filter((e) => e.tipo === "propina").reduce((acc, e) => acc + e.monto, 0);
+  const ventas = cajaFiltrada.filter((e) => e.tipo === "venta").reduce((acc, e) => acc + e.monto, 0);
+  const propinas = cajaFiltrada.filter((e) => e.tipo === "propina").reduce((acc, e) => acc + e.monto, 0);
   const ingresos = ventas + propinas + totalCortes;
-  const gastos = data.caja.filter((e) => e.tipo === "gasto").reduce((acc, e) => acc + e.monto, 0);
+  const gastos = cajaFiltrada.filter((e) => e.tipo === "gasto").reduce((acc, e) => acc + e.monto, 0);
   const gananciaNeta = ingresos - gastos;
   const efectivo =
-    data.caja.filter((e) => e.tipo !== "gasto" && e.metodo === "efectivo").reduce((acc, e) => acc + e.monto, 0) +
+    cajaFiltrada.filter((e) => e.tipo !== "gasto" && e.metodo === "efectivo").reduce((acc, e) => acc + e.monto, 0) +
     cortes.filter((c) => (c.metodo ?? "efectivo") === "efectivo").reduce((acc, c) => acc + c.precio, 0);
   const transferencia =
-    data.caja.filter((e) => e.tipo !== "gasto" && e.metodo === "transferencia").reduce((acc, e) => acc + e.monto, 0) +
+    cajaFiltrada.filter((e) => e.tipo !== "gasto" && e.metodo === "transferencia").reduce((acc, e) => acc + e.monto, 0) +
     cortes.filter((c) => c.metodo === "transferencia").reduce((acc, c) => acc + c.precio, 0);
 
-  const movimientos = [...data.caja].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const movimientos = [...cajaFiltrada].sort((a, b) => b.fecha.localeCompare(a.fecha));
   const movsParaGrafica: { fecha: string; a: number; b: number }[] = [
-    ...data.caja.map((m) => (m.tipo === "gasto" ? { fecha: m.fecha, a: 0, b: m.monto } : { fecha: m.fecha, a: m.monto, b: 0 })),
+    ...cajaFiltrada.map((m) => (m.tipo === "gasto" ? { fecha: m.fecha, a: 0, b: m.monto } : { fecha: m.fecha, a: m.monto, b: 0 })),
     ...cortes.map((c) => ({ fecha: `${c.fecha}T${c.hora}`, a: c.precio, b: 0 })),
   ];
   const serie = aggregateTwoByRange(
@@ -108,6 +136,25 @@ export default function CajaPage() {
           </Button>
         }
       />
+      {hayEquipo && (
+        <div className="px-4">
+          <ChipGroup>
+            <Chip selected={personaFiltro === "todos"} onClick={() => setPersonaFiltro("todos")}>
+              Todos
+            </Chip>
+            {hayMovimientosDeDueno && (
+              <Chip selected={personaFiltro === PERSONA_DUENO} onClick={() => setPersonaFiltro(PERSONA_DUENO)}>
+                Dueño
+              </Chip>
+            )}
+            {personasDisponibles.map((nombre) => (
+              <Chip key={nombre} selected={personaFiltro === nombre} onClick={() => setPersonaFiltro(nombre)}>
+                {nombre} · {ROL_LABEL[rolPorPersona.get(nombre)!]}
+              </Chip>
+            ))}
+          </ChipGroup>
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-2 px-4">
         <StatTile label="Ingresos" value={formatMoney(ingresos)} />
         <StatTile label="Gastos" value={formatMoney(gastos)} />
@@ -179,6 +226,9 @@ export default function CajaPage() {
                     · {m.metodo === "efectivo" ? "Efectivo" : "Transferencia"}
                   </p>
                   <PendingSaleStatus negocioId={session.business.id} fila={movimientosPendientesPorId.get(m.id)} />
+                  <div className="mt-1">
+                    <EmpleadoBadge nombre={m.empleadoNombreCache} rol={m.empleadoRolCache} />
+                  </div>
                 </div>
                 <span className={cn("shrink-0 font-mono text-sm", m.tipo === "gasto" ? "text-destructive" : "text-foreground")}>
                   {m.tipo === "gasto" ? "-" : "+"}
