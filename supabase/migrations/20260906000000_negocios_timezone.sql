@@ -13,6 +13,17 @@
 -- alta; para esos, hoyEnZona() sigue cayendo a la zona del dispositivo que
 -- esté viendo el dashboard en ese momento (mismo fallback de siempre, ya
 -- no hardcodeado a una sola ciudad).
+-- set local row_security = off: el SQL Editor de Supabase corre por
+-- default como `postgres` (BYPASSRLS, ignora RLS de por sí), así que esto
+-- normalmente no cambia nada — pero si Owen lo corre bajo un rol/contexto
+-- distinto (impersonando authenticated, por ejemplo) esto evita que un
+-- ALTER/UPDATE choque con las policies de `negocios`. `alter table ...
+-- add column` es DDL: RLS nunca aplica a DDL de por sí (solo a SELECT/
+-- INSERT/UPDATE/DELETE), así que un error ahí no puede ser de RLS — si
+-- vuelve a fallar, es otra cosa (permisos del rol, o error de sintaxis) y
+-- hace falta el mensaje de error exacto para diagnosticarlo.
+set local row_security = off;
+
 alter table negocios add column if not exists timezone text;
 
 notify pgrst, 'reload schema';
