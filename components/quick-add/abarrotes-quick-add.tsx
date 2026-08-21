@@ -13,6 +13,7 @@ import { VentaCart } from "@/components/abarrotes/venta-cart";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatMoney, todayISO } from "@/lib/mock";
+import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, Expense, GroceryProduct } from "@/lib/types";
 
 // "Nuevo apartado" ya no vive aquí — Frutas y Verdura (tab propio en
@@ -218,6 +219,7 @@ function NuevoFiadoForm({ onClose, update }: { onClose: () => void; update: Prop
             telefono: telefono.trim(),
             saldo: montoNum,
             historial: [{ fecha: todayISO(0), monto: montoNum, tipo: "cargo" as const }],
+            ...camposEmpleado(),
           },
           ...a.fiados,
         ];
@@ -265,7 +267,7 @@ function NuevoGastoForm({ onClose, update }: { onClose: () => void; update: Prop
     if (!puedeGuardar) return;
     update((prev) => {
       const a = prev.abarrotes!;
-      const gasto: Expense = { id: uid("exp"), categoria, monto: Number(monto), fecha: fechaPago, recordatorio };
+      const gasto: Expense = { id: uid("exp"), categoria, monto: Number(monto), fecha: fechaPago, recordatorio, ...camposEmpleado() };
       return { ...prev, abarrotes: { ...a, gastos: [gasto, ...a.gastos] } };
     });
     onClose();

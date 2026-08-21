@@ -667,6 +667,9 @@ const fiadoToRow = (f: Fiado, negocioId: string): Row => ({
   cliente_nombre: f.clienteNombre,
   telefono: f.telefono,
   saldo: f.saldo,
+  empleado_id: f.empleadoId ?? null,
+  empleado_nombre_cache: f.empleadoNombreCache ?? null,
+  empleado_rol_cache: f.empleadoRolCache ?? null,
 });
 const movimientoToRow = (m: { fecha: string; monto: number; tipo: string }, fiadoId: string): Row => ({
   fiado_id: fiadoId,
@@ -804,6 +807,9 @@ async function fetchAbarrotesData(negocioId: string): Promise<AbarrotesData> {
     clienteNombre: row.cliente_nombre as string,
     telefono: row.telefono as string,
     saldo: Number(row.saldo),
+    empleadoId: (row.empleado_id as string) ?? undefined,
+    empleadoNombreCache: (row.empleado_nombre_cache as string) ?? undefined,
+    empleadoRolCache: (row.empleado_rol_cache as Fiado["empleadoRolCache"]) ?? undefined,
     historial: movimientosData
       .filter((m) => m.fiado_id === row.id)
       .map((m) => ({ fecha: m.fecha as string, monto: Number(m.monto), tipo: m.tipo as "cargo" | "abono" })),

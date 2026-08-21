@@ -14,6 +14,7 @@ import { AbonoDialog } from "@/components/dashboards/abono-dialog";
 import { StatTile } from "@/components/dashboards/stat-tile";
 import { EmptyState } from "@/components/dashboards/empty-state";
 import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
+import { EmpleadoBadge } from "@/components/dashboards/empleado-badge";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { formatMoney, todayISO, waLink } from "@/lib/mock";
@@ -86,6 +87,9 @@ export default function FiadosPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{f.clienteNombre}</p>
                   <p className="text-xs text-muted-foreground">{f.telefono}</p>
+                  <div className="mt-1">
+                    <EmpleadoBadge nombre={f.empleadoNombreCache} rol={f.empleadoRolCache} />
+                  </div>
                 </div>
                 <span className="shrink-0 font-mono text-sm font-semibold text-primary">{formatMoney(f.saldo)}</span>
               </button>
