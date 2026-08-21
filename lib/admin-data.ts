@@ -214,6 +214,7 @@ export interface UserDetailNegocio {
   id: string;
   nombre: string;
   tipo: BusinessType;
+  ownerPhone: string;
   isActive: boolean;
   createdAt: string;
   stats: { label: string; value: number }[];
@@ -329,6 +330,10 @@ export async function fetchUserDetail(
       id: n.id,
       nombre: n.nombre,
       tipo: n.tipo,
+      // Ver comentario igual en fetchAdminOverview más arriba: telefono_contacto
+      // primero (obligatorio en /onboarding), whatsapp de citas como respaldo,
+      // telefono ("de recuperación") al final.
+      ownerPhone: (n.telefono_contacto as string) || (n.whatsapp as string) || n.telefono || "",
       isActive: n.is_active,
       createdAt: n.created_at,
       stats: extra.stats,

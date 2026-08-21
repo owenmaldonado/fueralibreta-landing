@@ -1,7 +1,20 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, ShieldCheck, ShieldOff } from "lucide-react";
+import { toast } from "sonner";
+import {
+  Loader2,
+  ShieldCheck,
+  ShieldOff,
+  UserCog,
+  MessageCircle,
+  Copy,
+  Crown,
+  Gift,
+  Ban,
+  CheckCircle2,
+  Trash2,
+} from "lucide-react";
 
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { Avatar } from "@/components/ui/avatar";
@@ -9,7 +22,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { NegocioBillingCard } from "./negocio-billing-card";
 import { fetchUserDetail, type AdminProfile, type UserDetailNegocio } from "@/lib/admin-data";
-import { formatMoney } from "@/lib/mock";
+import { formatMoney, waLink } from "@/lib/mock";
+import type { PlanId } from "@/lib/planes";
+
+/** Título de sección (VER/CONTACTO/PLAN/PELIGRO) sobre una grilla de botones grandes — mismo patrón en cada bloque de acciones. */
+function AccionesGrupo({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">{titulo}</p>
+      <div className="grid grid-cols-2 gap-2">{children}</div>
+    </div>
+  );
+}
 
 export function UserDetailDialog({
   userId,
@@ -17,6 +41,12 @@ export function UserDetailDialog({
   onToggleRole,
   onToggleFundador,
   onSaveFacturacion,
+  onImpersonate,
+  onSetPlan,
+  onSetTrial,
+  onActivarPlan,
+  onToggleBanned,
+  onDeleteRequest,
 }: {
   userId: string | null;
   onClose: () => void;
@@ -26,6 +56,12 @@ export function UserDetailDialog({
     negocioId: string,
     cambios: { precioCustom: number | null; trialInicio: string; trialFin: string; notasAdmin: string | null }
   ) => void;
+  onImpersonate: (profile: AdminProfile) => void;
+  onSetPlan: (negocioId: string, plan: PlanId, nombre: string) => void;
+  onSetTrial: (negocioId: string, dias: 7 | 14 | 30, nombre: string) => void;
+  onActivarPlan: (negocioId: string, plan: PlanId, nombre: string) => void;
+  onToggleBanned: (profile: AdminProfile) => void;
+  onDeleteRequest: (profile: AdminProfile) => void;
 }) {
   const [loading, setLoading] = React.useState(false);
   const [profile, setProfile] = React.useState<AdminProfile | null>(null);
@@ -55,6 +91,13 @@ export function UserDetailDialog({
   }, [userId]);
 
   const esFundadorAlgunNegocio = negocios.some((n) => n.esFundador);
+
+  function copiarNumero(numero: string) {
+    navigator.clipboard
+      .writeText(numero)
+      .then(() => toast.success("Número copiado"))
+      .catch(() => toast.error("No se pudo copiar"));
+  }
 
   return (
     <Dialog open={!!userId} onOpenChange={(o) => !o && onClose()} className="max-w-xl">
@@ -138,17 +181,62 @@ export function UserDetailDialog({
                         onSaveFacturacion={onSaveFacturacion}
                       />
                     </div>
+
+                    <div className="mt-3 flex flex-col gap-3">
+                      {n.ownerPhone && (
+                        <AccionesGrupo titulo="Contacto">
+                          <Button asChild size="sm" variant="ledger">
+                            <a href={waLink(n.ownerPhone, `Hola, te escribo de Fuera Libreta sobre ${n.nombre}.`)} target="_blank" rel="noreferrer">
+                              <MessageCircle className="h-4 w-4" /> Abrir WhatsApp
+                            </a>
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => copiarNumero(n.ownerPhone)}>
+                            <Copy className="h-4 w-4" /> Copiar número
+                          </Button>
+                        </AccionesGrupo>
+                      )}
+                      <AccionesGrupo titulo="Plan">
+                        <Button size="sm" variant="outline" onClick={() => onActivarPlan(n.id, "pro", n.nombre)}>
+                          <Crown className="h-4 w-4" /> Activar Pro 30d
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => onSetTrial(n.id, 7, n.nombre)}>
+                          <Gift className="h-4 w-4" /> Trial 7d
+                        </Button>
+                        <Button size="sm" variant="outline" className="col-span-2" onClick={() => onSetPlan(n.id, "basico", n.nombre)}>
+                          Cambiar a Free
+                        </Button>
+                      </AccionesGrupo>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="border-t border-border pt-4">
-            <Button variant="outline" size="sm" onClick={() => onToggleRole(profile)}>
-              {profile.role === "admin" ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
-              {profile.role === "admin" ? "Quitar admin" : "Hacer admin"}
-            </Button>
+          <div className="flex flex-col gap-3 border-t border-border pt-4">
+            <AccionesGrupo titulo="Ver">
+              <Button size="sm" variant="outline" className="col-span-2" onClick={() => onImpersonate(profile)}>
+                <UserCog className="h-4 w-4" /> Ver como usuario
+              </Button>
+            </AccionesGrupo>
+            <AccionesGrupo titulo="Peligro">
+              <Button size="sm" variant="outline" onClick={() => onToggleRole(profile)}>
+                {profile.role === "admin" ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+                {profile.role === "admin" ? "Quitar admin" : "Hacer admin"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => onToggleBanned(profile)}>
+                {profile.isBanned ? <CheckCircle2 className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+                {profile.isBanned ? "Activar" : "Banear"}
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="col-span-2"
+                onClick={() => onDeleteRequest(profile)}
+              >
+                <Trash2 className="h-4 w-4" /> Eliminar
+              </Button>
+            </AccionesGrupo>
           </div>
         </div>
       ) : null}
