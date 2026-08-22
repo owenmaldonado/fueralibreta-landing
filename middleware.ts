@@ -15,6 +15,14 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 // normal y no localStorage: localStorage no existe aquí.
 const RUTAS_SOLO_DUENO = ["/app/empleados", "/app/configuracion"];
 
+// Igual que RUTAS_SOLO_DUENO pero solo bloquea "vendedor" — un "encargado"
+// SÍ puede ajustar inventario (PERMISOS.encargado.ajustarInventario=true en
+// lib/empleados.ts), a diferencia de Configuración/Empleados donde ambos
+// roles están igual de restringidos. Un vendedor podía entrar a Productos
+// por URL directa y cambiar precios/costos aunque el botón estuviera
+// oculto en /app/mas.
+const RUTAS_SOLO_DUENO_O_ENCARGADO = ["/app/productos"];
+
 // Mismo set que SEGMENTOS_DE_NEGOCIO en
 // components/app-shell/authenticated-shell.tsx — duplicado a propósito: ese
 // vive en un Client Component, este corre en el edge. Mantenerlos en sync si
@@ -65,12 +73,17 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(target);
   }
 
-  if (RUTAS_SOLO_DUENO.some((r) => url.pathname === r || url.pathname.startsWith(`${r}/`))) {
+  const coincideRuta = (rutas: string[]) => rutas.some((r) => url.pathname === r || url.pathname.startsWith(`${r}/`));
+  const esRutaSoloDueno = coincideRuta(RUTAS_SOLO_DUENO);
+  const esRutaSoloDuenoOEncargado = !esRutaSoloDueno && coincideRuta(RUTAS_SOLO_DUENO_O_ENCARGADO);
+
+  if (esRutaSoloDueno || esRutaSoloDuenoOEncargado) {
     const cookieEmpleado = req.cookies.get("fl_empleado")?.value;
     if (cookieEmpleado) {
       try {
         const empleado = JSON.parse(cookieEmpleado);
-        if (empleado?.rol && empleado.rol !== "dueno") {
+        const bloqueado = esRutaSoloDueno ? empleado?.rol && empleado.rol !== "dueno" : empleado?.rol === "vendedor";
+        if (bloqueado) {
           // ?bloqueado=dueno&destino=<ruta pedida>: antes este redirect era
           // mudo — un empleado (o una cookie fl_empleado vieja/colgada en
           // OTRA pestaña de este mismo navegador, que el dueño de esta

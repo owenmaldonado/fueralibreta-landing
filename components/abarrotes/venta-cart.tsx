@@ -12,8 +12,9 @@ import { Button } from "@/components/ui/button";
 import { ChipGroup, Chip } from "@/components/ui/chip";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Dialog, DialogHeader, DialogFooter } from "@/components/ui/dialog";
+import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { BarcodeScanner } from "@/components/barcode-scanner";
-import { uid, formatMoney } from "@/lib/mock";
+import { uid, formatMoney, redondear2 } from "@/lib/mock";
 import { usePlan } from "@/lib/planes";
 import { camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
@@ -82,6 +83,7 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
   const [cart, setCart] = React.useState<CartLine[]>([]);
   const [scanning, setScanning] = React.useState(false);
   const [rapidaOpen, setRapidaOpen] = React.useState(false);
+  const [pesoRapidoProducto, setPesoRapidoProducto] = React.useState<GroceryProduct | null>(null);
 
   React.useEffect(() => setMounted(true), []);
 
@@ -140,6 +142,30 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
     });
   }
 
+  /** Frutas y Verdura: agrega directo con el peso elegido en PesoRapidoSheet (sin el +0.5 fijo de agregarProducto), acumulando si el producto ya está en el carrito. */
+  function agregarProductoConCantidad(p: GroceryProduct, cantidad: number) {
+    if (p.stock <= 0) {
+      toast.error(`${p.nombre} no tiene stock disponible`);
+      return;
+    }
+    setCart((prev) => {
+      const existente = prev.find((l) => l.productoId === p.id);
+      if (existente) {
+        return prev.map((l) => (l.productoId === p.id ? { ...l, cantidad: Math.min(l.cantidad + cantidad, p.stock) } : l));
+      }
+      return [
+        ...prev,
+        {
+          productoId: p.id,
+          productoNombre: p.nombre,
+          cantidad: Math.min(cantidad, p.stock),
+          precioUnitario: p.precio,
+          unidad: p.unidad,
+        },
+      ];
+    });
+  }
+
   function agregarRapido(nombre: string, precio: number) {
     setCart((prev) => [
       ...prev,
@@ -180,7 +206,7 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
     toast.success(`${producto.nombre} agregado al carrito`);
   }
 
-  const total = cart.reduce((acc, l) => acc + l.cantidad * l.precioUnitario, 0);
+  const total = redondear2(cart.reduce((acc, l) => acc + redondear2(l.cantidad * l.precioUnitario), 0));
   const cantidadTotal = cart.reduce((acc, l) => acc + l.cantidad, 0);
   const ventasEsteMes = React.useMemo(() => {
     const ahora = new Date();
@@ -209,7 +235,7 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
             productoNombre: l.productoNombre,
             cantidad: l.cantidad,
             precioUnitario: l.precioUnitario,
-            subtotal: l.cantidad * l.precioUnitario,
+            subtotal: redondear2(l.cantidad * l.precioUnitario),
             // Snapshot del costo AL COBRAR — la ganancia de esta venta no debe
             // moverse si el costo del producto se edita después. "Venta
             // rápida" (sin productoId, no está en el inventario) no tiene
@@ -295,7 +321,7 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => agregarProducto(p)}
+                    onClick={() => (p.isVolatile ? setPesoRapidoProducto(p) : agregarProducto(p))}
                     disabled={p.stock <= 0}
                     className="flex flex-col items-center gap-1.5 rounded-2xl border border-border bg-card p-3 text-center transition-transform active:scale-95 disabled:opacity-40"
                   >
@@ -436,6 +462,15 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
       {scanning && <BarcodeScanner onScan={handleScan} onClose={() => setScanning(false)} />}
 
       <VentaRapidaDialog open={rapidaOpen} onClose={() => setRapidaOpen(false)} onAgregar={agregarRapido} />
+
+      <PesoRapidoSheet
+        producto={pesoRapidoProducto}
+        onClose={() => setPesoRapidoProducto(null)}
+        onAgregar={(cantidad) => {
+          if (pesoRapidoProducto) agregarProductoConCantidad(pesoRapidoProducto, cantidad);
+          setPesoRapidoProducto(null);
+        }}
+      />
     </div>,
     document.body
   );
@@ -528,5 +563,78 @@ function VentaRapidaDialog({
         </Button>
       </DialogFooter>
     </Dialog>
+  );
+}
+
+const PESOS_RAPIDOS = [0.25, 0.5, 0.75, 1, 1.5, 2];
+
+/** Frutas y Verdura: al tocar un producto por peso (isVolatile), en vez del
+ * +0.5 fijo de agregarProducto, este bottom sheet deja elegir un peso común
+ * de un toque o escribir uno exacto — sin click extra para confirmar el
+ * preset. Solo se usa para productos isVolatile; el resto del flujo de venta
+ * (piezas, abarrotes normales) no lo toca. */
+function PesoRapidoSheet({
+  producto,
+  onClose,
+  onAgregar,
+}: {
+  producto: GroceryProduct | null;
+  onClose: () => void;
+  onAgregar: (cantidad: number) => void;
+}) {
+  const [manual, setManual] = React.useState("");
+
+  React.useEffect(() => {
+    if (producto) setManual("");
+  }, [producto]);
+
+  const manualNum = Number(manual);
+  const puedeAgregarManual = manual.trim() !== "" && !Number.isNaN(manualNum) && manualNum > 0;
+
+  return (
+    <Sheet open={!!producto} onOpenChange={(o) => !o && onClose()}>
+      {producto && (
+        <>
+          <SheetHeader
+            title={`${emojiProducto(producto)} ${producto.nombre}`}
+            description={`${formatMoney(producto.precio)}/${producto.unidad}`}
+            onClose={onClose}
+          />
+          <div className="grid grid-cols-3 gap-2">
+            {PESOS_RAPIDOS.map((kg) => (
+              <button
+                key={kg}
+                type="button"
+                onClick={() => onAgregar(kg)}
+                className="flex flex-col items-center gap-0.5 rounded-xl border border-border bg-card py-3 text-center transition-transform active:scale-95 hover:border-primary"
+              >
+                <span className="font-mono text-sm font-bold">{kg} {producto.unidad}</span>
+                <span className="text-[10px] text-muted-foreground">{formatMoney(redondear2(kg * producto.precio))}</span>
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 space-y-1.5">
+            <Label>Cantidad exacta ({producto.unidad})</Label>
+            <div className="flex gap-2">
+              <Input
+                autoFocus
+                type="text"
+                inputMode="decimal"
+                value={manual}
+                onChange={(e) => setManual(e.target.value)}
+                placeholder={`Ej. 0.350`}
+                className="flex-1"
+              />
+              <Button disabled={!puedeAgregarManual} onClick={() => puedeAgregarManual && onAgregar(manualNum)}>
+                Agregar
+              </Button>
+            </div>
+            {puedeAgregarManual && (
+              <p className="text-xs text-muted-foreground">Subtotal: {formatMoney(redondear2(manualNum * producto.precio))}</p>
+            )}
+          </div>
+        </>
+      )}
+    </Sheet>
   );
 }

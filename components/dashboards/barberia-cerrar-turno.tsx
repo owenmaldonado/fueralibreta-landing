@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { cleanInsert } from "@/lib/data";
-import { formatMoney, mensajeDiferencia, mensajeEsperado, uid } from "@/lib/mock";
+import { formatMoney, fechaCalendarioLocal, mensajeDiferencia, mensajeEsperado, redondear2, uid } from "@/lib/mock";
 import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, CajaEntry, InventoryProduct } from "@/lib/types";
@@ -88,7 +88,19 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
   const hoy = hoyEnZona(negocio.timezone);
 
   const citasHoyListo = data.citas.filter((c) => c.fecha === hoy && c.estado === "listo");
-  const ventasHoyTotal = citasHoyListo.reduce((acc, c) => acc + c.precio, 0);
+  // El corte solo sumaba citas — cualquier "Nueva venta"/"Nuevo gasto"
+  // manual (Caja > Nuevo, o el FAB de Caja) hecho por CUALQUIER empleado
+  // hoy quedaba fuera de "Ventas de hoy"/esperado, aunque sí aparecía en
+  // la gráfica real de Caja: un vendedor podía cobrar una venta manual y
+  // registrar un gasto y el corte del día ni se enteraba. fechaCalendarioLocal
+  // (no comparar el ISO crudo) porque CajaEntry.fecha lleva hora — un
+  // movimiento de las 11pm en UTC puede seguir siendo "hoy" en la zona del
+  // negocio.
+  const cajaHoy = data.caja.filter((m) => fechaCalendarioLocal(m.fecha, negocio.timezone) === hoy);
+  const ventasCajaHoy = cajaHoy.filter((m) => m.tipo === "venta");
+  const propinasCajaHoyEfectivo = cajaHoy.filter((m) => m.tipo === "propina" && m.metodo === "efectivo");
+  const gastosCajaHoy = cajaHoy.filter((m) => m.tipo === "gasto");
+  const ventasHoyTotal = citasHoyListo.reduce((acc, c) => acc + c.precio, 0) + ventasCajaHoy.reduce((acc, m) => acc + m.monto, 0);
   const citasAtendidas = citasHoyListo.length;
   const ventasPorEmpleado = React.useMemo(() => {
     const mapa = new Map<string, number>();
@@ -96,17 +108,26 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
       const nombre = c.empleadoNombreCache ?? "Dueño";
       mapa.set(nombre, (mapa.get(nombre) ?? 0) + c.precio);
     }
+    for (const m of ventasCajaHoy) {
+      const nombre = m.empleadoNombreCache ?? "Dueño";
+      mapa.set(nombre, (mapa.get(nombre) ?? 0) + m.monto);
+    }
     return Array.from(mapa, ([nombre, monto]) => ({ nombre, monto }));
-  }, [citasHoyListo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [citasHoyListo, ventasCajaHoy]);
 
-  // Lo que DEBERÍA haber en la caja: lo vendido, más lo que ya había de
-  // fondo, menos lo que se gastó — no solo "efectivo vs ventas" (eso
+  // Lo que DEBERÍA haber en la caja: lo vendido (citas + ventas manuales de
+  // Caja de hoy, de cualquier empleado) + propinas en efectivo + lo que ya
+  // había de fondo, menos lo que ya se gastó hoy (Caja) y lo que se
+  // registre en este mismo paso — no solo "efectivo vs ventas" (eso
   // ignoraba fondo inicial y gastos, mostrando faltantes reales como si
   // "sobrara" dinero). Los gastos de material del paso 2 no cuentan aquí:
   // todavía no existen cuando se muestra esta diferencia, en el paso 1.
   const fondoInicialNum = fondoInicial.trim() === "" ? 0 : Number(fondoInicial) || 0;
   const gastoPaso1Num = gastoMonto.trim() === "" ? 0 : Number(gastoMonto) || 0;
-  const esperado = ventasHoyTotal + fondoInicialNum - gastoPaso1Num;
+  const propinasCajaHoyTotal = propinasCajaHoyEfectivo.reduce((acc, m) => acc + m.monto, 0);
+  const gastosCajaHoyTotal = gastosCajaHoy.reduce((acc, m) => acc + m.monto, 0);
+  const esperado = redondear2(ventasHoyTotal + propinasCajaHoyTotal + fondoInicialNum - gastoPaso1Num - gastosCajaHoyTotal);
   const efectivoValido = efectivoReal.trim() !== "" && !isNaN(Number(efectivoReal)) && Number(efectivoReal) >= 0;
   // Redondeado al peso entero: mismo criterio que mensajeDiferencia() (lib/mock.ts)
   // — así el color de arriba y el mensaje nunca se contradicen, y lo que se

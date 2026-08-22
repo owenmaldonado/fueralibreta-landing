@@ -90,6 +90,32 @@ export function formatHora12(hhmm: string): string {
 }
 
 /**
+ * Solo dígitos, sin el 52 de lada de país si el número ya trae 12 dígitos
+ * con ese prefijo — para poder comparar "33 1234 5678", "+52 33-1234-5678"
+ * y "523312345678" como el MISMO teléfono. Antes ClienteBuscador (Nueva
+ * Cita) comparaba el texto crudo, así que un cliente ya dado de alta con
+ * un formato distinto no aparecía en las sugerencias y se creaba un
+ * cliente duplicado con el mismo número.
+ */
+export function normalizarTelefono(telefono: string): string {
+  const digitos = telefono.replace(/\D/g, "");
+  return digitos.length === 12 && digitos.startsWith("52") ? digitos.slice(2) : digitos;
+}
+
+/**
+ * qty * precio con precisión de centavos — sin esto, un producto por peso
+ * (ej. 0.060 kg de jitomate a $55/kg = 3.3000000000000003 en punto
+ * flotante de JS) arrastra ese residuo hasta el total de la venta y de ahí
+ * a "Ventas de hoy" en Cerrar Turno/Día — el efectivo real SÍ cuadraba,
+ * pero "lo que deberías tener" quedaba unos centavos desfasado y el
+ * redondeo final a peso entero (mensajeDiferencia) a veces lo convertía en
+ * "Te sobra/falta $1" con el mismo efectivo exacto en mano.
+ */
+export function redondear2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
  * Fecha LOCAL en formato YYYY-MM-DD. Ojo: NO usar d.toISOString() aquí —
  * eso da la fecha en UTC, que se adelanta o atrasa hasta varias horas
  * respecto al día local (en México, de 6pm a medianoche ya es "mañana" en

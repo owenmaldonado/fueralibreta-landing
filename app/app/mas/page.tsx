@@ -12,6 +12,7 @@ import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { ADMIN_EMAIL } from "@/lib/admin-data";
+import { getEmpleadoActual } from "@/lib/empleados";
 
 const LINKS = [
   { href: "/app/productos", label: "Productos", desc: "Inventario de insumos", icon: Boxes },
@@ -30,18 +31,39 @@ const LINKS_BARBERIA = [
   { href: "/app/historial", label: "Historial", desc: "Citas de días anteriores", icon: History },
 ];
 
+/** Mismo criterio que middleware.ts (RUTAS_SOLO_DUENO/RUTAS_SOLO_DUENO_O_ENCARGADO): oculta lo que esa ruta igual va a rebotar. */
+function linkVisible(href: string, rol: "dueno" | "encargado" | "vendedor"): boolean {
+  const soloDueno = href.startsWith("/app/configuracion") || href.startsWith("/app/empleados");
+  if (soloDueno) return rol === "dueno";
+  const soloDuenoOEncargado = href.startsWith("/app/productos");
+  if (soloDuenoOEncargado) return rol !== "vendedor";
+  return true;
+}
+
 export default function MasPage() {
   const { session, ready } = useSession();
   const plan = usePlan();
   const [isAdmin, setIsAdmin] = React.useState(false);
   const [origin, setOrigin] = React.useState("");
   const [copiado, setCopiado] = React.useState(false);
+  // Empleados/Configuración ya están bloqueados por middleware.ts para
+  // cualquier no-dueño, y Productos para vendedor — pero antes de este
+  // cambio /app/mas seguía mostrando esos links igual, así que tocarlos
+  // primero rebotaba con un toast en vez de simplemente no aparecer. Se
+  // resuelve en un efecto (getEmpleadoActual lee una cookie) para no
+  // desalinear el primer render del servidor con el del cliente — mismo
+  // criterio que puedeBorrar en app/app/pedidos/page.tsx.
+  const [rolActual, setRolActual] = React.useState<"dueno" | "encargado" | "vendedor">("dueno");
 
   React.useEffect(() => {
     if (!isSupabaseConfigured) return;
     supabase.auth.getUser().then(({ data }) => {
       setIsAdmin(data.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase());
     });
+  }, []);
+
+  React.useEffect(() => {
+    setRolActual(getEmpleadoActual()?.rol ?? "dueno");
   }, []);
 
   React.useEffect(() => {
@@ -118,7 +140,12 @@ export default function MasPage() {
           </BloqueoPlan>
         )}
 
-        {(esBarberia ? LINKS_BARBERIA : LINKS).map((l) => (
+        {rolActual !== "dueno" && (
+          <p className="px-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Solo propietario: Configuración/Empleados{rolActual === "vendedor" ? "/Productos" : ""} ocultos
+          </p>
+        )}
+        {(esBarberia ? LINKS_BARBERIA : LINKS).filter((l) => linkVisible(l.href, rolActual)).map((l) => (
           <Link key={l.href} href={l.href} className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
               <l.icon className="h-5 w-5" />
