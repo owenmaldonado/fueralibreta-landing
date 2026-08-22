@@ -83,7 +83,7 @@ export default function ReservaPublicaPage() {
         servicios: demo.barberia.servicios,
         horario: demo.barberia.horario,
         excepciones: demo.barberia.excepciones,
-        citas: demo.barberia.citas.map((c) => ({ fecha: c.fecha, hora: c.hora, estado: c.estado })),
+        citas: demo.barberia.citas.map((c) => ({ fecha: c.fecha, hora: c.hora, estado: c.estado, servicioId: c.servicioId })),
       });
       setModoDemo(true);
       return true;

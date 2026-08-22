@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { insertGastoDirecto, cleanInsert } from "@/lib/data";
-import { formatMoney, mensajeDiferencia, uid } from "@/lib/mock";
+import { formatMoney, mensajeDiferencia, mensajeEsperado, redondear2, uid } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
 import { cerrarTurno } from "@/lib/turno-fonda";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
@@ -105,10 +105,15 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
   // Lo que DEBERÍA haber en la caja: lo vendido, más lo que ya había de
   // fondo, menos lo que se gastó — no solo "efectivo vs ventas" (eso
   // ignoraba fondo inicial y gastos, mostrando faltantes reales como si
-  // "sobrara" dinero).
+  // "sobrara" dinero). "Lo que se gastó" antes SOLO era el campo de este
+  // mismo paso — un gasto registrado hoy desde Gastos/Ventas (por
+  // cualquier empleado) no se restaba, así que el corte podía decir que
+  // sobraba dinero que en realidad ya se había gastado en otro lado.
+  const gastosHoyDelDia = data.gastos.filter((g) => g.fecha === hoyEnSuZona);
   const fondoInicialNum = fondoInicial.trim() === "" ? 0 : Number(fondoInicial) || 0;
   const gastoNum = gastoMonto.trim() === "" ? 0 : Number(gastoMonto) || 0;
-  const esperado = ventasHoy + fondoInicialNum - gastoNum;
+  const gastosHoyDelDiaTotal = gastosHoyDelDia.reduce((acc, g) => acc + g.monto, 0);
+  const esperado = redondear2(ventasHoy + fondoInicialNum - gastoNum - gastosHoyDelDiaTotal);
   const efectivoValido = efectivoReal.trim() !== "" && !isNaN(Number(efectivoReal)) && Number(efectivoReal) >= 0;
   // Redondeado al peso entero: mismo criterio que mensajeDiferencia() (lib/mock.ts)
   // — así el color de arriba y el mensaje nunca se contradicen, y lo que se
@@ -294,14 +299,16 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
             <div className="space-y-1.5">
               <Label>¿Efectivo real en mano?</Label>
               <Input type="number" inputMode="decimal" autoFocus value={efectivoReal} onChange={(e) => setEfectivoReal(e.target.value)} placeholder="$0" />
-              {diferencia != null && (
+              {diferencia != null ? (
                 <p
                   className={`px-1 text-xs font-medium ${
                     diferencia === 0 ? "text-ledger" : diferencia < 0 ? "text-destructive" : "text-muted-foreground"
                   }`}
                 >
-                  {mensajeDiferencia(diferencia)}
+                  {mensajeDiferencia(diferencia, esperado)}
                 </p>
+              ) : (
+                <p className="px-1 text-xs font-medium text-muted-foreground">{mensajeEsperado(esperado)}</p>
               )}
             </div>
             <div className="space-y-1.5">

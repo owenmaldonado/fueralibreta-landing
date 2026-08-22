@@ -41,6 +41,13 @@ export default function AgendaPage() {
   const plan = usePlan();
   const [modo, setModo] = React.useState<Modo>("hoy");
   const [fecha, setFecha] = React.useState(todayISO(0));
+  // "Fecha" empieza SIEMPRE mostrando todas las próximas citas (hoy en
+  // adelante) — antes arrancaba en un solo día (el de `fecha`, normalmente
+  // hoy), así que una cita agendada para dentro de 15 días era invisible
+  // hasta picar esa fecha exacta a mano, uno por uno. Se vuelve a poner en
+  // false cada vez que se entra a la pestaña — elegir un día puntual en el
+  // input de fecha es una acción explícita de "quiero ver solo ESTE día".
+  const [fechaFiltroActiva, setFechaFiltroActiva] = React.useState(false);
   const [moviendo, setMoviendo] = React.useState<Appointment | null>(null);
   const [cobrando, setCobrando] = React.useState<Appointment | null>(null);
   const [cancelando, setCancelando] = React.useState<Appointment | null>(null);
@@ -148,21 +155,51 @@ export default function AgendaPage() {
       <PageHeader title="Agenda" subtitle={subtitle} />
       <LimiteBar actual={citasDelMes} max={maxCitas} etiqueta="citas este mes" planLabel={plan.label} />
       <div className="px-4 pb-3">
-        <Tabs value={modo} onValueChange={(v) => setModo(v as Modo)} tabs={MODO_TABS} />
+        <Tabs
+          value={modo}
+          onValueChange={(v) => {
+            setModo(v as Modo);
+            if (v === "fecha") setFechaFiltroActiva(false);
+          }}
+          tabs={MODO_TABS}
+        />
       </div>
 
       {modo === "fecha" && (
-        <div className="px-4 pb-3">
+        <div className="flex items-center gap-2 px-4 pb-3">
           <input
             type="date"
             value={fecha}
-            onChange={(e) => setFecha(e.target.value)}
+            onChange={(e) => {
+              setFecha(e.target.value);
+              setFechaFiltroActiva(true);
+            }}
             className="rounded-full border border-border bg-transparent px-4 py-2 text-sm text-muted-foreground"
           />
+          {fechaFiltroActiva && (
+            <button
+              type="button"
+              onClick={() => setFechaFiltroActiva(false)}
+              className="font-mono text-[10px] uppercase tracking-widest text-primary"
+            >
+              Ver todas las próximas
+            </button>
+          )}
         </div>
       )}
 
-      {modo === "semanal" ? (
+      {modo === "fecha" && !fechaFiltroActiva ? (
+        <ProximasView
+          data={data}
+          onCobrar={setCobrando}
+          onMover={setMoviendo}
+          onCancelar={setCancelando}
+          negocioNombre={negocioNombre}
+          negocioId={negocioId}
+          pendientesPorId={citasPendientesPorId}
+          msg28={plan.giroBarberia.msg28}
+        />
+      ) : modo === "semanal" ? (
         <SemanaView
           data={data}
           fecha={fecha}
@@ -209,6 +246,66 @@ export default function AgendaPage() {
         </DialogFooter>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * Todas las citas de hoy en adelante, agrupadas por día — la pestaña
+ * "Fecha" arranca aquí (ver fechaFiltroActiva en AgendaPage) para que una
+ * cita dentro de 15 días no quede invisible hasta picar esa fecha exacta a
+ * mano. Ya todo `data.citas` vive cargado en memoria (no hay paginación
+ * real que hacer), así que "ver todas" es simplemente pintar la lista
+ * completa en una sola página con scroll normal — no hace falta scroll
+ * infinito de verdad.
+ */
+function ProximasView({
+  data,
+  onCobrar,
+  onMover,
+  onCancelar,
+  negocioNombre,
+  negocioId,
+  pendientesPorId,
+  msg28,
+}: {
+  data: BarberiaData;
+  onCobrar: (c: Appointment) => void;
+  onMover: (c: Appointment) => void;
+  onCancelar: (c: Appointment) => void;
+  negocioNombre: string;
+  negocioId: string;
+  pendientesPorId: Map<string, VentaPendienteRow>;
+  msg28: boolean;
+}) {
+  const hoy = todayISO(0);
+  const fechas = Array.from(new Set(data.citas.filter((c) => c.fecha >= hoy && c.estado !== "cancelada").map((c) => c.fecha))).sort();
+  const porDia = fechas.map((fecha) => {
+    const citas = data.citas.filter((c) => c.fecha === fecha && c.estado !== "cancelada").sort((a, b) => a.hora.localeCompare(b.hora));
+    return {
+      fecha,
+      items: filaItems(citas, comidaDeFecha(data, fecha), { onCobrar, onMover, onCancelar, negocioNombre, negocioId, pendientesPorId, msg28 }),
+    };
+  });
+
+  return (
+    <div className="flex flex-col gap-5 px-4 pb-6">
+      {porDia.length === 0 ? (
+        <EmptyState texto="Sin citas próximas" />
+      ) : (
+        porDia.map((d) => (
+          <div key={d.fecha}>
+            <p className="mb-2 px-1 font-mono text-xs uppercase tracking-widest text-muted-foreground">
+              {d.fecha === todayISO(0)
+                ? "Hoy"
+                : d.fecha === todayISO(1)
+                  ? "Mañana"
+                  : new Date(`${d.fecha}T00:00:00`).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "short" })}
+            </p>
+            <div className="flex flex-col gap-2">{d.items.map((it) => it.node)}</div>
+          </div>
+        ))
+      )}
+    </div>
   );
 }
 

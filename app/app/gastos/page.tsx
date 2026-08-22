@@ -270,10 +270,21 @@ export default function GastosPage() {
   const algunPlatilloConCosto = modulo === "fonda" && (session.fonda?.platillos ?? []).some((p) => p.costo != null && p.costo > 0);
   const faltaCostoEnFonda = modulo === "fonda" && !algunPlatilloConCosto;
 
-  const gastosFiltrados = filterByRango(gastos, rango, (g) => g.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  // Un gasto con fecha futura (ej. "Pagar renta" programado para dentro de
+  // unos días) caía FUERA de la ventana de filterByRango en "Semanal" —
+  // esa ventana nunca se extiende más allá de "hoy", así que el gasto
+  // desaparecía por completo de la lista y de la gráfica hasta que llegara
+  // su fecha, sin ningún aviso de que sí se había guardado bien. Se agrega
+  // aparte (sin duplicar si "mensual"/"anual" ya lo incluían) para que
+  // siempre sea visible con el badge "Programado" — no cuenta en
+  // totalGastos/la gráfica todavía, porque ese dinero no se ha gastado.
+  const gastosEnRango = filterByRango(gastos, rango, (g) => g.fecha, now);
+  const idsEnRango = new Set(gastosEnRango.map((g) => g.id));
+  const gastosFuturosFueraDeRango = gastos.filter((g) => g.fecha > hoy && !idsEnRango.has(g.id));
+  const gastosFiltrados = gastosEnRango.concat(gastosFuturosFueraDeRango).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const ventasFiltradas = filterByRango(ventas, rango, (v) => v.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const gananciaPorVentaFiltrada = filterByRango(gananciaPorVenta, rango, (g) => g.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
-  const totalGastos = gastosFiltrados.reduce((acc, g) => acc + g.monto, 0);
+  const totalGastos = gastosEnRango.reduce((acc, g) => acc + g.monto, 0);
   const totalVentas = ventasFiltradas.reduce((acc, v) => acc + v.monto, 0);
   const totalGananciaBruta = gananciaPorVentaFiltrada.reduce((acc, g) => acc + g.monto, 0);
   const totalGananciaNeta = totalGananciaBruta - totalGastos;
@@ -553,8 +564,13 @@ export default function GastosPage() {
                     {formatFechaCorta(g.fecha)}
                     {g.recordatorio && " · recordatorio activo"}
                   </p>
-                  <div className="mt-1">
+                  <div className="mt-1 flex items-center gap-1.5">
                     <EmpleadoBadge nombre={g.empleadoNombreCache} rol={g.empleadoRolCache} />
+                    {g.fecha > hoy && (
+                      <span className="rounded-full bg-primary/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-primary">
+                        Programado
+                      </span>
+                    )}
                   </div>
                 </div>
                 <span className="shrink-0 font-mono text-sm text-destructive">-{formatMoney(g.monto)}</span>
@@ -668,8 +684,13 @@ export default function GastosPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{m.label}</p>
                   <p className="text-xs text-muted-foreground">{formatFechaCorta(m.fecha)}</p>
-                  <div className="mt-1">
+                  <div className="mt-1 flex items-center gap-1.5">
                     <EmpleadoBadge nombre={m.empleadoNombreCache} rol={m.empleadoRolCache} />
+                    {m.tipo === "gasto" && m.fecha > hoy && (
+                      <span className="rounded-full bg-primary/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-primary">
+                        Programado
+                      </span>
+                    )}
                   </div>
                 </div>
                 <span className={cn("shrink-0 font-mono text-sm", m.tipo === "venta" ? "text-ledger" : "text-destructive")}>

@@ -15,7 +15,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import type { FabAction } from "@/components/app-shell/fab";
 import { usePlan } from "@/lib/planes";
-import { uid, todayISO, formatHora12 } from "@/lib/mock";
+import { uid, todayISO, formatHora12, normalizarTelefono } from "@/lib/mock";
 import { getDaySlots } from "@/lib/agenda";
 import { cn } from "@/lib/utils";
 import { camposEmpleado } from "@/lib/empleados";
@@ -94,7 +94,11 @@ function ClienteBuscador({
 
   const sugerencias =
     !seleccionado && !ocultarSugerencias && q.length >= 2
-      ? clientes.filter((c) => (modoTelefono ? c.telefono.includes(q) : c.nombre.toLowerCase().includes(q.toLowerCase()))).slice(0, 5)
+      ? clientes
+          .filter((c) =>
+            modoTelefono ? normalizarTelefono(c.telefono).includes(normalizarTelefono(q)) : c.nombre.toLowerCase().includes(q.toLowerCase())
+          )
+          .slice(0, 5)
       : [];
   // Antes exigía sugerencias.length === 0 — un nombre que solo coincidía A
   // MEDIAS con un cliente ya dado de alta (ej. escribir "Jose" con
@@ -276,15 +280,24 @@ function NuevaCitaForm({
       if ("id" in cliente) {
         clienteFinalId = cliente.id;
       } else {
-        const nuevo = {
-          id: uid("cli"),
-          nombre: cliente.nombre.trim(),
-          telefono: cliente.telefono.trim(),
-          ultimaVisita: null,
-          visitas: 0,
-        };
-        clientes = [nuevo, ...clientes];
-        clienteFinalId = nuevo.id;
+        const telNormalizado = normalizarTelefono(cliente.telefono);
+        const existente = clientes.find((c) => normalizarTelefono(c.telefono) === telNormalizado);
+        if (existente) {
+          clienteFinalId = existente.id;
+          if (!existente.nombre.trim()) {
+            clientes = clientes.map((c) => (c.id === existente.id ? { ...c, nombre: cliente.nombre.trim() } : c));
+          }
+        } else {
+          const nuevo = {
+            id: uid("cli"),
+            nombre: cliente.nombre.trim(),
+            telefono: cliente.telefono.trim(),
+            ultimaVisita: null,
+            visitas: 0,
+          };
+          clientes = [nuevo, ...clientes];
+          clienteFinalId = nuevo.id;
+        }
       }
 
       const cita = {
@@ -388,6 +401,14 @@ function NuevoClienteForm({
     if (nombre.trim().length < 2 || bloqueadoPorLimite) return;
     update((prev) => {
       const b = prev.barberia!;
+      const telNormalizado = normalizarTelefono(telefono);
+      const existente = telNormalizado ? b.clientes.find((c) => normalizarTelefono(c.telefono) === telNormalizado) : undefined;
+      if (existente) {
+        const clientes = existente.nombre.trim()
+          ? b.clientes
+          : b.clientes.map((c) => (c.id === existente.id ? { ...c, nombre: nombre.trim() } : c));
+        return { ...prev, barberia: { ...b, clientes } };
+      }
       const cliente = {
         id: uid("cli"),
         nombre: nombre.trim(),

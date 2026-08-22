@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { useSession } from "@/lib/session";
-import { formatMoney } from "@/lib/mock";
+import { formatMoney, redondear2 } from "@/lib/mock";
 import type { GrocerySale, GrocerySaleItem } from "@/lib/types";
 
 /**
@@ -36,7 +36,7 @@ export function VentaForm({
     setItems((prev) =>
       cantidad <= 0
         ? prev.filter((it) => it.id !== itemId)
-        : prev.map((it) => (it.id === itemId ? { ...it, cantidad, subtotal: cantidad * it.precioUnitario } : it))
+        : prev.map((it) => (it.id === itemId ? { ...it, cantidad, subtotal: redondear2(cantidad * it.precioUnitario) } : it))
     );
   }
 

@@ -1118,7 +1118,8 @@ export interface PublicBookingData {
   servicios: BarberService[];
   horario: HorarioDia[];
   excepciones: Excepcion[];
-  citas: Pick<Appointment, "fecha" | "hora" | "estado">[];
+  /** servicioId: para bloquear el hueco real según la duración del servicio (ver getDaySlots, lib/agenda.ts) — no es dato personal, solo qué se agendó. */
+  citas: Pick<Appointment, "fecha" | "hora" | "estado" | "servicioId">[];
 }
 
 /** Datos mínimos y públicos para calcular huecos disponibles, sin exponer clientes de otros. */
@@ -1140,6 +1141,7 @@ export async function fetchPublicBookingData(negocioId: string): Promise<PublicB
       fecha: r.fecha as string,
       hora: (r.hora as string).slice(0, 5),
       estado: r.estado as Appointment["estado"],
+      servicioId: r.servicio_id as string,
     })),
   };
 }

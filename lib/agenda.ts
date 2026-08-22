@@ -3,9 +3,20 @@ import type { Appointment, BarberiaData } from "./types";
 
 const DIAS_SEMANA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"] as const;
 
-type SlotSource = Pick<BarberiaData, "horario" | "excepciones"> & {
-  citas: Pick<Appointment, "fecha" | "hora" | "estado">[];
+type SlotSource = Pick<BarberiaData, "horario" | "excepciones" | "servicios"> & {
+  citas: Pick<Appointment, "fecha" | "hora" | "estado" | "servicioId">[];
 };
+
+function minutosDeHora(hora: string): number {
+  const [h, m] = hora.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function horaDeMinutos(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
 
 export type EstadoSlot = "libre" | "ocupado" | "comida" | "pasado";
 
@@ -41,7 +52,22 @@ export function getDaySlots(barberia: SlotSource, fecha: string): SlotDetallado[
   const [fh, fm] = finStr.split(":").map(Number);
   const tieneComida = Boolean(horarioDia.comidaInicio && horarioDia.comidaFin);
 
-  const ocupados = new Set(barberia.citas.filter((c) => c.fecha === fecha && c.estado !== "cancelada").map((c) => c.hora));
+  // Antes solo se marcaba ocupado el slot EXACTO donde empezaba la cita —
+  // un servicio de 45 min a las 9:00 dejaba 9:30 libre como si el barbero
+  // ya estuviera desocupado, cuando en realidad el corte sigue hasta 9:45.
+  // Ahora se bloquean todos los slots de 30 min que la cita realmente cubre
+  // (redondeado hacia arriba: un servicio de 45 min bloquea 9:00 Y 9:30,
+  // porque una cita nueva a las 9:30 sí se traslaparía).
+  const duracionPorServicio = new Map(barberia.servicios.map((s) => [s.id, s.duracion_min]));
+  const ocupados = new Set<string>();
+  for (const c of barberia.citas) {
+    if (c.fecha !== fecha || c.estado === "cancelada") continue;
+    const duracion = duracionPorServicio.get(c.servicioId) ?? 30;
+    const inicio = minutosDeHora(c.hora);
+    for (let min = inicio; min < inicio + duracion; min += 30) {
+      ocupados.add(horaDeMinutos(min));
+    }
+  }
   const esHoy = fecha === todayISO(0);
   const ahora = new Date();
 

@@ -51,11 +51,18 @@ export function formatMoney(n: number): string {
  * residuo de punto flotante (o unos centavos reales de un día con muchas
  * ventas) no se lea como "te sobra/falta" cuando en la práctica cuadró.
  */
-export function mensajeDiferencia(dif: number): string {
+/** `esperado` opcional: si se da, agrega "— Deberías tener $X" al mensaje. */
+export function mensajeDiferencia(dif: number, esperado?: number): string {
   const redondeado = Math.round(dif);
-  if (redondeado < 0) return `🔴 Te faltan ${formatMoney(-redondeado)}`;
-  if (redondeado > 0) return `🔵 Te sobran ${formatMoney(redondeado)}`;
+  const sufijo = esperado != null ? ` — Deberías tener ${formatMoney(esperado)}` : "";
+  if (redondeado < 0) return `🔴 Te faltan ${formatMoney(-redondeado)}${sufijo}`;
+  if (redondeado > 0) return `🔵 Te sobran ${formatMoney(redondeado)}${sufijo}`;
   return "🟢 ¡Cuadra perfecto! ✅";
+}
+
+/** Se muestra ANTES de que el dueño escriba "¿Efectivo real en mano?" — el mismo cálculo de mensajeDiferencia, pero como previsualización, sin comparar contra nada todavía. */
+export function mensajeEsperado(esperado: number): string {
+  return `💰 Dinero que deberías tener: ${formatMoney(esperado)}`;
 }
 
 /** "2024-01-01T12:00:00Z" -> "Hace 2h". Para mostrar última actividad en el panel de admin. */
@@ -80,6 +87,32 @@ export function formatHora12(hhmm: string): string {
   const h12 = h % 12 || 12;
   const ampm = h >= 12 ? "PM" : "AM";
   return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+
+/**
+ * Solo dígitos, sin el 52 de lada de país si el número ya trae 12 dígitos
+ * con ese prefijo — para poder comparar "33 1234 5678", "+52 33-1234-5678"
+ * y "523312345678" como el MISMO teléfono. Antes ClienteBuscador (Nueva
+ * Cita) comparaba el texto crudo, así que un cliente ya dado de alta con
+ * un formato distinto no aparecía en las sugerencias y se creaba un
+ * cliente duplicado con el mismo número.
+ */
+export function normalizarTelefono(telefono: string): string {
+  const digitos = telefono.replace(/\D/g, "");
+  return digitos.length === 12 && digitos.startsWith("52") ? digitos.slice(2) : digitos;
+}
+
+/**
+ * qty * precio con precisión de centavos — sin esto, un producto por peso
+ * (ej. 0.060 kg de jitomate a $55/kg = 3.3000000000000003 en punto
+ * flotante de JS) arrastra ese residuo hasta el total de la venta y de ahí
+ * a "Ventas de hoy" en Cerrar Turno/Día — el efectivo real SÍ cuadraba,
+ * pero "lo que deberías tener" quedaba unos centavos desfasado y el
+ * redondeo final a peso entero (mensajeDiferencia) a veces lo convertía en
+ * "Te sobra/falta $1" con el mismo efectivo exacto en mano.
+ */
+export function redondear2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 /**
