@@ -272,6 +272,22 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
               <p className="font-display text-2xl font-bold text-ledger">{formatMoney(ventasHoyTotal)}</p>
             </div>
             <VentasPorEmpleado datos={ventasPorEmpleado} />
+            {gastosHoyDelDia.length > 0 && (
+              <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-card p-3">
+                <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Gastos de hoy (ya registrados, se restan de lo que deberías tener)
+                </p>
+                {gastosHoyDelDia.map((g) => (
+                  <div key={g.id} className="flex items-center justify-between text-sm">
+                    <span className="min-w-0 flex-1 truncate text-foreground">
+                      {g.categoria}
+                      {g.empleadoNombreCache && <span className="ml-1 text-xs text-muted-foreground">({g.empleadoNombreCache})</span>}
+                    </span>
+                    <span className="shrink-0 font-mono text-muted-foreground">-{formatMoney(g.monto)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Fondo inicial (opcional)</Label>
               <Input type="number" inputMode="decimal" value={fondoInicial} onChange={(e) => setFondoInicial(e.target.value)} placeholder="$0" />
