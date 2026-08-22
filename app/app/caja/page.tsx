@@ -75,23 +75,37 @@ export default function CajaPage() {
 
   // Roster de personas para los chips (PR #121, trazabilidad vendedor/
   // encargado) — del universo completo, antes de aplicar personaFiltro.
+  // Se agrupa por empleado_id, NO por el nombre cacheado: dos filas del
+  // mismo empleado pueden traer el nombre cacheado con distinta
+  // capitalización si negocio_empleados llegó a tener un duplicado tipo
+  // "Maria"/"maria" (bug real, ver migración de negocio_empleados) —
+  // agrupando por nombre esa persona se partía en dos chips distintos y
+  // cada uno mostraba solo una mitad de sus movimientos. empleado_id es
+  // estable aunque el nombre cambie o esté mal capitalizado.
+  const nombrePorPersona = new Map<string, string>();
   const rolPorPersona = new Map<string, RolEmpleado>();
   let hayMovimientosDeDueno = false;
   for (const m of [...data.caja, ...cortesSinFiltroPersona]) {
-    if (m.empleadoNombreCache) rolPorPersona.set(m.empleadoNombreCache, m.empleadoRolCache ?? "vendedor");
-    else hayMovimientosDeDueno = true;
+    if (m.empleadoId) {
+      if (!nombrePorPersona.has(m.empleadoId)) nombrePorPersona.set(m.empleadoId, m.empleadoNombreCache ?? "");
+      rolPorPersona.set(m.empleadoId, m.empleadoRolCache ?? "vendedor");
+    } else {
+      hayMovimientosDeDueno = true;
+    }
   }
-  const personasDisponibles = Array.from(rolPorPersona.keys()).sort();
+  const personasDisponibles = Array.from(nombrePorPersona, ([id, nombre]) => ({ id, nombre })).sort((a, b) =>
+    a.nombre.localeCompare(b.nombre)
+  );
   const hayEquipo = personasDisponibles.length > 0;
 
-  function coincidePersona(nombre?: string): boolean {
+  function coincidePersona(empleadoId?: string): boolean {
     if (personaFiltro === "todos") return true;
-    if (personaFiltro === PERSONA_DUENO) return !nombre;
-    return nombre === personaFiltro;
+    if (personaFiltro === PERSONA_DUENO) return !empleadoId;
+    return empleadoId === personaFiltro;
   }
 
-  const cajaFiltrada = data.caja.filter((e) => coincidePersona(e.empleadoNombreCache));
-  const cortes = cortesSinFiltroPersona.filter((c) => coincidePersona(c.empleadoNombreCache));
+  const cajaFiltrada = data.caja.filter((e) => coincidePersona(e.empleadoId));
+  const cortes = cortesSinFiltroPersona.filter((c) => coincidePersona(c.empleadoId));
   const totalCortes = cortes.reduce((acc, c) => acc + c.precio, 0);
 
   const ventas = cajaFiltrada.filter((e) => e.tipo === "venta").reduce((acc, e) => acc + e.monto, 0);
@@ -165,9 +179,9 @@ export default function CajaPage() {
                 Dueño
               </Chip>
             )}
-            {personasDisponibles.map((nombre) => (
-              <Chip key={nombre} selected={personaFiltro === nombre} onClick={() => setPersonaFiltro(nombre)}>
-                {nombre} · {ROL_LABEL[rolPorPersona.get(nombre)!]}
+            {personasDisponibles.map(({ id, nombre }) => (
+              <Chip key={id} selected={personaFiltro === id} onClick={() => setPersonaFiltro(id)}>
+                {nombre} · {ROL_LABEL[rolPorPersona.get(id)!]}
               </Chip>
             ))}
           </ChipGroup>

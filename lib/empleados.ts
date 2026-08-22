@@ -51,6 +51,27 @@ export function pinEsObvio(pin: string): boolean {
   return PINS_OBVIOS.has(pin) || /^(\d)\1{3}$/.test(pin);
 }
 
+/**
+ * Title Case ("maria" -> "Maria", "JUAN PEREZ" -> "Juan Perez") — se aplica
+ * al nombre de un empleado ANTES de guardarlo (alta y edición). Bug real:
+ * negocio_empleados no normalizaba nada, así que "Maria" y "maria" podían
+ * coexistir como dos empleados distintos para el mismo negocio (el unique
+ * (negocio_id, nombre) de la tabla es case-sensitive) — cada uno con su
+ * propio PIN, y el filtro "por persona" de Caja/Gastos (que agrupa por
+ * empleado_id, no por este nombre) los mostraba como dos personas
+ * separadas. Esto es la mitad del fix (evita nuevos duplicados); la otra
+ * mitad es el índice único case-insensitive en la migración de
+ * negocio_empleados, que además normaliza server-side en crear_empleado
+ * por si algo más además de esta pantalla llega a insertar ahí.
+ */
+export function normalizarNombreEmpleado(nombre: string): string {
+  return nombre
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .replace(/(^|[\s-])(\p{L})/gu, (_, sep: string, letra: string) => sep + letra.toUpperCase());
+}
+
 function leerCookie(nombre: string): string | null {
   if (typeof document === "undefined") return null;
   const match = document.cookie.match(new RegExp(`(?:^|; )${nombre}=([^;]*)`));
