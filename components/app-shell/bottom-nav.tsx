@@ -58,12 +58,11 @@ export function BottomNav({ tipo, rolActual }: { tipo: BusinessType; rolActual?:
   const items = NAV_BY_TYPE[tipo].filter((item) => {
     if (rolActual !== "vendedor") return true;
     if (HREFS_REPORTES.has(item.href)) return false;
-    // Barbería: "Cerrar turno" para vendedor ahora vive en el botón rojo
-    // de TurnoControl (ver components/app-shell/turno-control.tsx), no en
-    // Mi Plan — que ahí ya no le ofrece nada, así que ni se muestra el
-    // link. Fonda/Abarrotes NO cambiaron: su vendedor sigue usando Mi Plan
-    // para Cerrar turno/día.
-    if (tipo === "barberia" && item.href === "/app/mi-plan") return false;
+    // "Cerrar turno"/"Cerrar día" para vendedor vive en el botón rojo de
+    // TurnoControl en las 3 verticales (ver components/app-shell/
+    // turno-control.tsx), no en Mi Plan — que ahí ya no le ofrece nada, así
+    // que ni se muestra el link.
+    if (item.href === "/app/mi-plan") return false;
     return true;
   });
 

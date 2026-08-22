@@ -35,6 +35,8 @@ interface Props {
   onClose: () => void;
   session: TenantData;
   update: SessionUpdater;
+  /** Se dispara SOLO cuando terminarCierre() llega al final de verdad (día cerrado) — nunca si se cancela en Paso 1/2. Mismo propósito que en barberia-cerrar-turno.tsx: TopBar lo usa para, en modo vendedor, recién ahí pedir el PIN de dueño y volver al panel. */
+  onCompletado?: () => void;
 }
 
 /**
@@ -57,7 +59,7 @@ interface Props {
  * amarillo en Hoy (GroceryProduct.porCaducar) hasta que un próximo cierre
  * lo resuelva. Cada decisión se registra también en abarrotera_mermas.
  */
-export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
+export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }: Props) {
   const [paso, setPaso] = React.useState<1 | 2>(1);
   const [fondoInicial, setFondoInicial] = React.useState("");
   const [efectivoReal, setEfectivoReal] = React.useState("");
@@ -244,6 +246,7 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
 
     setGuardando(false);
     resetYCerrar();
+    onCompletado?.();
   }
 
   return (

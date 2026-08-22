@@ -9,9 +9,12 @@ import { clearEmpleadoActual } from "@/lib/empleados";
 import { cerrarSesion } from "@/lib/logout";
 import { universalSearch } from "@/lib/search";
 import { esperarSincronizacionPendiente } from "@/lib/session";
+import { hoyEnZona } from "@/lib/fecha";
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
 import { PinDuenoForm } from "@/components/kiosko/pin-dueno";
 import { CerrarTurnoSheet as BarberiaCerrarTurnoSheet } from "@/components/dashboards/barberia-cerrar-turno";
+import { CerrarTurnoSheet as FondaCerrarTurnoSheet } from "@/components/dashboards/fonda-cerrar-turno";
+import { CerrarDiaSheet as AbarrotesCerrarDiaSheet } from "@/components/dashboards/abarrotes-cerrar-dia";
 import { ConnectionStatus } from "./connection-status";
 import { PendingSalesBadge } from "./pending-sales-badge";
 import { TurnoControl } from "./turno-control";
@@ -38,11 +41,12 @@ export function TopBar({
   const [searching, setSearching] = React.useState(false);
   const [q, setQ] = React.useState("");
   const [pinDueno, setPinDueno] = React.useState(false);
-  // Barbería: el botón rojo de TurnoControl (vendedor "Atendiendo como X")
-  // abre este sheet en vez de volver a dueño directo — ver PROMPT "UX
-  // Vendedores - Cerrar turno". Al terminar de verdad (CerrarTurnoSheet
-  // solo llama onCompletado si el wizard llegó a "¡Turno cerrado!", nunca
-  // si se cancela) recién ahí se pide el PIN de dueño para regresar.
+  // Las 3 verticales: el botón rojo de TurnoControl (vendedor "Atendiendo
+  // como X") abre el sheet real de Cerrar Turno/Día en vez de volver a
+  // dueño directo — ver PROMPT "UX Vendedores - Cerrar turno". Al terminar
+  // de verdad (cada sheet solo llama onCompletado si el wizard llegó al
+  // final, nunca si se cancela) recién ahí se pide el PIN de dueño para
+  // regresar.
   const [cerrandoTurnoVendedor, setCerrandoTurnoVendedor] = React.useState(false);
   const [pidiendoPinVolver, setPidiendoPinVolver] = React.useState(false);
   const router = useRouter();
@@ -155,7 +159,7 @@ export function TopBar({
               empleadoActual={empleadoActual ?? null}
               pinDuenoSet={Boolean(pinDuenoSet)}
               onSesionCambiada={(e) => onSesionCambiada?.(e)}
-              onAbrirCerrarTurno={data.business.tipo === "barberia" ? () => setCerrandoTurnoVendedor(true) : undefined}
+              onAbrirCerrarTurno={() => setCerrandoTurnoVendedor(true)}
             />
             <PendingSalesBadge negocioId={data.business.id} />
             <ConnectionStatus negocioId={data.business.id} />
@@ -219,6 +223,25 @@ export function TopBar({
 
       {data.business.tipo === "barberia" && (
         <BarberiaCerrarTurnoSheet
+          open={cerrandoTurnoVendedor}
+          onClose={() => setCerrandoTurnoVendedor(false)}
+          session={data}
+          update={update}
+          onCompletado={handleCorteCompletado}
+        />
+      )}
+      {data.business.tipo === "fonda" && (
+        <FondaCerrarTurnoSheet
+          open={cerrandoTurnoVendedor}
+          onClose={() => setCerrandoTurnoVendedor(false)}
+          session={data}
+          update={update}
+          hoyEnSuZona={hoyEnZona(data.business.timezone)}
+          onCompletado={handleCorteCompletado}
+        />
+      )}
+      {data.business.tipo === "abarrotes" && (
+        <AbarrotesCerrarDiaSheet
           open={cerrandoTurnoVendedor}
           onClose={() => setCerrandoTurnoVendedor(false)}
           session={data}

@@ -30,14 +30,15 @@ import { getEmpleadoActual } from "@/lib/empleados";
  * Un vendedor atendiendo con PIN no debe ver nada de plan/trial/instalar
  * app/contactar soporte — ese celular puede ser un dispositivo compartido
  * del mostrador, y esas acciones son del dueño, no de quien solo cobra.
- * "Cerrar turno"/"Cerrar día" es lo único que sí necesitaba (era lo único
- * que lo traía a esta pantalla) — EXCEPTO en barbería: ahí ese flujo se
- * movió al botón rojo de TurnoControl ("Atendiendo como X" en el header),
- * así que un vendedor de barbería redirige lejos de aquí de inmediato (ver
- * el efecto de tipoNegocio/esVendedor abajo) en vez de ver una pantalla
- * vacía. Fonda/Abarrotes sin cambios. permisosActuales()/getEmpleadoActual()
- * lee una cookie — se resuelve en un efecto para no desalinear el primer
- * render del servidor con el del cliente (mismo patrón que puedeBorrar en
+ * "Cerrar turno"/"Cerrar día" era lo único que sí necesitaba (era lo único
+ * que lo traía a esta pantalla) — en las 3 verticales ese flujo ya vive en
+ * el botón rojo de TurnoControl ("Atendiendo como X" en el header, ver
+ * PROMPT "UX Vendedores - Cerrar turno"), así que Mi Plan ya no tiene nada
+ * que ofrecerle a NINGÚN vendedor: redirige lejos de aquí de inmediato
+ * (bottom-nav.tsx tampoco muestra el link; esto cubre un deep link directo
+ * o el back del navegador). permisosActuales()/getEmpleadoActual() lee una
+ * cookie — se resuelve en un efecto para no desalinear el primer render
+ * del servidor con el del cliente (mismo patrón que puedeBorrar en
  * app/app/pedidos/page.tsx). Mientras tanto se asume dueño (no oculta de
  * más ni parpadea contenido real antes de tiempo).
  */
@@ -52,22 +53,15 @@ export default function MiPlanPage() {
     setEsVendedor(getEmpleadoActual()?.rol === "vendedor");
   }, []);
 
-  // Barbería: "Cerrar turno" para vendedor se movió al botón rojo de
-  // TurnoControl (ver PROMPT "UX Vendedores - Cerrar turno") — Mi Plan ya
-  // no tiene nada que ofrecerle a un vendedor de barbería (bottom-nav.tsx
-  // ya no muestra el link; esto cubre un deep link directo o el back del
-  // navegador). Fonda/Abarrotes sin cambios: su vendedor sigue usando esta
-  // pantalla para Cerrar turno/día.
-  const tipoNegocio = session?.business.tipo;
   React.useEffect(() => {
-    if (tipoNegocio === "barberia" && esVendedor) router.replace("/app/inicio");
-  }, [tipoNegocio, esVendedor, router]);
+    if (esVendedor) router.replace("/app/inicio");
+  }, [esVendedor, router]);
 
   if (!ready || !session) return <LoadingBlock />;
+  if (esVendedor) return <LoadingBlock />;
 
   const { business } = session;
   const tipo = business.tipo;
-  if (tipo === "barberia" && esVendedor) return <LoadingBlock />;
   // plan.plan (acceso REAL, ya considera Fundador y — solo para quien SÍ
   // pagó alguna vez — la gracia de unos días en Básico después de vencer,
   // ver planDeAcceso/DIAS_GRACIA_PAGO en lib/planes.ts) en vez de

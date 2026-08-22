@@ -31,6 +31,8 @@ interface Props {
   session: TenantData;
   update: SessionUpdater;
   hoyEnSuZona: string;
+  /** Se dispara SOLO cuando terminarMerma() llega al final de verdad (turno cerrado) — nunca si se cancela en Paso 1/2 (resetYCerrar ahí no lo llama). Mismo propósito que en barberia-cerrar-turno.tsx: TopBar lo usa para, en modo vendedor, recién ahí pedir el PIN de dueño y volver al panel. */
+  onCompletado?: () => void;
 }
 
 /**
@@ -53,7 +55,7 @@ interface Props {
  * costo solo importa para la pestaña Ganancias (ver app/app/gastos/page.tsx),
  * no para si el gasto se registra o no.
  */
-export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }: Props) {
+export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, onCompletado }: Props) {
   const [paso, setPaso] = React.useState<1 | 2>(1);
   const [fondoInicial, setFondoInicial] = React.useState("");
   const [efectivoReal, setEfectivoReal] = React.useState("");
@@ -264,6 +266,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona }
     update((prev) => ({ ...prev, business: { ...prev.business, turnoFondaCerradoEn: new Date().toISOString() } }));
     setGuardando(false);
     resetYCerrar();
+    onCompletado?.();
   }
 
   return (
