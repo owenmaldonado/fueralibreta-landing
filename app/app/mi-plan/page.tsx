@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowRight, MessageCircle, Lock } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
@@ -14,7 +15,8 @@ import { CerrarDiaSheet } from "@/components/dashboards/abarrotes-cerrar-dia";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { diasParaTrial, precioPorGiro, PLAN_LABELS } from "@/lib/planes";
-import { NUMERO_CONTACTO, hoyEnZona, waLink } from "@/lib/mock";
+import { NUMERO_CONTACTO, waLink } from "@/lib/mock";
+import { hoyEnZona } from "@/lib/fecha";
 import { getEmpleadoActual } from "@/lib/empleados";
 
 /**
@@ -28,14 +30,20 @@ import { getEmpleadoActual } from "@/lib/empleados";
  * Un vendedor atendiendo con PIN no debe ver nada de plan/trial/instalar
  * app/contactar soporte — ese celular puede ser un dispositivo compartido
  * del mostrador, y esas acciones son del dueño, no de quien solo cobra.
- * "Cerrar turno" es la única que sí necesita (es lo único que lo trae a
- * esta pantalla en primer lugar). permisosActuales()/getEmpleadoActual()
- * lee una cookie — se resuelve en un efecto para no desalinear el primer
- * render del servidor con el del cliente (mismo patrón que puedeBorrar en
+ * "Cerrar turno"/"Cerrar día" era lo único que sí necesitaba (era lo único
+ * que lo traía a esta pantalla) — en las 3 verticales ese flujo ya vive en
+ * el botón rojo de TurnoControl ("Atendiendo como X" en el header, ver
+ * PROMPT "UX Vendedores - Cerrar turno"), así que Mi Plan ya no tiene nada
+ * que ofrecerle a NINGÚN vendedor: redirige lejos de aquí de inmediato
+ * (bottom-nav.tsx tampoco muestra el link; esto cubre un deep link directo
+ * o el back del navegador). permisosActuales()/getEmpleadoActual() lee una
+ * cookie — se resuelve en un efecto para no desalinear el primer render
+ * del servidor con el del cliente (mismo patrón que puedeBorrar en
  * app/app/pedidos/page.tsx). Mientras tanto se asume dueño (no oculta de
  * más ni parpadea contenido real antes de tiempo).
  */
 export default function MiPlanPage() {
+  const router = useRouter();
   const { session, ready, update } = useSession();
   const plan = usePlan();
   const [cerrando, setCerrando] = React.useState(false);
@@ -45,7 +53,12 @@ export default function MiPlanPage() {
     setEsVendedor(getEmpleadoActual()?.rol === "vendedor");
   }, []);
 
+  React.useEffect(() => {
+    if (esVendedor) router.replace("/app/inicio");
+  }, [esVendedor, router]);
+
   if (!ready || !session) return <LoadingBlock />;
+  if (esVendedor) return <LoadingBlock />;
 
   const { business } = session;
   const tipo = business.tipo;

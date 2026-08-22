@@ -7,7 +7,8 @@ import { ActionCard } from "./action-card";
 import { EmptyState } from "./empty-state";
 import { StatTile } from "./stat-tile";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
-import { formatMoney, fechaCalendarioLocal, todayISO, waLink } from "@/lib/mock";
+import { formatMoney, fechaCalendarioLocal, waLink } from "@/lib/mock";
+import { hoyEnZona } from "@/lib/fecha";
 import { avisosIgnoradosHoy, ignorarAvisoHoy } from "@/lib/dismissed-alerts";
 import { usePlan } from "@/lib/planes";
 import type { TenantData, SessionUpdater } from "@/lib/types";
@@ -15,7 +16,9 @@ import type { TenantData, SessionUpdater } from "@/lib/types";
 export function AbarrotesDashboard({ session }: { session: TenantData; update: SessionUpdater }) {
   const data = session.abarrotes!;
   const plan = usePlan();
-  const hoy = todayISO(0);
+  // "Hoy" del negocio (zona guardada al darlo de alta), no del dispositivo
+  // — ver lib/fecha.ts. Antes era todayISO(0) (zona del navegador/celular).
+  const hoy = hoyEnZona(session.business.timezone);
   const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy(session.business.id));
 
   function ignorar(id: string) {
@@ -36,7 +39,7 @@ export function AbarrotesDashboard({ session }: { session: TenantData; update: S
   // Mismo filtro de siempre para "Ventas hoy" (sin excluir cancelada — no
   // es parte de este cambio, se deja tal cual estaba). ventasDeHoy solo se
   // usa para "Equipo hoy" abajo.
-  const ventasDeHoy = data.ventas.filter((v) => fechaCalendarioLocal(v.fecha) === hoy);
+  const ventasDeHoy = data.ventas.filter((v) => fechaCalendarioLocal(v.fecha, session.business.timezone) === hoy);
   const ventasHoy = ventasDeHoy.reduce((acc, v) => acc + v.total, 0);
 
   // "Equipo hoy" (PR #121, trazabilidad vendedor/encargado) — quién vendió

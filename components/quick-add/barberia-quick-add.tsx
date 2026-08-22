@@ -84,14 +84,43 @@ function ClienteBuscador({
   const [busqueda, setBusqueda] = React.useState("");
   const [nombreNuevo, setNombreNuevo] = React.useState("");
   const [telefonoNuevo, setTelefonoNuevo] = React.useState("");
+  const [ocultarSugerencias, setOcultarSugerencias] = React.useState(false);
+  const contenedorRef = React.useRef<HTMLDivElement>(null);
 
   const q = busqueda.trim();
   const digitos = q.replace(/\D/g, "").length;
   const letras = q.replace(/[^a-zA-Zá-éí-óúÁ-ÉÍ-ÓÚñÑ]/g, "").length;
   const modoTelefono = digitos >= letras;
 
-  const sugerencias = !seleccionado && q.length >= 2 ? clientes.filter((c) => (modoTelefono ? c.telefono.includes(q) : c.nombre.toLowerCase().includes(q.toLowerCase()))).slice(0, 5) : [];
-  const esNuevo = !seleccionado && q.length >= 2 && sugerencias.length === 0;
+  const sugerencias =
+    !seleccionado && !ocultarSugerencias && q.length >= 2
+      ? clientes.filter((c) => (modoTelefono ? c.telefono.includes(q) : c.nombre.toLowerCase().includes(q.toLowerCase()))).slice(0, 5)
+      : [];
+  // Antes exigía sugerencias.length === 0 — un nombre que solo coincidía A
+  // MEDIAS con un cliente ya dado de alta (ej. escribir "Jose" con
+  // "Josefina" ya en la lista) ocultaba por completo el campo de teléfono
+  // del cliente nuevo, sin ninguna forma de llegar a él salvo borrar la
+  // búsqueda entera. Las sugerencias ahora son solo un atajo flotante
+  // (ver abajo, position absolute) — nunca bloquean escribir un cliente
+  // nuevo con nombre parecido a uno existente.
+  const esNuevo = !seleccionado && q.length >= 2;
+
+  // Click fuera del campo/dropdown = cerrar sugerencias, mismo criterio que
+  // DropdownMenu (components/ui/dropdown-menu.tsx): sin esto, en una lista
+  // larga (ej. buscar "jose" con "jose"/"josefina" ya dados de alta) la
+  // única forma de quitar el dropdown de encima era tocar la X — cualquier
+  // otro toque (incluido uno "afuera" para simplemente seguir viendo el
+  // formulario) lo dejaba flotando ahí tapando lo de abajo.
+  React.useEffect(() => {
+    if (sugerencias.length === 0) return;
+    function onDocMouseDown(e: MouseEvent) {
+      if (contenedorRef.current?.contains(e.target as Node)) return;
+      setOcultarSugerencias(true);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sugerencias.length]);
 
   React.useEffect(() => {
     if (seleccionado) onChange(seleccionado);
@@ -101,7 +130,17 @@ function ClienteBuscador({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seleccionado, esNuevo, modoTelefono, q, nombreNuevo, telefonoNuevo]);
 
+  function buscar(v: string) {
+    setBusqueda(v);
+    // Sigue escribiendo => quiere ver sugerencias frescas otra vez, aunque
+    // las haya cerrado con la X un momento antes.
+    setOcultarSugerencias(false);
+  }
+
   function elegir(c: BarberClient) {
+    // "al seleccionar cliente solo rellena nombre+tel y cierra": setSeleccionado
+    // ya dispara el render de abajo (chip con nombre+teléfono, sin lista) —
+    // limpiar busqueda es lo que de verdad cierra/descarta la lista de sugerencias.
     setBusqueda("");
     setSeleccionado(c);
   }
@@ -111,6 +150,7 @@ function ClienteBuscador({
     setBusqueda("");
     setNombreNuevo("");
     setTelefonoNuevo("");
+    setOcultarSugerencias(false);
   }
 
   if (seleccionado) {
@@ -132,27 +172,61 @@ function ClienteBuscador({
   return (
     <div className="space-y-1.5">
       <Label>Cliente</Label>
-      <Input autoFocus={autoFocus} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Nombre o teléfono" />
-      {sugerencias.length > 0 && (
-        <div className="flex flex-col divide-y divide-border/60 overflow-hidden rounded-lg border border-border">
-          {sugerencias.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => elegir(c)}
-              className="flex items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-secondary"
-            >
-              <span className="font-medium">{c.nombre}</span>
-              <span className="font-mono text-xs text-muted-foreground">{c.telefono}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      {/* relative + el dropdown en absolute: antes la lista de sugerencias
+          vivía en flujo normal, así que EMPUJABA hacia abajo el campo de
+          teléfono/nombre del cliente nuevo (o lo dejaba fuera de un tirón
+          si había varias coincidencias) — con nombres cortos tipo
+          "jose"/"josefina" eso lo tapaba por completo y no dejaba tocarlo.
+          Flotando encima (z-50) el campo de abajo se queda en su lugar
+          siempre; la X y el onFocus del campo de abajo la quitan de en
+          medio si estorba. */}
+      <div className="relative" ref={contenedorRef}>
+        <Input autoFocus={autoFocus} value={busqueda} onChange={(e) => buscar(e.target.value)} placeholder="Nombre o teléfono" />
+        {sugerencias.length > 0 && (
+          <div className="absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-border bg-card shadow-lg">
+            <div className="flex items-center justify-between border-b border-border/60 px-3 py-1">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Coincidencias</span>
+              <button
+                type="button"
+                onClick={() => setOcultarSugerencias(true)}
+                aria-label="Cerrar sugerencias"
+                className="rounded-full p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="flex max-h-40 flex-col divide-y divide-border/60 overflow-y-auto">
+              {sugerencias.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => elegir(c)}
+                  className="flex items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-secondary"
+                >
+                  <span className="font-medium">{c.nombre}</span>
+                  <span className="font-mono text-xs text-muted-foreground">{c.telefono}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
       {esNuevo && modoTelefono && (
-        <Input value={nombreNuevo} onChange={(e) => setNombreNuevo(e.target.value)} placeholder="Nombre del cliente nuevo" />
+        <Input
+          value={nombreNuevo}
+          onChange={(e) => setNombreNuevo(e.target.value)}
+          onFocus={() => setOcultarSugerencias(true)}
+          placeholder="Nombre del cliente nuevo"
+        />
       )}
       {esNuevo && !modoTelefono && (
-        <Input type="tel" value={telefonoNuevo} onChange={(e) => setTelefonoNuevo(e.target.value)} placeholder="Teléfono del cliente nuevo" />
+        <Input
+          type="tel"
+          value={telefonoNuevo}
+          onChange={(e) => setTelefonoNuevo(e.target.value)}
+          onFocus={() => setOcultarSugerencias(true)}
+          placeholder="Teléfono del cliente nuevo"
+        />
       )}
     </div>
   );
@@ -224,6 +298,7 @@ function NuevaCitaForm({
         fecha,
         hora,
         estado: "pendiente" as const,
+        ...camposEmpleado(),
       };
 
       return { ...prev, barberia: { ...b, clientes, citas: [cita, ...b.citas] } };

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Banknote, CreditCard, HandCoins, Receipt, Plus, Pencil, Trash2 } from "lucide-react";
+import { Banknote, CreditCard, HandCoins, Receipt, Scissors, Plus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/app-shell/page-header";
@@ -33,7 +33,7 @@ import type { CajaEntry, RolEmpleado } from "@/lib/types";
 /** Valor de personaFiltro para "sin empleado_nombre_cache" — un movimiento hecho por el dueño directo, sin pasar por el kiosko. */
 const PERSONA_DUENO = "__dueno__";
 
-const ICONS = { venta: Banknote, propina: HandCoins, gasto: Receipt };
+const ICONS = { venta: Banknote, propina: HandCoins, gasto: Receipt, corte: Scissors };
 
 const RANGO_TABS = [
   { value: "semanal", label: "Semanal" },
@@ -75,23 +75,37 @@ export default function CajaPage() {
 
   // Roster de personas para los chips (PR #121, trazabilidad vendedor/
   // encargado) — del universo completo, antes de aplicar personaFiltro.
+  // Se agrupa por empleado_id, NO por el nombre cacheado: dos filas del
+  // mismo empleado pueden traer el nombre cacheado con distinta
+  // capitalización si negocio_empleados llegó a tener un duplicado tipo
+  // "Maria"/"maria" (bug real, ver migración de negocio_empleados) —
+  // agrupando por nombre esa persona se partía en dos chips distintos y
+  // cada uno mostraba solo una mitad de sus movimientos. empleado_id es
+  // estable aunque el nombre cambie o esté mal capitalizado.
+  const nombrePorPersona = new Map<string, string>();
   const rolPorPersona = new Map<string, RolEmpleado>();
   let hayMovimientosDeDueno = false;
   for (const m of [...data.caja, ...cortesSinFiltroPersona]) {
-    if (m.empleadoNombreCache) rolPorPersona.set(m.empleadoNombreCache, m.empleadoRolCache ?? "vendedor");
-    else hayMovimientosDeDueno = true;
+    if (m.empleadoId) {
+      if (!nombrePorPersona.has(m.empleadoId)) nombrePorPersona.set(m.empleadoId, m.empleadoNombreCache ?? "");
+      rolPorPersona.set(m.empleadoId, m.empleadoRolCache ?? "vendedor");
+    } else {
+      hayMovimientosDeDueno = true;
+    }
   }
-  const personasDisponibles = Array.from(rolPorPersona.keys()).sort();
+  const personasDisponibles = Array.from(nombrePorPersona, ([id, nombre]) => ({ id, nombre })).sort((a, b) =>
+    a.nombre.localeCompare(b.nombre)
+  );
   const hayEquipo = personasDisponibles.length > 0;
 
-  function coincidePersona(nombre?: string): boolean {
+  function coincidePersona(empleadoId?: string): boolean {
     if (personaFiltro === "todos") return true;
-    if (personaFiltro === PERSONA_DUENO) return !nombre;
-    return nombre === personaFiltro;
+    if (personaFiltro === PERSONA_DUENO) return !empleadoId;
+    return empleadoId === personaFiltro;
   }
 
-  const cajaFiltrada = data.caja.filter((e) => coincidePersona(e.empleadoNombreCache));
-  const cortes = cortesSinFiltroPersona.filter((c) => coincidePersona(c.empleadoNombreCache));
+  const cajaFiltrada = data.caja.filter((e) => coincidePersona(e.empleadoId));
+  const cortes = cortesSinFiltroPersona.filter((c) => coincidePersona(c.empleadoId));
   const totalCortes = cortes.reduce((acc, c) => acc + c.precio, 0);
 
   const ventas = cajaFiltrada.filter((e) => e.tipo === "venta").reduce((acc, e) => acc + e.monto, 0);
@@ -106,7 +120,48 @@ export default function CajaPage() {
     cajaFiltrada.filter((e) => e.tipo !== "gasto" && e.metodo === "transferencia").reduce((acc, e) => acc + e.monto, 0) +
     cortes.filter((c) => c.metodo === "transferencia").reduce((acc, c) => acc + c.precio, 0);
 
-  const movimientos = [...cajaFiltrada].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  // Antes esta lista solo traía cajaFiltrada (movimientos manuales de
+  // barberia_caja: venta/propina/gasto) — los cortes cobrados en Agenda/Hoy
+  // (citas con estado "listo") sí sumaban en Ingresos/Efectivo/la gráfica
+  // de arriba, pero nunca aparecían aquí abajo. Resultado: la gráfica podía
+  // decir "$169 Ingresos" con un solo corte de $120 + una venta manual de
+  // $49, pero Movimientos solo mostraba esa venta de $49 — parecía que la
+  // suma estaba mal cuando en realidad solo faltaba la mitad de la lista.
+  // Cada corte se pinta con el servicio + cliente (ej. "Corte de pelo ·
+  // Juan"), sin botones de editar/borrar — eso se hace desde Agenda
+  // (Mover/Cancelar cita), no desde aquí.
+  interface MovimientoVisual {
+    id: string;
+    tipo: CajaEntry["tipo"] | "corte";
+    concepto: string;
+    monto: number;
+    fecha: string;
+    metodo: CajaEntry["metodo"] | undefined;
+    empleadoNombreCache?: string;
+    empleadoRolCache?: RolEmpleado;
+  }
+  const movimientos: MovimientoVisual[] = [
+    ...cajaFiltrada.map((m) => ({
+      id: m.id,
+      tipo: m.tipo,
+      concepto: m.concepto,
+      monto: m.monto,
+      fecha: m.fecha,
+      metodo: m.metodo,
+      empleadoNombreCache: m.empleadoNombreCache,
+      empleadoRolCache: m.empleadoRolCache,
+    })),
+    ...cortes.map((c) => ({
+      id: c.id,
+      tipo: "corte" as const,
+      concepto: c.clienteNombre ? `${c.servicioNombre} · ${c.clienteNombre}` : c.servicioNombre,
+      monto: c.precio,
+      fecha: `${c.fecha}T${c.hora}`,
+      metodo: c.metodo,
+      empleadoNombreCache: c.empleadoNombreCache,
+      empleadoRolCache: c.empleadoRolCache,
+    })),
+  ].sort((a, b) => b.fecha.localeCompare(a.fecha));
   const movsParaGrafica: { fecha: string; a: number; b: number }[] = [
     ...cajaFiltrada.map((m) => (m.tipo === "gasto" ? { fecha: m.fecha, a: 0, b: m.monto } : { fecha: m.fecha, a: m.monto, b: 0 })),
     ...cortes.map((c) => ({ fecha: `${c.fecha}T${c.hora}`, a: c.precio, b: 0 })),
@@ -165,9 +220,9 @@ export default function CajaPage() {
                 Dueño
               </Chip>
             )}
-            {personasDisponibles.map((nombre) => (
-              <Chip key={nombre} selected={personaFiltro === nombre} onClick={() => setPersonaFiltro(nombre)}>
-                {nombre} · {ROL_LABEL[rolPorPersona.get(nombre)!]}
+            {personasDisponibles.map(({ id, nombre }) => (
+              <Chip key={id} selected={personaFiltro === id} onClick={() => setPersonaFiltro(id)}>
+                {nombre} · {ROL_LABEL[rolPorPersona.get(id)!]}
               </Chip>
             ))}
           </ChipGroup>
@@ -202,17 +257,17 @@ export default function CajaPage() {
           >
             <TrendBarChart
               data={serie.map((s) => ({ label: s.label, ingreso: s.a, gasto: s.b }))}
-              // grafica "ventas" (básico) solo ve la barra de ingresos — la de
-              // gastos, junto a Ganancia neta/Efectivo/Transferencia arriba,
-              // es la vista "completa" de Pro/Pro+ (ver LIMITES_BARBERIA).
-              bars={
-                plan.giroBarberia.grafica === "completa"
-                  ? [
-                      { key: "ingreso", name: "Ingresos", color: "hsl(168 55% 45%)" },
-                      { key: "gasto", name: "Gastos", color: "hsl(4 78% 58%)" },
-                    ]
-                  : [{ key: "ingreso", name: "Ingresos", color: "hsl(168 55% 45%)" }]
-              }
+              // Ingresos + Gastos siempre las 2, sin importar el plan — antes
+              // básico ("ventas") solo veía Ingresos, así que la gráfica no
+              // cuadraba con los stat tiles de arriba (que sí sumaban ambos)
+              // ni con Movimientos (que sí lista gastos). Mismo criterio que
+              // /app/gastos (fonda/abarrotes): el plan limita el RANGO
+              // (Semanal vs Mensual/Anual, ver disabledValues arriba), nunca
+              // qué series se pintan.
+              bars={[
+                { key: "ingreso", name: "Ingresos", color: "hsl(168 55% 45%)" },
+                { key: "gasto", name: "Gastos", color: "hsl(4 78% 58%)" },
+              ]}
               emptyText="Sin movimientos en este periodo"
             />
           </BloqueoPlan>
@@ -226,6 +281,7 @@ export default function CajaPage() {
         ) : (
           movimientos.map((m) => {
             const Icon = ICONS[m.tipo];
+            const esCorte = m.tipo === "corte";
             return (
               <div key={m.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
                 <div
@@ -243,7 +299,7 @@ export default function CajaPage() {
                     <CreditCard className="hidden h-3 w-3" />
                     · {m.metodo === "efectivo" ? "Efectivo" : "Transferencia"}
                   </p>
-                  <PendingSaleStatus negocioId={session.business.id} fila={movimientosPendientesPorId.get(m.id)} />
+                  {!esCorte && <PendingSaleStatus negocioId={session.business.id} fila={movimientosPendientesPorId.get(m.id)} />}
                   <div className="mt-1">
                     <EmpleadoBadge nombre={m.empleadoNombreCache} rol={m.empleadoRolCache} />
                   </div>
@@ -252,24 +308,33 @@ export default function CajaPage() {
                   {m.tipo === "gasto" ? "-" : "+"}
                   {formatMoney(m.monto)}
                 </span>
-                <div className="flex shrink-0 items-center gap-0.5">
-                  <button
-                    onClick={() => setEditando(m)}
-                    aria-label="Editar movimiento"
-                    className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  {puedeBorrar && (
+                {/* Un corte se edita/cancela desde Agenda (Mover/Cancelar cita), no desde aquí. */}
+                {!esCorte && (
+                  <div className="flex shrink-0 items-center gap-0.5">
                     <button
-                      onClick={() => setBorrando(m)}
-                      aria-label="Eliminar movimiento"
-                      className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => {
+                        const entry = cajaFiltrada.find((e) => e.id === m.id);
+                        if (entry) setEditando(entry);
+                      }}
+                      aria-label="Editar movimiento"
+                      className="rounded-full p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Pencil className="h-3.5 w-3.5" />
                     </button>
-                  )}
-                </div>
+                    {puedeBorrar && (
+                      <button
+                        onClick={() => {
+                          const entry = cajaFiltrada.find((e) => e.id === m.id);
+                          if (entry) setBorrando(entry);
+                        }}
+                        aria-label="Eliminar movimiento"
+                        className="rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })

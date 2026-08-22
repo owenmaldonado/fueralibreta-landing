@@ -63,6 +63,8 @@ export function businessFromRow(row: Row): Business {
     ultimoPagoAt: (row.ultimo_pago_at as string | null) ?? null,
     diasRecordatorio: row.dias_recordatorio != null ? Number(row.dias_recordatorio) : 28,
     acceptedTermsAt: (row.accepted_terms_at as string) ?? undefined,
+    turnoFondaCerradoEn: (row.turno_fonda_cerrado_en as string | null) ?? null,
+    timezone: (row.timezone as string) ?? undefined,
   };
 }
 
@@ -83,6 +85,7 @@ function businessToRow(b: Business): Row {
     demo: b.demo ?? false,
     app_slug: b.appSlug,
     accepted_terms_at: b.acceptedTermsAt ?? null,
+    timezone: b.timezone ?? null,
   };
 }
 
@@ -115,14 +118,88 @@ export async function fetchNegocioBySlug(slug: string): Promise<Business | null>
   return data ? businessFromRow(data) : null;
 }
 
-async function mustInsert(table: string, rows: Row[]): Promise<void> {
+/**
+ * PGRST204 = PostgREST no encuentra esa columna en su schema cache — nos ha
+ * pasado 3 veces con empleado_rol_cache/empleado_id en distintas tablas,
+ * siempre porque una migración se quedó a medias contra el proyecto real
+ * (este repo no corre `supabase db push` en CI, se pegan a mano en el SQL
+ * Editor). El mensaje trae el nombre de la columna entre comillas simples:
+ * "Could not find the 'empleado_rol_cache' column of 'abarrotes_fiados' in
+ * the schema cache".
+ */
+function nombreColumnaFaltante(error: { code?: string; message?: string } | null): string | null {
+  if (!error || error.code !== "PGRST204") return null;
+  const m = /Could not find the '([^']+)' column/.exec(error.message ?? "");
+  return m ? m[1] : null;
+}
+
+/**
+ * Insert resiliente al drift de columnas descrito arriba: si Supabase
+ * rechaza el insert por PGRST204, reintenta UNA vez sin esa columna en vez
+ * de perder la fila completa (antes: un negocio_id + empleado_rol_cache
+ * desincronizado tumbaba TODO el insert — la venta/cita/fiado que sí tenía
+ * todo lo demás bien igual se perdía). Loguea la columna que faltó para que
+ * quede evidencia de que hace falta correr una migración pendiente, pero no
+ * bloquea guardar el resto de los datos. Cualquier otro error (RLS, columna
+ * NOT NULL, tipo inválido, etc.) se propaga igual que antes.
+ */
+export async function cleanInsert(table: string, rows: Row[]): Promise<void> {
   if (!rows.length) return;
   const { error } = await supabase.from(table).insert(rows);
-  if (error) {
-    console.error(`persistTenant: insert en "${table}" falló:`, error);
+  if (!error) return;
+
+  const columna = nombreColumnaFaltante(error);
+  if (!columna) {
+    console.error(`cleanInsert: insert en "${table}" falló:`, error);
     throw error;
   }
+
+  console.warn(
+    `cleanInsert: "${table}" no tiene la columna "${columna}" en el schema cache de Supabase (falta correr/reasertar una migración) — reintentando el insert sin ese campo para no perder la fila.`
+  );
+  const rowsSinColumna = rows.map((r) => {
+    const { [columna]: _omitida, ...resto } = r;
+    return resto;
+  });
+  const { error: error2 } = await supabase.from(table).insert(rowsSinColumna);
+  if (error2) {
+    console.error(`cleanInsert: insert en "${table}" volvió a fallar sin "${columna}":`, error2);
+    throw error2;
+  }
 }
+
+/** Mismo blindaje que cleanInsert, para el lado update() de diffAndSync. */
+async function cleanUpdate(table: string, row: Row): Promise<void> {
+  const { error } = await supabase
+    .from(table)
+    .update(row)
+    .eq("id", row.id as string);
+  if (!error) return;
+
+  const columna = nombreColumnaFaltante(error);
+  if (!columna) {
+    console.error(`cleanUpdate: update en "${table}" falló:`, error);
+    throw error;
+  }
+
+  console.warn(
+    `cleanUpdate: "${table}" no tiene la columna "${columna}" en el schema cache de Supabase — reintentando el update sin ese campo.`
+  );
+  const { [columna]: _omitida, ...resto } = row;
+  const { error: error2 } = await supabase
+    .from(table)
+    .update(resto)
+    .eq("id", row.id as string);
+  if (error2) {
+    console.error(`cleanUpdate: update en "${table}" volvió a fallar sin "${columna}":`, error2);
+    throw error2;
+  }
+}
+
+// persistTenant (alta inicial de un negocio completo) sigue llamando
+// mustInsert por nombre en ~25 lugares — mismo comportamiento resiliente,
+// solo el nombre histórico.
+const mustInsert = cleanInsert;
 
 // ---------- barbería: mapeos ----------
 
@@ -174,7 +251,7 @@ const excepcionToRow = (e: Excepcion, negocioId: string): Row => ({
   hora_especial_fin: e.horaEspecialFin ?? null,
 });
 
-const clienteFromRow = (r: Row): BarberClient => ({
+export const clienteFromRow = (r: Row): BarberClient => ({
   id: r.id as string,
   nombre: r.nombre as string,
   telefono: r.telefono as string,
@@ -212,6 +289,21 @@ export const citaFromRow = (r: Row): Appointment => ({
   canceladoPor: (r.cancelado_por as string) ?? undefined,
   motivoCancelacion: (r.motivo_cancelacion as string) ?? undefined,
 });
+
+/**
+ * Refetch ligero de solo barberia_citas — lo usa el fallback de polling de
+ * lib/session.ts (escucharCitasEnVivo): si el canal de realtime se queda
+ * "SUBSCRIBED" pero deja de entregar postgres_changes (RLS/token de
+ * Realtime desincronizado, sin ningún error visible en consola), esto
+ * vuelve a traer las citas del negocio cada cierto tiempo como red de
+ * seguridad, sin esperar a que el dueño refresque la página a mano.
+ */
+export async function fetchCitasDeNegocio(negocioId: string): Promise<Appointment[]> {
+  const { data, error } = await supabase.from("barberia_citas").select("*").eq("negocio_id", negocioId);
+  if (error) throw error;
+  return (data ?? []).map(citaFromRow);
+}
+
 const citaToRow = (c: Appointment, negocioId: string): Row => ({
   id: c.id,
   negocio_id: negocioId,
@@ -232,7 +324,7 @@ const citaToRow = (c: Appointment, negocioId: string): Row => ({
   motivo_cancelacion: c.motivoCancelacion ?? null,
 });
 
-const cajaFromRow = (r: Row): CajaEntry => ({
+export const cajaFromRow = (r: Row): CajaEntry => ({
   id: r.id as string,
   tipo: r.tipo as CajaEntry["tipo"],
   concepto: r.concepto as string,
@@ -426,6 +518,7 @@ const pedidoFromRow = (row: Row, itemsRows: Row[]): FondaOrder => ({
   canceladoPor: (row.cancelado_por as string) ?? undefined,
   motivoCancelacion: (row.motivo_cancelacion as string) ?? undefined,
   turnoId: (row.turno_id as string) ?? undefined,
+  creadoEn: (row.created_at as string) ?? undefined,
   items: itemsRows
     .filter((it) => it.pedido_id === row.id)
     .map((it) => ({
@@ -460,7 +553,7 @@ export async function fetchPedidoConItems(pedidoId: string): Promise<FondaOrder 
   return pedidoFromRow(pedidoRow, itemsRows ?? []);
 }
 
-const gastoFromRow = (r: Row): Expense => ({
+export const gastoFromRow = (r: Row): Expense => ({
   id: r.id as string,
   categoria: r.categoria as string,
   monto: Number(r.monto),
@@ -918,15 +1011,10 @@ async function diffAndSync<T extends { id: string }>(
   });
 
   if (inserts.length) {
-    const { error } = await supabase.from(table).insert(inserts);
-    if (error) throw error;
+    await cleanInsert(table, inserts);
   }
   for (const row of updates) {
-    const { error } = await supabase
-      .from(table)
-      .update(row)
-      .eq("id", row.id as string);
-    if (error) throw error;
+    await cleanUpdate(table, row);
   }
   if (deletes.length) {
     const { error } = await supabase.from(table).delete().in("id", deletes);
@@ -1135,6 +1223,9 @@ export async function syncTenantDiff(prev: TenantData, next: TenantData): Promis
   }
   if (prev.business.diasRecordatorio !== next.business.diasRecordatorio) {
     businessChanges.dias_recordatorio = next.business.diasRecordatorio ?? 28;
+  }
+  if (prev.business.turnoFondaCerradoEn !== next.business.turnoFondaCerradoEn) {
+    businessChanges.turno_fonda_cerrado_en = next.business.turnoFondaCerradoEn ?? null;
   }
   if (Object.keys(businessChanges).length > 0) {
     const { error } = await supabase.from("negocios").update(businessChanges).eq("id", negocioId);

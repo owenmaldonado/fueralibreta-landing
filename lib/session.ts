@@ -4,11 +4,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { supabase, isSupabaseConfigured } from "./supabase";
-import { fetchNegocioByOwner, fetchTenantData, persistTenant, syncTenantDiff, citaFromRow, fetchVentaConItems, fetchPedidoConItems, businessFromRow } from "./data";
+import {
+  fetchNegocioByOwner,
+  fetchTenantData,
+  persistTenant,
+  syncTenantDiff,
+  citaFromRow,
+  fetchVentaConItems,
+  fetchPedidoConItems,
+  fetchCitasDeNegocio,
+  businessFromRow,
+  gastoFromRow,
+  cajaFromRow,
+  clienteFromRow,
+} from "./data";
 import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
 import { leerCacheLocal, sincronizarCacheLocalEnSegundoPlano } from "./local-cache";
 import { todayISO, formatHora12 } from "./mock";
-import type { Appointment, Business, GrocerySale, FondaOrder, TenantData } from "./types";
+import type { Appointment, Business, GrocerySale, FondaOrder, Expense, CajaEntry, BarberClient, TenantData } from "./types";
 
 type Source = "supabase" | "demo" | null;
 
@@ -33,6 +46,37 @@ const fetchesEnVuelo = new Map<string, Promise<TenantData | null>>();
 function limpiarCacheTenant() {
   cachedTenant = null;
   fetchesEnVuelo.clear();
+}
+
+/**
+ * update() (más abajo) dispara syncTenantDiff() en SEGUNDO PLANO — nadie
+ * espera esa promesa, así que un gasto/venta/cita nuevo se ve al instante
+ * en pantalla (optimista) mientras el INSERT real todavía viaja a
+ * Supabase. Eso está bien mientras la pestaña siga viva, pero
+ * TurnoControl/TopBar usan `window.location.href = ...` para volver a modo
+ * DUEÑO (a propósito — descarta cualquier estado de React residual, ver
+ * comentario de volverADuenoYRecargar) y una navegación dura CANCELA
+ * cualquier fetch todavía en vuelo. Si el vendedor guarda algo y de
+ * inmediato regresa a modo dueño, el INSERT nunca llegaba a terminar: se
+ * veía guardado un instante y luego "no se guardó nada" para el dueño.
+ * Este set + esperarSincronizacionPendiente() (exportada abajo) es lo que
+ * deja que esas navegaciones esperen a que lo pendiente termine de verdad
+ * antes de descartar la página.
+ */
+const escriturasPendientes = new Set<Promise<unknown>>();
+
+/**
+ * Se llama ANTES de cualquier `window.location.href = ...` que cambie de
+ * identidad (volver a dueño, "salida de emergencia") — nunca antes de un
+ * simple cambio de pantalla dentro de /app, donde React sigue vivo y no
+ * hay nada que cancelar. Timeout corto: si algo se queda pegado (red muy
+ * mala) no debe dejar al dueño atorado sin poder volver a su propio modo.
+ */
+export async function esperarSincronizacionPendiente(timeoutMs = 4000): Promise<void> {
+  if (escriturasPendientes.size === 0) return;
+  const todas = Promise.allSettled(Array.from(escriturasPendientes));
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
+  await Promise.race([todas, timeout]);
 }
 
 /**
@@ -123,7 +167,78 @@ let citasChannel: ReturnType<typeof supabase.channel> | null = null;
 let citasChannelNegocioId: string | null = null;
 const citasListeners = new Set<(evento: EventoCita) => void>();
 
+/**
+ * Arma (o rearma) el canal de citas para `negocioId`. Separado de
+ * suscribirseACitasEnVivo para poder llamarse solo desde el reintento de
+ * abajo sin pasar por el chequeo de citasChannelNegocioId (que en ese punto
+ * ya está en null a propósito) ni tocar citasListeners.
+ *
+ * El `.subscribe(status, err)` con callback es nuevo — antes se llamaba
+ * `.subscribe()` a secas, así que un CHANNEL_ERROR/TIMED_OUT (token de
+ * Realtime vencido, WebSocket caído, etc.) nunca se veía en consola: el
+ * canal se quedaba "muerto" en silencio y el dueño nunca más recibía
+ * eventos hasta refrescar. Con logging + hasta 3 reintentos (3s de
+ * separación) esto se autorepara solo en la mayoría de los casos; si de
+ * plano Realtime sigue sin entregar sin ni siquiera reportar error (mismo
+ * síntoma reportado: "SUBSCRIBED" pero cero payloads, cero errores), el
+ * polling de respaldo en escucharCitasEnVivo (lib/session.ts, useSession)
+ * es la red de seguridad final.
+ */
+function armarCanalCitas(negocioId: string, intento = 0) {
+  const nuevoCanal = supabase
+    .channel(`citas-${negocioId}`)
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
+      (payload) => {
+        console.log("[session] citas realtime: INSERT recibido", payload.new);
+        const cita = citaFromRow(payload.new as Record<string, unknown>);
+        // Un solo toast por evento real de Supabase, aquí y no dentro de
+        // cada listener — con el shell y la pantalla actual (ej. Agenda)
+        // cada uno con su propia instancia de useSession() suscrita al
+        // mismo canal compartido, un toast por listener duplicaría el
+        // aviso (2+ toasts para la misma cita nueva).
+        toast.success(`Nueva cita: ${cita.clienteNombre} · ${formatHora12(cita.hora)}`);
+        citasListeners.forEach((l) => l({ tipo: "insert", cita }));
+      }
+    )
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
+      (payload) => {
+        console.log("[session] citas realtime: UPDATE recibido", payload.new);
+        const cita = citaFromRow(payload.new as Record<string, unknown>);
+        citasListeners.forEach((l) => l({ tipo: "update", cita }));
+      }
+    )
+    .subscribe((status, err) => {
+      console.log("[session] canal de citas:", status, err ?? "");
+      if (status !== "CHANNEL_ERROR" && status !== "TIMED_OUT") return;
+      // citasChannelNegocioId !== negocioId: ya se desmontó o cambió de
+      // negocio mientras esperábamos — no reintentar un canal que ya nadie
+      // quiere.
+      if (citasChannelNegocioId !== negocioId || intento >= 3) {
+        console.error(`[session] canal de citas falló y no se reintenta más (intento ${intento}):`, err);
+        return;
+      }
+      console.error(`[session] canal de citas falló, reintentando en 3s (intento ${intento + 1}/3):`, err);
+      supabase.removeChannel(nuevoCanal);
+      citasChannel = null;
+      citasChannelNegocioId = null;
+      setTimeout(() => {
+        if (citasListeners.size === 0) return;
+        armarCanalCitas(negocioId, intento + 1);
+      }, 3000);
+    });
+  citasChannel = nuevoCanal;
+  citasChannelNegocioId = negocioId;
+}
+
 function suscribirseACitasEnVivo(negocioId: string, onEvento: (evento: EventoCita) => void): () => void {
+  if (!negocioId) {
+    console.error("[session] suscribirseACitasEnVivo: negocioId vacío/undefined, no se arma el canal.");
+    return () => {};
+  }
   if (citasChannelNegocioId !== negocioId) {
     if (citasChannel) supabase.removeChannel(citasChannel);
     // citasChannelNegocioId solo se marca DESPUÉS de armar el canal con
@@ -135,33 +250,7 @@ function suscribirseACitasEnVivo(negocioId: string, onEvento: (evento: EventoCit
     // canal real detrás).
     citasChannel = null;
     citasChannelNegocioId = null;
-    const nuevoCanal = supabase
-      .channel(`citas-${negocioId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
-        (payload) => {
-          const cita = citaFromRow(payload.new as Record<string, unknown>);
-          // Un solo toast por evento real de Supabase, aquí y no dentro de
-          // cada listener — con el shell y la pantalla actual (ej. Agenda)
-          // cada uno con su propia instancia de useSession() suscrita al
-          // mismo canal compartido, un toast por listener duplicaría el
-          // aviso (2+ toasts para la misma cita nueva).
-          toast.success(`Nueva cita: ${cita.clienteNombre} · ${formatHora12(cita.hora)}`);
-          citasListeners.forEach((l) => l({ tipo: "insert", cita }));
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "barberia_citas", filter: `negocio_id=eq.${negocioId}` },
-        (payload) => {
-          const cita = citaFromRow(payload.new as Record<string, unknown>);
-          citasListeners.forEach((l) => l({ tipo: "update", cita }));
-        }
-      )
-      .subscribe();
-    citasChannel = nuevoCanal;
-    citasChannelNegocioId = negocioId;
+    armarCanalCitas(negocioId);
   }
   citasListeners.add(onEvento);
   return () => {
@@ -336,6 +425,169 @@ function suscribirseANegocioEnVivo(negocioId: string, onEvento: (business: Busin
 }
 
 /**
+ * fonda_gastos/abarrotes_gastos/barberia_caja nunca tuvieron NINGÚN canal de
+ * realtime (a diferencia de citas/ventas/pedidos/negocios, arriba) — un
+ * gasto (o una entrada de caja) registrado desde OTRO dispositivo/pestaña
+ * de la misma sesión (p. ej. el dueño viendo el dashboard en su celular
+ * mientras alguien más registra un gasto en la tablet del negocio, o dos
+ * pestañas del mismo dueño) nunca se veía sin recargar. No es un problema
+ * de RLS entre dueño/empleado: el modo PIN de empleado (lib/empleados.ts)
+ * nunca crea su propia sesión de Auth — auth.uid() sigue siendo el del
+ * dueño sin importar quién esté "activo" en el dispositivo (ver
+ * fonda_gastos_owner/abarrotes_gastos_owner, que usan is_negocio_owner()
+ * igual que el resto) — así que el insert de un empleado ya llegaba bien a
+ * Supabase; lo único que faltaba era avisarle a las demás pestañas/
+ * dispositivos que había uno nuevo. Mismo patrón de canal compartido por
+ * negocio que el resto de este archivo, un canal por tabla ya que
+ * fonda_gastos/abarrotes_gastos/barberia_caja son tablas separadas con
+ * forma distinta (Expense vs CajaEntry).
+ */
+let gastosChannel: ReturnType<typeof supabase.channel> | null = null;
+let gastosChannelKey: string | null = null;
+const gastosListeners = new Set<(evento: { tipo: "insert" | "update"; gasto: Expense }) => void>();
+
+function suscribirseAGastosEnVivo(negocioId: string, tabla: "fonda_gastos" | "abarrotes_gastos", onEvento: (evento: { tipo: "insert" | "update"; gasto: Expense }) => void): () => void {
+  const key = `${tabla}-${negocioId}`;
+  if (gastosChannelKey !== key) {
+    if (gastosChannel) supabase.removeChannel(gastosChannel);
+    gastosChannel = null;
+    gastosChannelKey = null;
+    const nuevoCanal = supabase
+      .channel(`gastos-${key}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: tabla, filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const gasto = gastoFromRow(payload.new as Record<string, unknown>);
+          gastosListeners.forEach((l) => l({ tipo: "insert", gasto }));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: tabla, filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const gasto = gastoFromRow(payload.new as Record<string, unknown>);
+          gastosListeners.forEach((l) => l({ tipo: "update", gasto }));
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") console.error(`[session] canal de ${tabla} falló:`, err);
+      });
+    gastosChannel = nuevoCanal;
+    gastosChannelKey = key;
+  }
+  gastosListeners.add(onEvento);
+  return () => {
+    gastosListeners.delete(onEvento);
+    if (gastosListeners.size === 0 && gastosChannel) {
+      supabase.removeChannel(gastosChannel);
+      gastosChannel = null;
+      gastosChannelKey = null;
+    }
+  };
+}
+
+let cajaChannel: ReturnType<typeof supabase.channel> | null = null;
+let cajaChannelNegocioId: string | null = null;
+const cajaListeners = new Set<(evento: { tipo: "insert" | "update"; entry: CajaEntry }) => void>();
+
+/** Mismo patrón que suscribirseAGastosEnVivo, para barberia_caja (propinas/gastos de barbería, forma CajaEntry en vez de Expense). */
+function suscribirseACajaEnVivo(negocioId: string, onEvento: (evento: { tipo: "insert" | "update"; entry: CajaEntry }) => void): () => void {
+  if (cajaChannelNegocioId !== negocioId) {
+    if (cajaChannel) supabase.removeChannel(cajaChannel);
+    cajaChannel = null;
+    cajaChannelNegocioId = null;
+    const nuevoCanal = supabase
+      .channel(`barberia-caja-${negocioId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "barberia_caja", filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const entry = cajaFromRow(payload.new as Record<string, unknown>);
+          cajaListeners.forEach((l) => l({ tipo: "insert", entry }));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "barberia_caja", filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const entry = cajaFromRow(payload.new as Record<string, unknown>);
+          cajaListeners.forEach((l) => l({ tipo: "update", entry }));
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") console.error("[session] canal de barberia_caja falló:", err);
+      });
+    cajaChannel = nuevoCanal;
+    cajaChannelNegocioId = negocioId;
+  }
+  cajaListeners.add(onEvento);
+  return () => {
+    cajaListeners.delete(onEvento);
+    if (cajaListeners.size === 0 && cajaChannel) {
+      supabase.removeChannel(cajaChannel);
+      cajaChannel = null;
+      cajaChannelNegocioId = null;
+    }
+  };
+}
+
+/**
+ * barberia_clientes nunca tuvo canal de realtime — un cliente nuevo dado
+ * de alta al agendar una cita (NuevaCitaForm, ver components/quick-add/
+ * barberia-quick-add.tsx) se veía al instante en ESA misma pestaña
+ * (optimista + TENANT_CACHE_EVENT), pero /app/clientes en OTRO
+ * dispositivo/pestaña del mismo negocio (el dueño viendo su lista de
+ * clientes mientras un vendedor agenda en la tablet del mostrador) no se
+ * enteraba sin refrescar. Mismo patrón que el resto de este archivo.
+ * INSERT y UPDATE (editar nombre/notas/cumpleaños desde /app/clientes en
+ * otro dispositivo también debe reflejarse).
+ */
+let clientesChannel: ReturnType<typeof supabase.channel> | null = null;
+let clientesChannelNegocioId: string | null = null;
+const clientesListeners = new Set<(evento: { tipo: "insert" | "update"; cliente: BarberClient }) => void>();
+
+function suscribirseAClientesEnVivo(negocioId: string, onEvento: (evento: { tipo: "insert" | "update"; cliente: BarberClient }) => void): () => void {
+  if (clientesChannelNegocioId !== negocioId) {
+    if (clientesChannel) supabase.removeChannel(clientesChannel);
+    clientesChannel = null;
+    clientesChannelNegocioId = null;
+    const nuevoCanal = supabase
+      .channel(`barberia-clientes-${negocioId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "barberia_clientes", filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const cliente = clienteFromRow(payload.new as Record<string, unknown>);
+          clientesListeners.forEach((l) => l({ tipo: "insert", cliente }));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "barberia_clientes", filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const cliente = clienteFromRow(payload.new as Record<string, unknown>);
+          clientesListeners.forEach((l) => l({ tipo: "update", cliente }));
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") console.error("[session] canal de barberia_clientes falló:", err);
+      });
+    clientesChannel = nuevoCanal;
+    clientesChannelNegocioId = negocioId;
+  }
+  clientesListeners.add(onEvento);
+  return () => {
+    clientesListeners.delete(onEvento);
+    if (clientesListeners.size === 0 && clientesChannel) {
+      supabase.removeChannel(clientesChannel);
+      clientesChannel = null;
+      clientesChannelNegocioId = null;
+    }
+  };
+}
+
+/**
  * Sesión del negocio activo. Dos fuentes posibles:
  *
  * - "supabase": el usuario está logueado y ya tiene un negocio real en la
@@ -350,9 +602,13 @@ export function useSession() {
   const sourceRef = useRef<Source>(null);
   const sessionRef = useRef<TenantData | null>(null);
   const citasUnsubRef = useRef<(() => void) | null>(null);
+  const citasPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ventasUnsubRef = useRef<(() => void) | null>(null);
   const pedidosUnsubRef = useRef<(() => void) | null>(null);
   const negocioUnsubRef = useRef<(() => void) | null>(null);
+  const gastosUnsubRef = useRef<(() => void) | null>(null);
+  const cajaUnsubRef = useRef<(() => void) | null>(null);
+  const clientesUnsubRef = useRef<(() => void) | null>(null);
   sessionRef.current = session;
 
   const loadFromDemoPreview = useCallback(() => {
@@ -367,6 +623,10 @@ export function useSession() {
     function detenerCitasEnVivo() {
       citasUnsubRef.current?.();
       citasUnsubRef.current = null;
+      if (citasPollRef.current) {
+        clearInterval(citasPollRef.current);
+        citasPollRef.current = null;
+      }
     }
 
     function detenerVentasEnVivo() {
@@ -382,6 +642,21 @@ export function useSession() {
     function detenerNegocioEnVivo() {
       negocioUnsubRef.current?.();
       negocioUnsubRef.current = null;
+    }
+
+    function detenerGastosEnVivo() {
+      gastosUnsubRef.current?.();
+      gastosUnsubRef.current = null;
+    }
+
+    function detenerCajaEnVivo() {
+      cajaUnsubRef.current?.();
+      cajaUnsubRef.current = null;
+    }
+
+    function detenerClientesEnVivo() {
+      clientesUnsubRef.current?.();
+      clientesUnsubRef.current = null;
     }
 
     /**
@@ -412,6 +687,41 @@ export function useSession() {
           };
         });
       });
+      // Red de seguridad además del canal de arriba: si Realtime se queda
+      // "SUBSCRIBED" pero deja de entregar postgres_changes sin ningún error
+      // (el síntoma reportado — token de Realtime desincronizado tras
+      // refrescar RLS a mano, WebSocket zombie, etc.), esto vuelve a traer
+      // las citas del negocio cada 25s y mete las que falten — mismo
+      // chequeo anti-eco por id que el realtime de arriba, así que no
+      // duplica nada si el canal SÍ está entregando. No sustituye arreglar
+      // el canal (por eso el logging nuevo en armarCanalCitas), pero
+      // garantiza que "esperar un rato" alcance sin necesidad de F5.
+      citasPollRef.current = setInterval(() => {
+        fetchCitasDeNegocio(negocioId)
+          .then((citasFrescas) => {
+            setSessionState((prev) => {
+              if (!prev?.barberia) return prev;
+              const porId = new Map(citasFrescas.map((c) => [c.id, c] as const));
+              // JSON.stringify en vez de === porque fetchCitasDeNegocio
+              // siempre devuelve objetos nuevos (aunque el contenido no haya
+              // cambiado) — sin esta comparación por contenido, `cambio`
+              // sería true cada 25s aunque nada haya cambiado de verdad, y
+              // el árbol completo del dashboard se re-renderizaría sin
+              // necesidad en cada tick del polling.
+              let cambio = false;
+              const actualizadas = prev.barberia.citas.map((c) => {
+                const fresca = porId.get(c.id);
+                if (!fresca || JSON.stringify(fresca) === JSON.stringify(c)) return c;
+                cambio = true;
+                return fresca;
+              });
+              const nuevas = citasFrescas.filter((c) => !prev.barberia!.citas.some((existing) => existing.id === c.id));
+              if (!cambio && nuevas.length === 0) return prev;
+              return { ...prev, barberia: { ...prev.barberia, citas: [...nuevas, ...actualizadas] } };
+            });
+          })
+          .catch((err) => console.error("[session] polling de respaldo de citas falló:", err));
+      }, 25000);
     }
 
     /** Ver comentario de suscribirseAVentasEnVivo arriba. */
@@ -449,6 +759,61 @@ export function useSession() {
       detenerNegocioEnVivo();
       negocioUnsubRef.current = suscribirseANegocioEnVivo(negocioId, (business) => {
         setSessionState((prev) => (prev ? { ...prev, business } : prev));
+      });
+    }
+
+    /** Ver comentario de suscribirseAGastosEnVivo arriba — mismo chequeo anti-eco por id que ventas/pedidos, INSERT agrega y UPDATE reemplaza (un gasto editado desde otro dispositivo también se refleja). */
+    function escucharGastosEnVivo(negocioId: string, tabla: "fonda_gastos" | "abarrotes_gastos") {
+      detenerGastosEnVivo();
+      gastosUnsubRef.current = suscribirseAGastosEnVivo(negocioId, tabla, ({ tipo, gasto }) => {
+        setSessionState((prev) => {
+          const modulo = tabla === "fonda_gastos" ? prev?.fonda : prev?.abarrotes;
+          if (!modulo) return prev;
+          if (tipo === "insert") {
+            if (modulo.gastos.some((g) => g.id === gasto.id)) return prev;
+            const gastos = [gasto, ...modulo.gastos];
+            return tabla === "fonda_gastos"
+              ? { ...prev!, fonda: { ...prev!.fonda!, gastos } }
+              : { ...prev!, abarrotes: { ...prev!.abarrotes!, gastos } };
+          }
+          const gastos = modulo.gastos.map((g) => (g.id === gasto.id ? gasto : g));
+          return tabla === "fonda_gastos"
+            ? { ...prev!, fonda: { ...prev!.fonda!, gastos } }
+            : { ...prev!, abarrotes: { ...prev!.abarrotes!, gastos } };
+        });
+      });
+    }
+
+    /** Ver comentario de suscribirseACajaEnVivo arriba. */
+    function escucharCajaEnVivo(negocioId: string) {
+      detenerCajaEnVivo();
+      cajaUnsubRef.current = suscribirseACajaEnVivo(negocioId, ({ tipo, entry }) => {
+        setSessionState((prev) => {
+          if (!prev?.barberia) return prev;
+          if (tipo === "insert") {
+            if (prev.barberia.caja.some((e) => e.id === entry.id)) return prev;
+            return { ...prev, barberia: { ...prev.barberia, caja: [entry, ...prev.barberia.caja] } };
+          }
+          return { ...prev, barberia: { ...prev.barberia, caja: prev.barberia.caja.map((e) => (e.id === entry.id ? entry : e)) } };
+        });
+      });
+    }
+
+    /** Ver comentario de suscribirseAClientesEnVivo arriba. */
+    function escucharClientesEnVivo(negocioId: string) {
+      detenerClientesEnVivo();
+      clientesUnsubRef.current = suscribirseAClientesEnVivo(negocioId, ({ tipo, cliente }) => {
+        setSessionState((prev) => {
+          if (!prev?.barberia) return prev;
+          if (tipo === "insert") {
+            if (prev.barberia.clientes.some((c) => c.id === cliente.id)) return prev;
+            return { ...prev, barberia: { ...prev.barberia, clientes: [cliente, ...prev.barberia.clientes] } };
+          }
+          return {
+            ...prev,
+            barberia: { ...prev.barberia, clientes: prev.barberia.clientes.map((c) => (c.id === cliente.id ? cliente : c)) },
+          };
+        });
       });
     }
 
@@ -619,17 +984,37 @@ export function useSession() {
             } catch (err) {
               console.error("[session] no se pudo suscribir a citas en vivo (la sesión sigue cargada bien):", err);
             }
+            try {
+              escucharCajaEnVivo(tenant.business.id);
+            } catch (err) {
+              console.error("[session] no se pudo suscribir a caja en vivo (la sesión sigue cargada bien):", err);
+            }
+            try {
+              escucharClientesEnVivo(tenant.business.id);
+            } catch (err) {
+              console.error("[session] no se pudo suscribir a clientes en vivo (la sesión sigue cargada bien):", err);
+            }
           } else if (tenant.business.tipo === "abarrotes") {
             try {
               escucharVentasEnVivo(tenant.business.id);
             } catch (err) {
               console.error("[session] no se pudo suscribir a ventas en vivo (la sesión sigue cargada bien):", err);
             }
+            try {
+              escucharGastosEnVivo(tenant.business.id, "abarrotes_gastos");
+            } catch (err) {
+              console.error("[session] no se pudo suscribir a gastos en vivo (la sesión sigue cargada bien):", err);
+            }
           } else if (tenant.business.tipo === "fonda") {
             try {
               escucharPedidosEnVivo(tenant.business.id);
             } catch (err) {
               console.error("[session] no se pudo suscribir a pedidos en vivo (la sesión sigue cargada bien):", err);
+            }
+            try {
+              escucharGastosEnVivo(tenant.business.id, "fonda_gastos");
+            } catch (err) {
+              console.error("[session] no se pudo suscribir a gastos en vivo (la sesión sigue cargada bien):", err);
             }
           }
           // Aplica a los 3 verticales — un cambio de plan desde /admin debe
@@ -726,6 +1111,9 @@ export function useSession() {
         detenerVentasEnVivo();
         detenerPedidosEnVivo();
         detenerNegocioEnVivo();
+        detenerGastosEnVivo();
+        detenerCajaEnVivo();
+        detenerClientesEnVivo();
         limpiarCacheTenant();
         return;
       }
@@ -753,6 +1141,9 @@ export function useSession() {
       detenerVentasEnVivo();
       detenerPedidosEnVivo();
       detenerNegocioEnVivo();
+      detenerGastosEnVivo();
+      detenerCajaEnVivo();
+      detenerClientesEnVivo();
     };
   }, [loadFromDemoPreview]);
 
@@ -801,9 +1192,11 @@ export function useSession() {
       // conexión) — la Parte 4 sube lo pendiente cuando regrese la señal,
       // no tiene caso intentarlo ni ensuciar la consola con el error.
       if (!opciones?.yaSincronizado && (typeof navigator === "undefined" || navigator.onLine)) {
-        syncTenantDiff(prev, next).catch((err) => {
+        const escritura = syncTenantDiff(prev, next).catch((err) => {
           console.error("No se pudo guardar el cambio en Supabase:", err);
         });
+        escriturasPendientes.add(escritura);
+        escritura.finally(() => escriturasPendientes.delete(escritura));
       }
     }
   }, []);

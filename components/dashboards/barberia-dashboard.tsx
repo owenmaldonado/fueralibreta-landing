@@ -9,7 +9,8 @@ import { EmptyState } from "./empty-state";
 import { CobrarCitaDialog } from "./cobrar-cita-dialog";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { WhatsappRecordatorioButton } from "./whatsapp-recordatorio-button";
-import { daysSince, formatHora12, formatMoney, statsVisitasCliente, todayISO, waLink } from "@/lib/mock";
+import { daysSince, formatHora12, formatMoney, statsVisitasCliente, waLink } from "@/lib/mock";
+import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import { avisosIgnoradosHoy, ignorarAvisoHoy } from "@/lib/dismissed-alerts";
@@ -19,7 +20,12 @@ import type { Appointment, TenantData, SessionUpdater } from "@/lib/types";
 export function BarberiaDashboard({ session, update }: { session: TenantData; update: SessionUpdater }) {
   const data = session.barberia!;
   const business = session.business;
-  const hoy = todayISO(0);
+  // "Hoy" del NEGOCIO (zona horaria configurada, ver Business.timezone),
+  // no del dispositivo que está viendo el dashboard — antes usaba
+  // todayISO(0) (getters LOCALES del Date del navegador/celular), que da
+  // el día equivocado si el dispositivo tiene otra zona horaria que la del
+  // negocio. Mismo criterio que fonda-dashboard.tsx (hoyEnSuZona).
+  const hoy = hoyEnZona(business.timezone);
   const plan = usePlan();
   const [cobrando, setCobrando] = React.useState<Appointment | null>(null);
   const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy(business.id));

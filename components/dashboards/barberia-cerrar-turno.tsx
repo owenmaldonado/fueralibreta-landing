@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
-import { supabase } from "@/lib/supabase";
-import { formatMoney, mensajeDiferencia, todayISO, uid } from "@/lib/mock";
+import { cleanInsert } from "@/lib/data";
+import { formatMoney, mensajeDiferencia, uid } from "@/lib/mock";
+import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, CajaEntry, InventoryProduct } from "@/lib/types";
 
@@ -28,6 +29,8 @@ interface Props {
   onClose: () => void;
   session: TenantData;
   update: SessionUpdater;
+  /** Se dispara SOLO cuando el wizard llegó de verdad a "¡Turno cerrado!" y se cerró desde ahí — nunca si se cancela en Paso 1/2. TopBar lo usa para, en modo vendedor, recién ahí pedir el PIN de dueño y volver al panel — ver components/app-shell/top-bar.tsx. */
+  onCompletado?: () => void;
 }
 
 /** Nombre de producto de Inventario "parecido" al del checkbox de material — coincidencia simple por substring, sin acentos/mayúsculas, suficiente para "Navajas" -> "Navajas de afeitar". */
@@ -63,7 +66,7 @@ function buscarProductoSimilar(nombre: string, productos: InventoryProduct[]): I
  * y abarrotera_cortes): se escribe directo a Supabase solo para negocios
  * reales al terminar el cierre, con todo ya resuelto; nada la lee todavía.
  */
-export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
+export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado }: Props) {
   const [paso, setPaso] = React.useState<1 | 2 | "resumen">(1);
   const [fondoInicial, setFondoInicial] = React.useState("");
   const [efectivoReal, setEfectivoReal] = React.useState("");
@@ -80,7 +83,9 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
   const data = session.barberia!;
   const negocio = session.business;
   const esNegocioReal = Boolean(negocio.ownerId);
-  const hoy = todayISO(0);
+  // "Hoy" del negocio (zona configurada), no del dispositivo — ver
+  // comentario en barberia-dashboard.tsx.
+  const hoy = hoyEnZona(negocio.timezone);
 
   const citasHoyListo = data.citas.filter((c) => c.fecha === hoy && c.estado === "listo");
   const ventasHoyTotal = citasHoyListo.reduce((acc, c) => acc + c.precio, 0);
@@ -109,6 +114,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
   const diferencia = efectivoValido ? Math.round(Number(efectivoReal) - esperado) : null;
 
   function resetYCerrar() {
+    const completado = paso === "resumen";
     setPaso(1);
     setFondoInicial("");
     setEfectivoReal("");
@@ -121,6 +127,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
     setOtroMonto("");
     setResumen(null);
     onClose();
+    if (completado) onCompletado?.();
   }
 
   function toggleMaterial(nombre: string) {
@@ -199,20 +206,25 @@ export function CerrarTurnoSheet({ open, onClose, session, update }: Props) {
     }
 
     if (esNegocioReal) {
-      const { error } = await supabase.from("barberia_cortes").insert({
-        negocio_id: negocio.id,
-        fecha: hoy,
-        fondo_inicial: fondoInicial.trim() === "" ? null : Number(fondoInicial),
-        ventas_calculadas: ventasHoyTotal,
-        efectivo_real: efectivoNum,
-        gastos: gastoPaso1 || null,
-        diferencia: Math.round(efectivoNum - esperado),
-        propinas_total: propinasNum,
-        gastos_material: gastosMaterialTotal,
-        empleado_id: camposEmpleado().empleadoId ?? null,
-        empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
-      });
-      if (error) console.error("No se pudo guardar el corte:", error);
+      try {
+        await cleanInsert("barberia_cortes", [
+          {
+            negocio_id: negocio.id,
+            fecha: hoy,
+            fondo_inicial: fondoInicial.trim() === "" ? null : Number(fondoInicial),
+            ventas_calculadas: ventasHoyTotal,
+            efectivo_real: efectivoNum,
+            gastos: gastoPaso1 || null,
+            diferencia: Math.round(efectivoNum - esperado),
+            propinas_total: propinasNum,
+            gastos_material: gastosMaterialTotal,
+            empleado_id: camposEmpleado().empleadoId ?? null,
+            empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
+          },
+        ]);
+      } catch (error) {
+        console.error("No se pudo guardar el corte:", error);
+      }
     }
 
     setResumen({

@@ -71,6 +71,18 @@ export interface Business {
   diasRecordatorio?: number;
   /** ISO datetime de cuándo el dueño aceptó el checkbox de Términos/Aviso de Privacidad en /onboarding. */
   acceptedTermsAt?: string;
+  /**
+   * ISO datetime del último "Cerrar turno" de fonda (ver
+   * components/dashboards/fonda-cerrar-turno.tsx) — vive en `negocios` (no
+   * en localStorage como turnoId de lib/turno-fonda.ts) justo para que
+   * "Ventas de hoy"/Corte cuenten lo mismo en TODOS los dispositivos del
+   * negocio: turnoId es local por dispositivo, así que un pedido cobrado
+   * por un vendedor en su propia tablet nunca calzaba con el turnoId del
+   * dispositivo del dueño y su corte se veía en $0 aunque el pedido sí
+   * hubiera llegado a Supabase. `undefined`/null = nunca se ha cerrado un
+   * turno, cae a "desde el inicio del día calendario".
+   */
+  turnoFondaCerradoEn?: string | null;
 }
 
 // ---------- Barbería ----------
@@ -218,8 +230,10 @@ export interface FondaOrder {
   /** Cancelación por un rol "vendedor" (no puede borrar, solo cancelar — ver PERMISOS en lib/empleados.ts). */
   canceladoPor?: string;
   motivoCancelacion?: string;
-  /** Turno en curso al momento de la venta (ver lib/turno-fonda.ts) — "Ventas" de Hoy filtra por esto, no por fecha, para no depender de cuándo terminó de cargar la sesión. Ausente en pedidos de antes de esta columna. */
+  /** Turno en curso al momento de la venta (ver lib/turno-fonda.ts) — ya NO se usa para filtrar "Ventas de hoy"/Corte (ver Business.turnoFondaCerradoEn, que sí es compartido entre dispositivos); se conserva solo para no perder el dato de pedidos ya guardados con esta columna. */
   turnoId?: string;
+  /** created_at real de Supabase (timestamptz) — a diferencia de `fecha`+`hora` (que el cliente arma con la hora local del dispositivo), esto es lo que compara Business.turnoFondaCerradoEn para decidir qué pedidos son "del turno actual" sin importar en qué dispositivo se cobraron. */
+  creadoEn?: string;
 }
 
 export interface Expense {

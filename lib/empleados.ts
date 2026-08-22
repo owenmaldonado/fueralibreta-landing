@@ -51,6 +51,27 @@ export function pinEsObvio(pin: string): boolean {
   return PINS_OBVIOS.has(pin) || /^(\d)\1{3}$/.test(pin);
 }
 
+/**
+ * Title Case ("maria" -> "Maria", "JUAN PEREZ" -> "Juan Perez") — se aplica
+ * al nombre de un empleado ANTES de guardarlo (alta y edición). Bug real:
+ * negocio_empleados no normalizaba nada, así que "Maria" y "maria" podían
+ * coexistir como dos empleados distintos para el mismo negocio (el unique
+ * (negocio_id, nombre) de la tabla es case-sensitive) — cada uno con su
+ * propio PIN, y el filtro "por persona" de Caja/Gastos (que agrupa por
+ * empleado_id, no por este nombre) los mostraba como dos personas
+ * separadas. Esto es la mitad del fix (evita nuevos duplicados); la otra
+ * mitad es el índice único case-insensitive en la migración de
+ * negocio_empleados, que además normaliza server-side en crear_empleado
+ * por si algo más además de esta pantalla llega a insertar ahí.
+ */
+export function normalizarNombreEmpleado(nombre: string): string {
+  return nombre
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .replace(/(^|[\s-])(\p{L})/gu, (_, sep: string, letra: string) => sep + letra.toUpperCase());
+}
+
 function leerCookie(nombre: string): string | null {
   if (typeof document === "undefined") return null;
   const match = document.cookie.match(new RegExp(`(?:^|; )${nombre}=([^;]*)`));
@@ -115,6 +136,8 @@ interface PermisosRol {
   editarConfiguracion: boolean;
   borrarVentas: boolean;
   cancelarVentas: boolean;
+  /** Puede disparar el wizard real de "Cerrar turno" (Corte + Propinas/material) desde el botón rojo de TurnoControl, sin que el dueño esté presente — ver components/app-shell/turno-control.tsx. Distinto de verCorteDelDia (ver el resumen ya calculado en el dashboard): esto es poder CERRARLO. */
+  puedeCerrarTurno: boolean;
 }
 
 export const PERMISOS: Record<RolEmpleado, PermisosRol> = {
@@ -130,6 +153,7 @@ export const PERMISOS: Record<RolEmpleado, PermisosRol> = {
     editarConfiguracion: true,
     borrarVentas: true,
     cancelarVentas: true,
+    puedeCerrarTurno: true,
   },
   encargado: {
     verHoy: true,
@@ -143,6 +167,7 @@ export const PERMISOS: Record<RolEmpleado, PermisosRol> = {
     editarConfiguracion: false,
     borrarVentas: false,
     cancelarVentas: true,
+    puedeCerrarTurno: true,
   },
   vendedor: {
     verHoy: true,
@@ -156,6 +181,10 @@ export const PERMISOS: Record<RolEmpleado, PermisosRol> = {
     editarConfiguracion: false,
     borrarVentas: false,
     cancelarVentas: true,
+    // El punto entero de esta tarea: un vendedor SÍ puede cerrar su turno
+    // sin que el dueño esté presente (ver TurnoControl) — solo pide PIN de
+    // dueño DESPUÉS, para volver al panel de dueño, no para cerrar.
+    puedeCerrarTurno: true,
   },
 };
 

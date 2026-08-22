@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { SeleccionarEmpleado, ROL_LABEL } from "@/components/kiosko/quien-atiende";
 import { PinDuenoForm } from "@/components/kiosko/pin-dueno";
 import { useOnlineStatus } from "@/lib/use-online-status";
+import { esperarSincronizacionPendiente } from "@/lib/session";
+import { PERMISOS } from "@/lib/empleados";
 import type { EmpleadoActual } from "@/lib/types";
 
 /**
@@ -29,11 +31,23 @@ export function TurnoControl({
   empleadoActual,
   pinDuenoSet,
   onSesionCambiada,
+  onAbrirCerrarTurno,
 }: {
   negocioId: string;
   empleadoActual: EmpleadoActual | null;
   pinDuenoSet: boolean;
   onSesionCambiada: (empleado: EmpleadoActual | null) => void;
+  /**
+   * Cuando se da (las 3 verticales, ver TopBar), el botón rojo de
+   * "Atendiendo como X" abre el wizard REAL de Cerrar Turno/Día (Corte +
+   * Propinas/material en barbería, Corte + Merma en fonda/abarrotes) en vez
+   * de solo volver a modo dueño — así un vendedor puede cerrar su turno sin
+   * que el dueño esté presente; el PIN de dueño se pide DESPUÉS, al
+   * terminar (ver onCompletado en CerrarTurnoSheet/CerrarDiaSheet), no
+   * antes. Sin este prop (no debería pasar hoy, queda como resguardo) el
+   * botón se comporta como antes: volver a dueño directo.
+   */
+  onAbrirCerrarTurno?: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
   const [eligiendo, setEligiendo] = React.useState(false);
@@ -58,9 +72,17 @@ export function TurnoControl({
    * de dejar que React re-renderice solo — así queda descartado cualquier
    * estado en memoria residual de la sesión anterior (listeners de
    * realtime, caché de useSession, lo que sea), no solo la cookie.
+   *
+   * esperarSincronizacionPendiente() ANTES del reload: un gasto/venta/cita
+   * que el vendedor acaba de guardar se sube a Supabase en segundo plano
+   * (update() en lib/session.ts nunca espera esa escritura, para que la
+   * pantalla se sienta instantánea) — sin este await, `window.location.href`
+   * cancela ese fetch a medias si el vendedor regresa a modo dueño enseguida,
+   * y lo que acababa de guardar desaparece sin ningún error visible.
    */
-  function volverADuenoYRecargar() {
+  async function volverADuenoYRecargar() {
     onSesionCambiada(null);
+    await esperarSincronizacionPendiente();
     window.location.href = "/app/inicio";
   }
 
@@ -147,9 +169,27 @@ export function TurnoControl({
               <Button size="lg" variant="outline" onClick={() => setEligiendo(true)}>
                 Cambiar de usuario
               </Button>
-              <Button size="lg" className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={elegirDueno}>
-                Cerrar turno
-              </Button>
+              {/* Sin permiso puedeCerrarTurno (rol sin esa autorización):
+                  ningún botón rojo — la única salida es "Cambiar de
+                  usuario" y, desde ahí, la tarjeta "Dueño" (pide PIN si el
+                  dueño configuró uno). */}
+              {PERMISOS[empleadoActual!.rol].puedeCerrarTurno &&
+                (onAbrirCerrarTurno ? (
+                  <Button
+                    size="lg"
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={() => {
+                      cerrar();
+                      onAbrirCerrarTurno();
+                    }}
+                  >
+                    Cerrar turno
+                  </Button>
+                ) : (
+                  <Button size="lg" className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={elegirDueno}>
+                    Cerrar turno
+                  </Button>
+                ))}
             </div>
           </>
         )}

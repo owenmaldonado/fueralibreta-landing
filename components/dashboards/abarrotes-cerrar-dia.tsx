@@ -9,9 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
-import { supabase } from "@/lib/supabase";
-import { insertGastoDirecto } from "@/lib/data";
-import { formatMoney, fechaCalendarioLocal, mensajeDiferencia, todayISO, uid } from "@/lib/mock";
+import { insertGastoDirecto, cleanInsert } from "@/lib/data";
+import { formatMoney, fechaCalendarioLocal, mensajeDiferencia, uid } from "@/lib/mock";
+import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
 
@@ -34,6 +34,8 @@ interface Props {
   onClose: () => void;
   session: TenantData;
   update: SessionUpdater;
+  /** Se dispara SOLO cuando terminarCierre() llega al final de verdad (día cerrado) — nunca si se cancela en Paso 1/2. Mismo propósito que en barberia-cerrar-turno.tsx: TopBar lo usa para, en modo vendedor, recién ahí pedir el PIN de dueño y volver al panel. */
+  onCompletado?: () => void;
 }
 
 /**
@@ -56,7 +58,7 @@ interface Props {
  * amarillo en Hoy (GroceryProduct.porCaducar) hasta que un próximo cierre
  * lo resuelva. Cada decisión se registra también en abarrotera_mermas.
  */
-export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
+export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }: Props) {
   const [paso, setPaso] = React.useState<1 | 2>(1);
   const [fondoInicial, setFondoInicial] = React.useState("");
   const [efectivoReal, setEfectivoReal] = React.useState("");
@@ -68,9 +70,10 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
   const data = session.abarrotes!;
   const negocio = session.business;
   const esNegocioReal = Boolean(negocio.ownerId);
-  const hoy = todayISO(0);
+  // "Hoy" del negocio, no del dispositivo — ver lib/fecha.ts.
+  const hoy = hoyEnZona(negocio.timezone);
 
-  const ventasHoyList = data.ventas.filter((v) => !v.cancelada && fechaCalendarioLocal(v.fecha) === hoy);
+  const ventasHoyList = data.ventas.filter((v) => !v.cancelada && fechaCalendarioLocal(v.fecha, negocio.timezone) === hoy);
   const ventasHoyTotal = ventasHoyList.reduce((acc, v) => acc + v.total, 0);
   const ventasPorEmpleado = React.useMemo(() => {
     const mapa = new Map<string, number>();
@@ -119,18 +122,23 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
     if (!efectivoValido) return;
     const efectivoNum = Number(efectivoReal);
     if (esNegocioReal) {
-      const { error } = await supabase.from("abarrotera_cortes").insert({
-        negocio_id: negocio.id,
-        fecha: hoy,
-        fondo_inicial: fondoInicial.trim() === "" ? null : Number(fondoInicial),
-        ventas_calculadas: ventasHoyTotal,
-        efectivo_real: efectivoNum,
-        gastos: gastoMonto.trim() === "" ? null : Number(gastoMonto),
-        diferencia: Math.round(efectivoNum - esperado),
-        empleado_id: camposEmpleado().empleadoId ?? null,
-        empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
-      });
-      if (error) console.error("No se pudo guardar el corte:", error);
+      try {
+        await cleanInsert("abarrotera_cortes", [
+          {
+            negocio_id: negocio.id,
+            fecha: hoy,
+            fondo_inicial: fondoInicial.trim() === "" ? null : Number(fondoInicial),
+            ventas_calculadas: ventasHoyTotal,
+            efectivo_real: efectivoNum,
+            gastos: gastoMonto.trim() === "" ? null : Number(gastoMonto),
+            diferencia: Math.round(efectivoNum - esperado),
+            empleado_id: camposEmpleado().empleadoId ?? null,
+            empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
+          },
+        ]);
+      } catch (error) {
+        console.error("No se pudo guardar el corte:", error);
+      }
     }
     if (gastoMonto.trim() !== "" && Number(gastoMonto) > 0) {
       const gasto: Expense = {
@@ -198,8 +206,11 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
     }
 
     if (esNegocioReal && mermaRows.length > 0) {
-      const { error } = await supabase.from("abarrotera_mermas").insert(mermaRows);
-      if (error) console.error("No se pudieron guardar las mermas:", error);
+      try {
+        await cleanInsert("abarrotera_mermas", mermaRows);
+      } catch (error) {
+        console.error("No se pudieron guardar las mermas:", error);
+      }
     }
 
     // La merma "caducó/se rompió" con pérdida en $ es dinero real, así que
@@ -242,6 +253,7 @@ export function CerrarDiaSheet({ open, onClose, session, update }: Props) {
 
     setGuardando(false);
     resetYCerrar();
+    onCompletado?.();
   }
 
   return (

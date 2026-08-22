@@ -6,6 +6,7 @@ import type {
   FondaData,
   AbarrotesData,
 } from "./types";
+import { getDeviceTimezone } from "./fecha";
 
 // ---------- Helpers generales ----------
 
@@ -120,14 +121,17 @@ const FECHA_SOLO_DIA = /^\d{4}-\d{2}-\d{2}$/;
  * esto contaba como "de mañana" (o "Ventas de hoy" salía en $0 al
  * comparar el día de UTC contra el día local).
  */
-export function fechaCalendarioLocal(fecha: string): string {
+/**
+ * Sin `timezone`: getters LOCALES del dispositivo (comportamiento
+ * original). Con `timezone`: bucketea con la zona horaria del NEGOCIO en
+ * vez de la del dispositivo — para comparar contra hoyEnZona() (lib/fecha.ts)
+ * sin que un dispositivo en otra zona corra el día de una venta cerca de
+ * medianoche.
+ */
+export function fechaCalendarioLocal(fecha: string, timezone?: string): string {
   if (FECHA_SOLO_DIA.test(fecha)) return fecha;
-  return toISODate(new Date(fecha));
-}
-
-/** Día calendario de HOY en la zona horaria del negocio (no la del dispositivo) — ver hoyEnSuZona en fonda-dashboard.tsx. */
-export function hoyEnZona(timezone?: string): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: timezone || "America/Bahia_Banderas" });
+  if (!timezone) return toISODate(new Date(fecha));
+  return new Date(fecha).toLocaleDateString("en-CA", { timeZone: timezone });
 }
 
 export function daysSince(iso: string | null): number | null {
@@ -305,6 +309,12 @@ export function createBusiness(input: NuevoNegocioInput): Business {
     precioCustom: null,
     esFundador: false,
     ultimoPagoAt: null,
+    // Se detecta UNA sola vez, del dispositivo que da de alta el negocio
+    // (dueño en /onboarding) — de ahí en adelante hoyEnZona() usa esta
+    // zona guardada sin importar desde dónde se vea el dashboard después.
+    // No hay forma de editarlo a mano todavía a propósito: el dueño no
+    // debería tener que saber su IANA timezone.
+    timezone: getDeviceTimezone(),
   };
 }
 

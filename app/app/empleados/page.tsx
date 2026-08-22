@@ -25,6 +25,7 @@ import {
   setPinDueno,
   borrarPinDueno,
   solicitarResetPinDueno,
+  normalizarNombreEmpleado,
   ROL_LABEL,
 } from "@/lib/empleados";
 import type { Empleado, RolEmpleado } from "@/lib/types";
@@ -383,13 +384,14 @@ function EmpleadoForm({
     setGuardando(true);
     setErrorGuardar(null);
     try {
+      const nombreNormalizado = normalizarNombreEmpleado(nombre);
       if (empleado) {
-        const { error } = await supabase.from("negocio_empleados").update({ nombre: nombre.trim(), rol }).eq("id", empleado.id);
+        const { error } = await supabase.from("negocio_empleados").update({ nombre: nombreNormalizado, rol }).eq("id", empleado.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.rpc("crear_empleado", {
           p_negocio_id: negocioId,
-          p_nombre: nombre.trim(),
+          p_nombre: nombreNormalizado,
           p_rol: rol,
           p_pin: pin,
         });

@@ -27,6 +27,7 @@ import { VentaForm } from "@/components/abarrotes/venta-form";
 import { useSession } from "@/lib/session";
 import { insertGastoDirecto, updateGastoDirecto, deleteGastoDirecto } from "@/lib/data";
 import { formatMoney, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
+import { hoyEnZona } from "@/lib/fecha";
 import { aggregateByRange, filterByRango, type RangoTiempo } from "@/lib/chart-buckets";
 import { permisosActuales, getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
 import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
@@ -130,31 +131,44 @@ export default function GastosPage() {
 
   // Roster de personas para los chips — SIEMPRE del universo completo (sin
   // aplicar personaFiltro todavía), para que las opciones no desaparezcan
-  // en cuanto se selecciona una. Un mismo nombre puede aparecer con rol
-  // "dueno" en un movimiento viejo y otro rol después (cambió de puesto) —
-  // se queda con el último rol visto, solo importa para la etiqueta del chip.
+  // en cuanto se selecciona una. Se agrupa por empleado_id, NO por el
+  // nombre cacheado: dos filas del mismo empleado pueden traer el nombre
+  // cacheado con distinta capitalización si negocio_empleados llegó a
+  // tener un duplicado tipo "Maria"/"maria" (bug real, ver migración de
+  // negocio_empleados) — agrupando por nombre esa persona se partía en dos
+  // chips distintos y cada uno mostraba solo una mitad de sus movimientos.
+  // empleado_id es estable aunque el nombre cambie o esté mal
+  // capitalizado. Se queda con el último rol/nombre visto para ese id,
+  // solo importa para la etiqueta del chip.
+  const nombrePorPersona = new Map<string, string>();
   const rolPorPersona = new Map<string, RolEmpleado>();
   let hayMovimientosDeDueno = false;
   for (const m of [...gastosSinFiltroPersona, ...pedidosEntregadosSinFiltroPersona, ...ventasAbarrotesActivasSinFiltroPersona]) {
-    if (m.empleadoNombreCache) rolPorPersona.set(m.empleadoNombreCache, m.empleadoRolCache ?? "vendedor");
-    else hayMovimientosDeDueno = true;
+    if (m.empleadoId) {
+      if (!nombrePorPersona.has(m.empleadoId)) nombrePorPersona.set(m.empleadoId, m.empleadoNombreCache ?? "");
+      rolPorPersona.set(m.empleadoId, m.empleadoRolCache ?? "vendedor");
+    } else {
+      hayMovimientosDeDueno = true;
+    }
   }
-  const personasDisponibles = Array.from(rolPorPersona.keys()).sort();
+  const personasDisponibles = Array.from(nombrePorPersona, ([id, nombre]) => ({ id, nombre })).sort((a, b) =>
+    a.nombre.localeCompare(b.nombre)
+  );
   // El filtro por persona solo se muestra si el negocio de verdad activó
   // multiusuario — sin esto, un negocio de una sola persona vería un chip
   // "Todos" solitario sin ninguna otra opción, ruido puro (spec: "si no hay
   // vendedores/encargados, NO muestres nada extra").
   const hayEquipo = personasDisponibles.length > 0;
 
-  function coincidePersona(nombre?: string): boolean {
+  function coincidePersona(empleadoId?: string): boolean {
     if (personaFiltro === "todos") return true;
-    if (personaFiltro === PERSONA_DUENO) return !nombre;
-    return nombre === personaFiltro;
+    if (personaFiltro === PERSONA_DUENO) return !empleadoId;
+    return empleadoId === personaFiltro;
   }
 
-  const gastos = gastosSinFiltroPersona.filter((g) => coincidePersona(g.empleadoNombreCache));
-  const pedidosEntregados = pedidosEntregadosSinFiltroPersona.filter((p) => coincidePersona(p.empleadoNombreCache));
-  const ventasAbarrotesActivas = ventasAbarrotesActivasSinFiltroPersona.filter((v) => coincidePersona(v.empleadoNombreCache));
+  const gastos = gastosSinFiltroPersona.filter((g) => coincidePersona(g.empleadoId));
+  const pedidosEntregados = pedidosEntregadosSinFiltroPersona.filter((p) => coincidePersona(p.empleadoId));
+  const ventasAbarrotesActivas = ventasAbarrotesActivasSinFiltroPersona.filter((v) => coincidePersona(v.empleadoId));
   const ventas: Movimiento[] =
     modulo === "fonda"
       ? pedidosEntregados.map((p) => ({
@@ -167,7 +181,7 @@ export default function GastosPage() {
         }))
       : ventasAbarrotesActivas.map((v) => ({
           id: v.id,
-          fecha: fechaCalendarioLocal(v.fecha),
+          fecha: fechaCalendarioLocal(v.fecha, session.business.timezone),
           monto: v.total,
           label: v.items.length === 1 ? `${v.items[0].cantidad} ${v.items[0].productoNombre}` : `${v.items.length} productos`,
           empleadoNombreCache: v.empleadoNombreCache,
@@ -216,7 +230,7 @@ export default function GastosPage() {
         }))
       : ventasAbarrotesActivas.map((v) => ({
           id: v.id,
-          fecha: fechaCalendarioLocal(v.fecha),
+          fecha: fechaCalendarioLocal(v.fecha, session.business.timezone),
           monto: v.items.reduce((acc, it) => {
             const costo = it.costoUnitario ?? (it.productoId ? costoPorProducto.get(it.productoId) ?? 0 : 0);
             return acc + (it.precioUnitario - costo) * it.cantidad;
@@ -240,7 +254,8 @@ export default function GastosPage() {
   // lógica de buckets.
   const now = rango === "anual" && anioSeleccionado !== anioActual ? new Date(anioSeleccionado, 11, 31) : new Date();
 
-  const hoy = todayISO(0);
+  // "Hoy" del negocio, no del dispositivo — ver lib/fecha.ts.
+  const hoy = hoyEnZona(session.business.timezone);
   const ventasHoy = ventas.filter((v) => v.fecha === hoy).reduce((acc, v) => acc + v.monto, 0);
   const gastosHoy = gastos.filter((g) => g.fecha === hoy).reduce((acc, g) => acc + g.monto, 0);
   const gananciaBrutaHoy = gananciaPorVenta.filter((g) => g.fecha === hoy).reduce((acc, g) => acc + g.monto, 0);
@@ -387,9 +402,9 @@ export default function GastosPage() {
                 Dueño
               </Chip>
             )}
-            {personasDisponibles.map((nombre) => (
-              <Chip key={nombre} selected={personaFiltro === nombre} onClick={() => setPersonaFiltro(nombre)}>
-                {nombre} · {ROL_LABEL[rolPorPersona.get(nombre)!]}
+            {personasDisponibles.map(({ id, nombre }) => (
+              <Chip key={id} selected={personaFiltro === id} onClick={() => setPersonaFiltro(id)}>
+                {nombre} · {ROL_LABEL[rolPorPersona.get(id)!]}
               </Chip>
             ))}
           </ChipGroup>

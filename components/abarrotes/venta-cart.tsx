@@ -17,6 +17,7 @@ import { uid, formatMoney } from "@/lib/mock";
 import { usePlan } from "@/lib/planes";
 import { camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
+import { lockBodyScroll } from "@/lib/scroll-lock";
 import type { TenantData, GroceryProduct, GrocerySale } from "@/lib/types";
 
 const EMOJI_POR_CATEGORIA: Record<string, string> = {
@@ -96,11 +97,10 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const unlock = lockBodyScroll();
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
+      unlock();
     };
   }, [open, onClose]);
 
