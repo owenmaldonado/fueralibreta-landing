@@ -9,8 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
-import { supabase } from "@/lib/supabase";
-import { insertGastoDirecto } from "@/lib/data";
+import { insertGastoDirecto, cleanInsert } from "@/lib/data";
 import { formatMoney, mensajeDiferencia, uid } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
 import { cerrarTurno } from "@/lib/turno-fonda";
@@ -163,18 +162,23 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
     }
 
     if (esNegocioReal) {
-      const { error } = await supabase.from("fondita_cortes").insert({
-        negocio_id: negocio.id,
-        fecha: hoyEnSuZona,
-        fondo_inicial: fondoInicial.trim() === "" ? null : Number(fondoInicial),
-        ventas_calculadas: ventasHoy,
-        efectivo_real: efectivoNum,
-        gastos: gastoNum,
-        diferencia: Math.round(efectivoNum - esperado),
-        empleado_id: camposEmpleado().empleadoId ?? null,
-        empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
-      });
-      if (error) console.error("No se pudo guardar el corte:", error);
+      try {
+        await cleanInsert("fondita_cortes", [
+          {
+            negocio_id: negocio.id,
+            fecha: hoyEnSuZona,
+            fondo_inicial: fondoInicial.trim() === "" ? null : Number(fondoInicial),
+            ventas_calculadas: ventasHoy,
+            efectivo_real: efectivoNum,
+            gastos: gastoNum,
+            diferencia: Math.round(efectivoNum - esperado),
+            empleado_id: camposEmpleado().empleadoId ?? null,
+            empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
+          },
+        ]);
+      } catch (error) {
+        console.error("No se pudo guardar el corte:", error);
+      }
     }
     setPaso(2);
   }
@@ -213,8 +217,11 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
     }
 
     if (esNegocioReal && mermaRows.length > 0) {
-      const { error } = await supabase.from("fondita_mermas").insert(mermaRows);
-      if (error) console.error("No se pudieron guardar las mermas:", error);
+      try {
+        await cleanInsert("fondita_mermas", mermaRows);
+      } catch (error) {
+        console.error("No se pudieron guardar las mermas:", error);
+      }
     }
 
     // La merma "se tiró" con monto es dinero real perdido (Expense), así

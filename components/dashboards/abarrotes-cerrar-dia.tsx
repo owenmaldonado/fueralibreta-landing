@@ -9,8 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
-import { supabase } from "@/lib/supabase";
-import { insertGastoDirecto } from "@/lib/data";
+import { insertGastoDirecto, cleanInsert } from "@/lib/data";
 import { formatMoney, fechaCalendarioLocal, mensajeDiferencia, uid } from "@/lib/mock";
 import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
@@ -123,18 +122,23 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
     if (!efectivoValido) return;
     const efectivoNum = Number(efectivoReal);
     if (esNegocioReal) {
-      const { error } = await supabase.from("abarrotera_cortes").insert({
-        negocio_id: negocio.id,
-        fecha: hoy,
-        fondo_inicial: fondoInicial.trim() === "" ? null : Number(fondoInicial),
-        ventas_calculadas: ventasHoyTotal,
-        efectivo_real: efectivoNum,
-        gastos: gastoMonto.trim() === "" ? null : Number(gastoMonto),
-        diferencia: Math.round(efectivoNum - esperado),
-        empleado_id: camposEmpleado().empleadoId ?? null,
-        empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
-      });
-      if (error) console.error("No se pudo guardar el corte:", error);
+      try {
+        await cleanInsert("abarrotera_cortes", [
+          {
+            negocio_id: negocio.id,
+            fecha: hoy,
+            fondo_inicial: fondoInicial.trim() === "" ? null : Number(fondoInicial),
+            ventas_calculadas: ventasHoyTotal,
+            efectivo_real: efectivoNum,
+            gastos: gastoMonto.trim() === "" ? null : Number(gastoMonto),
+            diferencia: Math.round(efectivoNum - esperado),
+            empleado_id: camposEmpleado().empleadoId ?? null,
+            empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
+          },
+        ]);
+      } catch (error) {
+        console.error("No se pudo guardar el corte:", error);
+      }
     }
     if (gastoMonto.trim() !== "" && Number(gastoMonto) > 0) {
       const gasto: Expense = {
@@ -202,8 +206,11 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
     }
 
     if (esNegocioReal && mermaRows.length > 0) {
-      const { error } = await supabase.from("abarrotera_mermas").insert(mermaRows);
-      if (error) console.error("No se pudieron guardar las mermas:", error);
+      try {
+        await cleanInsert("abarrotera_mermas", mermaRows);
+      } catch (error) {
+        console.error("No se pudieron guardar las mermas:", error);
+      }
     }
 
     // La merma "caducó/se rompió" con pérdida en $ es dinero real, así que

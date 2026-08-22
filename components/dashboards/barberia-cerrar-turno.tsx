@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
-import { supabase } from "@/lib/supabase";
+import { cleanInsert } from "@/lib/data";
 import { formatMoney, mensajeDiferencia, uid } from "@/lib/mock";
 import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
@@ -206,20 +206,25 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
     }
 
     if (esNegocioReal) {
-      const { error } = await supabase.from("barberia_cortes").insert({
-        negocio_id: negocio.id,
-        fecha: hoy,
-        fondo_inicial: fondoInicial.trim() === "" ? null : Number(fondoInicial),
-        ventas_calculadas: ventasHoyTotal,
-        efectivo_real: efectivoNum,
-        gastos: gastoPaso1 || null,
-        diferencia: Math.round(efectivoNum - esperado),
-        propinas_total: propinasNum,
-        gastos_material: gastosMaterialTotal,
-        empleado_id: camposEmpleado().empleadoId ?? null,
-        empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
-      });
-      if (error) console.error("No se pudo guardar el corte:", error);
+      try {
+        await cleanInsert("barberia_cortes", [
+          {
+            negocio_id: negocio.id,
+            fecha: hoy,
+            fondo_inicial: fondoInicial.trim() === "" ? null : Number(fondoInicial),
+            ventas_calculadas: ventasHoyTotal,
+            efectivo_real: efectivoNum,
+            gastos: gastoPaso1 || null,
+            diferencia: Math.round(efectivoNum - esperado),
+            propinas_total: propinasNum,
+            gastos_material: gastosMaterialTotal,
+            empleado_id: camposEmpleado().empleadoId ?? null,
+            empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
+          },
+        ]);
+      } catch (error) {
+        console.error("No se pudo guardar el corte:", error);
+      }
     }
 
     setResumen({
