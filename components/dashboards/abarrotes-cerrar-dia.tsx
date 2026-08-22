@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { insertGastoDirecto, cleanInsert } from "@/lib/data";
-import { formatMoney, fechaCalendarioLocal, mensajeDiferencia, uid } from "@/lib/mock";
+import { formatMoney, fechaCalendarioLocal, mensajeDiferencia, mensajeEsperado, uid } from "@/lib/mock";
 import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
@@ -274,14 +274,16 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
             <div className="space-y-1.5">
               <Label>¿Efectivo real en mano?</Label>
               <Input type="number" inputMode="decimal" autoFocus value={efectivoReal} onChange={(e) => setEfectivoReal(e.target.value)} placeholder="$0" />
-              {diferencia != null && (
+              {diferencia != null ? (
                 <p
                   className={`px-1 text-xs font-medium ${
                     diferencia === 0 ? "text-ledger" : diferencia < 0 ? "text-destructive" : "text-muted-foreground"
                   }`}
                 >
-                  {mensajeDiferencia(diferencia)}
+                  {mensajeDiferencia(diferencia, esperado)}
                 </p>
+              ) : (
+                <p className="px-1 text-xs font-medium text-muted-foreground">{mensajeEsperado(esperado)}</p>
               )}
             </div>
             <div className="space-y-1.5">

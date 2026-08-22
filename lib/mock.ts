@@ -51,11 +51,18 @@ export function formatMoney(n: number): string {
  * residuo de punto flotante (o unos centavos reales de un día con muchas
  * ventas) no se lea como "te sobra/falta" cuando en la práctica cuadró.
  */
-export function mensajeDiferencia(dif: number): string {
+/** `esperado` opcional: si se da, agrega "— Deberías tener $X" al mensaje. */
+export function mensajeDiferencia(dif: number, esperado?: number): string {
   const redondeado = Math.round(dif);
-  if (redondeado < 0) return `🔴 Te faltan ${formatMoney(-redondeado)}`;
-  if (redondeado > 0) return `🔵 Te sobran ${formatMoney(redondeado)}`;
+  const sufijo = esperado != null ? ` — Deberías tener ${formatMoney(esperado)}` : "";
+  if (redondeado < 0) return `🔴 Te faltan ${formatMoney(-redondeado)}${sufijo}`;
+  if (redondeado > 0) return `🔵 Te sobran ${formatMoney(redondeado)}${sufijo}`;
   return "🟢 ¡Cuadra perfecto! ✅";
+}
+
+/** Se muestra ANTES de que el dueño escriba "¿Efectivo real en mano?" — el mismo cálculo de mensajeDiferencia, pero como previsualización, sin comparar contra nada todavía. */
+export function mensajeEsperado(esperado: number): string {
+  return `💰 Dinero que deberías tener: ${formatMoney(esperado)}`;
 }
 
 /** "2024-01-01T12:00:00Z" -> "Hace 2h". Para mostrar última actividad en el panel de admin. */

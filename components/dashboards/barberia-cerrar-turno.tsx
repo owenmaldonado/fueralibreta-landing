@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { cleanInsert } from "@/lib/data";
-import { formatMoney, mensajeDiferencia, uid } from "@/lib/mock";
+import { formatMoney, mensajeDiferencia, mensajeEsperado, uid } from "@/lib/mock";
 import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, CajaEntry, InventoryProduct } from "@/lib/types";
@@ -275,14 +275,16 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
                 onChange={(e) => setEfectivoReal(e.target.value)}
                 placeholder="$0"
               />
-              {diferencia != null && (
+              {diferencia != null ? (
                 <p
                   className={`px-1 text-xs font-medium ${
                     diferencia === 0 ? "text-ledger" : diferencia < 0 ? "text-destructive" : "text-muted-foreground"
                   }`}
                 >
-                  {mensajeDiferencia(diferencia)}
+                  {mensajeDiferencia(diferencia, esperado)}
                 </p>
+              ) : (
+                <p className="px-1 text-xs font-medium text-muted-foreground">{mensajeEsperado(esperado)}</p>
               )}
             </div>
             <div className="space-y-1.5">
