@@ -177,7 +177,7 @@ const excepcionToRow = (e: Excepcion, negocioId: string): Row => ({
   hora_especial_fin: e.horaEspecialFin ?? null,
 });
 
-const clienteFromRow = (r: Row): BarberClient => ({
+export const clienteFromRow = (r: Row): BarberClient => ({
   id: r.id as string,
   nombre: r.nombre as string,
   telefono: r.telefono as string,

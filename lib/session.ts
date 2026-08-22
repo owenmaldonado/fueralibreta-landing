@@ -16,11 +16,12 @@ import {
   businessFromRow,
   gastoFromRow,
   cajaFromRow,
+  clienteFromRow,
 } from "./data";
 import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
 import { leerCacheLocal, sincronizarCacheLocalEnSegundoPlano } from "./local-cache";
 import { todayISO, formatHora12 } from "./mock";
-import type { Appointment, Business, GrocerySale, FondaOrder, Expense, CajaEntry, TenantData } from "./types";
+import type { Appointment, Business, GrocerySale, FondaOrder, Expense, CajaEntry, BarberClient, TenantData } from "./types";
 
 type Source = "supabase" | "demo" | null;
 
@@ -532,6 +533,61 @@ function suscribirseACajaEnVivo(negocioId: string, onEvento: (evento: { tipo: "i
 }
 
 /**
+ * barberia_clientes nunca tuvo canal de realtime — un cliente nuevo dado
+ * de alta al agendar una cita (NuevaCitaForm, ver components/quick-add/
+ * barberia-quick-add.tsx) se veía al instante en ESA misma pestaña
+ * (optimista + TENANT_CACHE_EVENT), pero /app/clientes en OTRO
+ * dispositivo/pestaña del mismo negocio (el dueño viendo su lista de
+ * clientes mientras un vendedor agenda en la tablet del mostrador) no se
+ * enteraba sin refrescar. Mismo patrón que el resto de este archivo.
+ * INSERT y UPDATE (editar nombre/notas/cumpleaños desde /app/clientes en
+ * otro dispositivo también debe reflejarse).
+ */
+let clientesChannel: ReturnType<typeof supabase.channel> | null = null;
+let clientesChannelNegocioId: string | null = null;
+const clientesListeners = new Set<(evento: { tipo: "insert" | "update"; cliente: BarberClient }) => void>();
+
+function suscribirseAClientesEnVivo(negocioId: string, onEvento: (evento: { tipo: "insert" | "update"; cliente: BarberClient }) => void): () => void {
+  if (clientesChannelNegocioId !== negocioId) {
+    if (clientesChannel) supabase.removeChannel(clientesChannel);
+    clientesChannel = null;
+    clientesChannelNegocioId = null;
+    const nuevoCanal = supabase
+      .channel(`barberia-clientes-${negocioId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "barberia_clientes", filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const cliente = clienteFromRow(payload.new as Record<string, unknown>);
+          clientesListeners.forEach((l) => l({ tipo: "insert", cliente }));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "barberia_clientes", filter: `negocio_id=eq.${negocioId}` },
+        (payload) => {
+          const cliente = clienteFromRow(payload.new as Record<string, unknown>);
+          clientesListeners.forEach((l) => l({ tipo: "update", cliente }));
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") console.error("[session] canal de barberia_clientes falló:", err);
+      });
+    clientesChannel = nuevoCanal;
+    clientesChannelNegocioId = negocioId;
+  }
+  clientesListeners.add(onEvento);
+  return () => {
+    clientesListeners.delete(onEvento);
+    if (clientesListeners.size === 0 && clientesChannel) {
+      supabase.removeChannel(clientesChannel);
+      clientesChannel = null;
+      clientesChannelNegocioId = null;
+    }
+  };
+}
+
+/**
  * Sesión del negocio activo. Dos fuentes posibles:
  *
  * - "supabase": el usuario está logueado y ya tiene un negocio real en la
@@ -552,6 +608,7 @@ export function useSession() {
   const negocioUnsubRef = useRef<(() => void) | null>(null);
   const gastosUnsubRef = useRef<(() => void) | null>(null);
   const cajaUnsubRef = useRef<(() => void) | null>(null);
+  const clientesUnsubRef = useRef<(() => void) | null>(null);
   sessionRef.current = session;
 
   const loadFromDemoPreview = useCallback(() => {
@@ -595,6 +652,11 @@ export function useSession() {
     function detenerCajaEnVivo() {
       cajaUnsubRef.current?.();
       cajaUnsubRef.current = null;
+    }
+
+    function detenerClientesEnVivo() {
+      clientesUnsubRef.current?.();
+      clientesUnsubRef.current = null;
     }
 
     /**
@@ -733,6 +795,24 @@ export function useSession() {
             return { ...prev, barberia: { ...prev.barberia, caja: [entry, ...prev.barberia.caja] } };
           }
           return { ...prev, barberia: { ...prev.barberia, caja: prev.barberia.caja.map((e) => (e.id === entry.id ? entry : e)) } };
+        });
+      });
+    }
+
+    /** Ver comentario de suscribirseAClientesEnVivo arriba. */
+    function escucharClientesEnVivo(negocioId: string) {
+      detenerClientesEnVivo();
+      clientesUnsubRef.current = suscribirseAClientesEnVivo(negocioId, ({ tipo, cliente }) => {
+        setSessionState((prev) => {
+          if (!prev?.barberia) return prev;
+          if (tipo === "insert") {
+            if (prev.barberia.clientes.some((c) => c.id === cliente.id)) return prev;
+            return { ...prev, barberia: { ...prev.barberia, clientes: [cliente, ...prev.barberia.clientes] } };
+          }
+          return {
+            ...prev,
+            barberia: { ...prev.barberia, clientes: prev.barberia.clientes.map((c) => (c.id === cliente.id ? cliente : c)) },
+          };
         });
       });
     }
@@ -909,6 +989,11 @@ export function useSession() {
             } catch (err) {
               console.error("[session] no se pudo suscribir a caja en vivo (la sesión sigue cargada bien):", err);
             }
+            try {
+              escucharClientesEnVivo(tenant.business.id);
+            } catch (err) {
+              console.error("[session] no se pudo suscribir a clientes en vivo (la sesión sigue cargada bien):", err);
+            }
           } else if (tenant.business.tipo === "abarrotes") {
             try {
               escucharVentasEnVivo(tenant.business.id);
@@ -1028,6 +1113,7 @@ export function useSession() {
         detenerNegocioEnVivo();
         detenerGastosEnVivo();
         detenerCajaEnVivo();
+        detenerClientesEnVivo();
         limpiarCacheTenant();
         return;
       }
@@ -1057,6 +1143,7 @@ export function useSession() {
       detenerNegocioEnVivo();
       detenerGastosEnVivo();
       detenerCajaEnVivo();
+      detenerClientesEnVivo();
     };
   }, [loadFromDemoPreview]);
 
