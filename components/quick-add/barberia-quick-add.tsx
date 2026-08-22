@@ -85,6 +85,7 @@ function ClienteBuscador({
   const [nombreNuevo, setNombreNuevo] = React.useState("");
   const [telefonoNuevo, setTelefonoNuevo] = React.useState("");
   const [ocultarSugerencias, setOcultarSugerencias] = React.useState(false);
+  const contenedorRef = React.useRef<HTMLDivElement>(null);
 
   const q = busqueda.trim();
   const digitos = q.replace(/\D/g, "").length;
@@ -103,6 +104,23 @@ function ClienteBuscador({
   // (ver abajo, position absolute) — nunca bloquean escribir un cliente
   // nuevo con nombre parecido a uno existente.
   const esNuevo = !seleccionado && q.length >= 2;
+
+  // Click fuera del campo/dropdown = cerrar sugerencias, mismo criterio que
+  // DropdownMenu (components/ui/dropdown-menu.tsx): sin esto, en una lista
+  // larga (ej. buscar "jose" con "jose"/"josefina" ya dados de alta) la
+  // única forma de quitar el dropdown de encima era tocar la X — cualquier
+  // otro toque (incluido uno "afuera" para simplemente seguir viendo el
+  // formulario) lo dejaba flotando ahí tapando lo de abajo.
+  React.useEffect(() => {
+    if (sugerencias.length === 0) return;
+    function onDocMouseDown(e: MouseEvent) {
+      if (contenedorRef.current?.contains(e.target as Node)) return;
+      setOcultarSugerencias(true);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sugerencias.length]);
 
   React.useEffect(() => {
     if (seleccionado) onChange(seleccionado);
@@ -162,7 +180,7 @@ function ClienteBuscador({
           Flotando encima (z-50) el campo de abajo se queda en su lugar
           siempre; la X y el onFocus del campo de abajo la quitan de en
           medio si estorba. */}
-      <div className="relative">
+      <div className="relative" ref={contenedorRef}>
         <Input autoFocus={autoFocus} value={busqueda} onChange={(e) => buscar(e.target.value)} placeholder="Nombre o teléfono" />
         {sugerencias.length > 0 && (
           <div className="absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-border bg-card shadow-lg">
@@ -177,7 +195,7 @@ function ClienteBuscador({
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
-            <div className="flex flex-col divide-y divide-border/60">
+            <div className="flex max-h-40 flex-col divide-y divide-border/60 overflow-y-auto">
               {sugerencias.map((c) => (
                 <button
                   key={c.id}

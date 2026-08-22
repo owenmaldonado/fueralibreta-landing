@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -19,7 +20,7 @@ import { WhatsappRecordatorioButton } from "@/components/dashboards/whatsapp-rec
 import { EmpleadoBadge } from "@/components/dashboards/empleado-badge";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
-import { formatHora12, formatMoney, todayISO, waLink } from "@/lib/mock";
+import { addDays, formatHora12, formatMoney, todayISO, toISODate, waLink } from "@/lib/mock";
 import { getDaySlots, diaCodigoDeFecha } from "@/lib/agenda";
 import { getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente, usePendingSalesQueue, type VentaPendienteRow } from "@/lib/offline-sales-queue";
@@ -121,13 +122,25 @@ export default function AgendaPage() {
     setMoviendo(null);
   }
 
+  // Semanal usaba SIEMPRE la semana de calendario de new Date() (la fecha
+  // del dispositivo AHORA), sin importar qué día tuviera seleccionado la
+  // pestaña "Fecha" — agendar una cita para el lunes de la semana que
+  // sigue y cambiar a Semanal nunca la mostraba (no era ningún bug de
+  // guardado ni de realtime: la cita sí estaba ahí, la vista solo nunca
+  // dejaba de mirar la semana de hoy). Ahora Semanal navega la semana que
+  // contiene `fecha` — el mismo estado que ya usa la pestaña Fecha — así
+  // que basta con pasar a Fecha, elegir el lunes en cuestión y volver a
+  // Semanal para verla.
+  const semanaInicio = inicioDeSemana(fecha);
+  const semanaFin = toISODate(addDays(new Date(`${semanaInicio}T00:00:00`), 6));
+
   const subtitle =
     modo === "hoy"
       ? "Hoy"
       : modo === "manana"
         ? "Mañana"
         : modo === "semanal"
-          ? "Esta semana (lun-dom)"
+          ? `${new Date(`${semanaInicio}T00:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "short" })} – ${new Date(`${semanaFin}T00:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "short" })}`
           : new Date(`${fecha}T00:00:00`).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "short" });
 
   return (
@@ -152,6 +165,8 @@ export default function AgendaPage() {
       {modo === "semanal" ? (
         <SemanaView
           data={data}
+          fecha={fecha}
+          onCambiarFecha={setFecha}
           onCobrar={setCobrando}
           onMover={setMoviendo}
           onCancelar={setCancelando}
@@ -236,8 +251,17 @@ function DiaView({
   );
 }
 
+/** Lunes (ISO) de la semana de calendario que contiene `fechaISO` — mismo criterio que "Semanal" en la gráfica de Caja/Gastos. */
+function inicioDeSemana(fechaISO: string): string {
+  const d = new Date(`${fechaISO}T00:00:00`);
+  const diasDesdeLunes = (d.getDay() + 6) % 7;
+  return toISODate(addDays(d, -diasDesdeLunes));
+}
+
 function SemanaView({
   data,
+  fecha,
+  onCambiarFecha,
   onCobrar,
   onMover,
   onCancelar,
@@ -247,6 +271,9 @@ function SemanaView({
   msg28,
 }: {
   data: BarberiaData;
+  /** Cualquier fecha dentro de la semana a mostrar — mismo estado que usa la pestaña "Fecha" (ver AgendaPage), así que elegir un día ahí y volver a Semanal muestra esa semana. */
+  fecha: string;
+  onCambiarFecha: (fecha: string) => void;
   onCobrar: (c: Appointment) => void;
   onMover: (c: Appointment) => void;
   onCancelar: (c: Appointment) => void;
@@ -255,12 +282,14 @@ function SemanaView({
   pendientesPorId: Map<string, VentaPendienteRow>;
   msg28: boolean;
 }) {
-  // Lunes a domingo de la semana de calendario en curso (misma definición
-  // que "Semanal" en la gráfica de Gastos/Caja), no un rolling de 7 días
-  // desde hoy — así el lunes-miércoles ya pasados de esta semana no
-  // desaparecen solo porque "hoy" cae a mitad de semana.
-  const diasDesdeLunes = (new Date().getDay() + 6) % 7;
-  const dias = Array.from({ length: 7 }, (_, i) => todayISO(i - diasDesdeLunes));
+  // Lunes a domingo de la semana que CONTIENE `fecha` — antes siempre era
+  // la semana de new Date() (la fecha del dispositivo ahora mismo) sin
+  // importar qué día estuviera seleccionado en la pestaña Fecha, así que
+  // una cita agendada para la semana siguiente nunca se veía aquí aunque
+  // sí se hubiera guardado bien. Los botones ‹ › mueven `fecha` 7 días
+  // (misma prop que Fecha), así ambas pestañas quedan sincronizadas.
+  const inicio = inicioDeSemana(fecha);
+  const dias = Array.from({ length: 7 }, (_, i) => toISODate(addDays(new Date(`${inicio}T00:00:00`), i)));
   const porDia = dias.map((fecha) => {
     const citas = data.citas.filter((c) => c.fecha === fecha && c.estado !== "cancelada").sort((a, b) => a.hora.localeCompare(b.hora));
     return {
@@ -272,6 +301,33 @@ function SemanaView({
 
   return (
     <div className="flex flex-col gap-5 px-4 pb-6">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => onCambiarFecha(toISODate(addDays(new Date(`${inicio}T00:00:00`), -7)))}
+          aria-label="Semana anterior"
+          className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        {inicio !== inicioDeSemana(todayISO(0)) && (
+          <button
+            type="button"
+            onClick={() => onCambiarFecha(todayISO(0))}
+            className="font-mono text-[10px] uppercase tracking-widest text-primary"
+          >
+            Volver a esta semana
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => onCambiarFecha(toISODate(addDays(new Date(`${inicio}T00:00:00`), 7)))}
+          aria-label="Semana siguiente"
+          className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
       {!hayAlgo ? (
         <EmptyState texto="Sin citas esta semana" />
       ) : (
