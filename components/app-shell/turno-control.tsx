@@ -38,14 +38,14 @@ export function TurnoControl({
   pinDuenoSet: boolean;
   onSesionCambiada: (empleado: EmpleadoActual | null) => void;
   /**
-   * Cuando se da (hoy solo barbería, ver TopBar), el botón rojo de
-   * "Atendiendo como X" abre el wizard REAL de Cerrar Turno (Corte +
-   * Propinas/material) en vez de solo volver a modo dueño — así un
-   * vendedor puede cerrar su turno sin que el dueño esté presente; el PIN
-   * de dueño se pide DESPUÉS, al terminar (ver onCompletado en
-   * CerrarTurnoSheet), no antes. Sin este prop (fonda/abarrotes, todavía
-   * sin este flujo) el botón se comporta como siempre: volver a dueño
-   * directo.
+   * Cuando se da (las 3 verticales, ver TopBar), el botón rojo de
+   * "Atendiendo como X" abre el wizard REAL de Cerrar Turno/Día (Corte +
+   * Propinas/material en barbería, Corte + Merma en fonda/abarrotes) en vez
+   * de solo volver a modo dueño — así un vendedor puede cerrar su turno sin
+   * que el dueño esté presente; el PIN de dueño se pide DESPUÉS, al
+   * terminar (ver onCompletado en CerrarTurnoSheet/CerrarDiaSheet), no
+   * antes. Sin este prop (no debería pasar hoy, queda como resguardo) el
+   * botón se comporta como antes: volver a dueño directo.
    */
   onAbrirCerrarTurno?: () => void;
 }) {
