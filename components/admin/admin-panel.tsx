@@ -16,6 +16,7 @@ import { UsersTable } from "./users-table";
 import { OrgsTable } from "./orgs-table";
 import { LeadsTable } from "./leads-table";
 import { ConsentimientosTable } from "./consentimientos-table";
+import { ClientesSearch } from "./clientes-search";
 import { CatalogoTab } from "./catalogo-tab";
 import { UserDetailDialog } from "./user-detail-dialog";
 import { NegocioDetailDialog } from "./negocio-detail-dialog";
@@ -58,8 +59,8 @@ type SortOrder = "recientes" | "antiguos";
 type LeadEstadoFilter = "todos" | "nuevo" | "contactado" | "convertido";
 /** Tabs "de todos los días" arriba, el resto (Leads/Consentimientos/Catálogo — siempre en 0, nadie los revisa a diario) detrás de un disclosure "Avanzado" para no robarles espacio. */
 type MainTab = "usuarios" | "negocios";
-type AdvancedTab = "leads" | "consentimientos" | "catalogo";
-const ADVANCED_TABS = new Set<string>(["leads", "consentimientos", "catalogo"]);
+type AdvancedTab = "leads" | "consentimientos" | "clientes" | "catalogo";
+const ADVANCED_TABS = new Set<string>(["leads", "consentimientos", "clientes", "catalogo"]);
 const TAB_STORAGE_KEY = "admin_tab";
 
 const PLAN_ESTADO_OPCIONES: { value: PlanEstadoFilter; label: string }[] = [
@@ -572,6 +573,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
               tabs={[
                 { value: "leads", label: `Leads · ${overview.leads.length}` },
                 { value: "consentimientos", label: `Consentimientos · ${overview.consentimientos.length}` },
+                { value: "clientes", label: "Buscar clientes" },
                 { value: "catalogo", label: "Catálogo" },
               ]}
               className="max-w-lg"
@@ -679,6 +681,10 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
         ) : tab === "consentimientos" ? (
           <div className="mt-4 overflow-hidden rounded-2xl border border-border">
             <ConsentimientosTable consentimientos={overview.consentimientos} />
+          </div>
+        ) : tab === "clientes" ? (
+          <div className="mt-4">
+            <ClientesSearch />
           </div>
         ) : (
           <CatalogoTab />

@@ -316,7 +316,7 @@ async function computeNegocioExtra(negocioId: string, tipo: BusinessType): Promi
 
 export async function fetchUserDetail(
   userId: string
-): Promise<{ profile: AdminProfile | null; negocios: UserDetailNegocio[] }> {
+): Promise<{ profile: AdminProfile | null; negocios: UserDetailNegocio[]; userConsentimientos: AdminConsentimiento[] }> {
   const [{ data: profileRow, error: profileErr }, { data: negociosRows, error: negErr }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
     supabase.from("negocios").select("*").eq("owner_id", userId),
@@ -325,7 +325,9 @@ export async function fetchUserDetail(
   if (negErr) throw negErr;
 
   const negocios: UserDetailNegocio[] = [];
+  const negocioIds: string[] = [];
   for (const n of negociosRows ?? []) {
+    negocioIds.push(n.id);
     const extra = await computeNegocioExtra(n.id, n.tipo);
     negocios.push({
       id: n.id,
@@ -349,6 +351,30 @@ export async function fetchUserDetail(
     });
   }
 
+  // Fetch consentimientos from this user's businesses
+  let userConsentimientos: AdminConsentimiento[] = [];
+  if (negocioIds.length > 0) {
+    const { data, error } = await supabase
+      .from("consentimientos")
+      .select("*, negocios(nombre)")
+      .in("negocio_id", negocioIds)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (!error && data) {
+      userConsentimientos = (data ?? []).map((c) => ({
+        id: c.id,
+        negocioId: c.negocio_id,
+        negocioNombre: (c.negocios as { nombre?: string } | null)?.nombre ?? null,
+        ip: c.ip,
+        userAgent: c.user_agent,
+        aceptoTerminos: c.acepto_terminos,
+        aceptoPrivacidad: c.acepto_privacidad,
+        aceptoCookies: c.acepto_cookies,
+        createdAt: c.created_at,
+      }));
+    }
+  }
+
   const profile: AdminProfile | null = profileRow
     ? {
         id: profileRow.id,
@@ -362,7 +388,7 @@ export async function fetchUserDetail(
       }
     : null;
 
-  return { profile, negocios };
+  return { profile, negocios, userConsentimientos };
 }
 
 export interface NegocioDetail extends AdminNegocio {
