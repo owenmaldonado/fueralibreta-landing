@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { cleanInsert } from "@/lib/data";
-import { formatMoney, fechaCalendarioLocal, mensajeDiferencia, mensajeEsperado, redondear2, uid } from "@/lib/mock";
+import { formatMoney, formatMoneyExacto, fechaCalendarioLocal, mensajeDiferencia, mensajeEsperado, redondear2, uid } from "@/lib/mock";
 import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, CajaEntry, InventoryProduct } from "@/lib/types";
@@ -277,7 +277,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
           <div className="flex flex-col gap-4">
             <div className="rounded-xl border border-border bg-card p-4 text-center">
               <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ventas de hoy (calculadas)</p>
-              <p className="font-display text-2xl font-bold text-ledger">{formatMoney(ventasHoyTotal)}</p>
+              <p className="font-display text-2xl font-bold text-ledger">{formatMoneyExacto(ventasHoyTotal)}</p>
               <p className="mt-1 text-xs text-muted-foreground">Citas atendidas: {citasAtendidas}</p>
             </div>
             <VentasPorEmpleado datos={ventasPorEmpleado} />
@@ -292,7 +292,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
                       {g.concepto}
                       {g.empleadoNombreCache && <span className="ml-1 text-xs text-muted-foreground">({g.empleadoNombreCache})</span>}
                     </span>
-                    <span className="shrink-0 font-mono text-muted-foreground">-{formatMoney(g.monto)}</span>
+                    <span className="shrink-0 font-mono text-muted-foreground">-{formatMoneyExacto(g.monto)}</span>
                   </div>
                 ))}
               </div>

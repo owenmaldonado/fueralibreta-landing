@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { insertGastoDirecto, cleanInsert } from "@/lib/data";
-import { formatMoney, mensajeDiferencia, mensajeEsperado, redondear2, uid } from "@/lib/mock";
+import { formatMoney, formatMoneyExacto, mensajeDiferencia, mensajeEsperado, redondear2, uid } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
 import { cerrarTurno } from "@/lib/turno-fonda";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
@@ -289,7 +289,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
           <div className="flex flex-col gap-4">
             <div className="rounded-xl border border-border bg-card p-4 text-center">
               <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ventas de hoy (calculadas)</p>
-              <p className="font-display text-2xl font-bold text-ledger">{formatMoney(ventasHoy)}</p>
+              <p className="font-display text-2xl font-bold text-ledger">{formatMoneyExacto(ventasHoy)}</p>
             </div>
             <VentasPorEmpleado datos={ventasPorEmpleado} />
             {gastosHoyDelDia.length > 0 && (
@@ -303,7 +303,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
                       {g.categoria}
                       {g.empleadoNombreCache && <span className="ml-1 text-xs text-muted-foreground">({g.empleadoNombreCache})</span>}
                     </span>
-                    <span className="shrink-0 font-mono text-muted-foreground">-{formatMoney(g.monto)}</span>
+                    <span className="shrink-0 font-mono text-muted-foreground">-{formatMoneyExacto(g.monto)}</span>
                   </div>
                 ))}
               </div>
