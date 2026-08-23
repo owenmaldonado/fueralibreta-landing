@@ -39,6 +39,26 @@ export function formatMoney(n: number): string {
 }
 
 /**
+ * Igual que formatMoney pero SIEMPRE con 2 decimales — para los montos de
+ * los wizards de "Cerrar turno/día" donde ocultar centavos es justo lo que
+ * hacía ilegible el bug de "sobran $1": con productos por peso (kg) el
+ * total real de ventas/gastos casi nunca es un peso exacto (ej. $170.50),
+ * pero formatMoney lo mostraba como "$171" en toda la pantalla — el dueño
+ * escribía el efectivo real basado en ese peso redondeado, y los 50
+ * centavos reales de diferencia se veían como un "$1" sin explicación. Se
+ * usa en "Ventas de hoy", el desglose de gastos y "Deberías tener" para
+ * que esos centavos sean visibles y la diferencia se pueda verificar a mano.
+ */
+export function formatMoneyExacto(n: number): string {
+  return n.toLocaleString("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
  * Mensaje unificado de diferencia de caja para los 3 wizards de "Cerrar
  * Turno/Día" (Fondita, Abarrotera, Barbería) — dif = efectivo real -
  * ventas calculadas, mismo signo en las 3 apps: negativo es faltante,
@@ -54,7 +74,11 @@ export function formatMoney(n: number): string {
 /** `esperado` opcional: si se da, agrega "— Deberías tener $X" al mensaje. */
 export function mensajeDiferencia(dif: number, esperado?: number): string {
   const redondeado = Math.round(dif);
-  const sufijo = esperado != null ? ` — Deberías tener ${formatMoney(esperado)}` : "";
+  // formatMoneyExacto (con centavos), no formatMoney: "esperado" casi nunca
+  // es un peso exacto en Abarrotera (productos por kg) — mostrarlo
+  // redondeado es justo lo que hacía ver un "sobran $1" real (por 50
+  // centavos genuinos) como un número mágico sin forma de verificarlo.
+  const sufijo = esperado != null ? ` — Deberías tener ${formatMoneyExacto(esperado)}` : "";
   if (redondeado < 0) return `🔴 Te faltan ${formatMoney(-redondeado)}${sufijo}`;
   if (redondeado > 0) return `🔵 Te sobran ${formatMoney(redondeado)}${sufijo}`;
   return "🟢 ¡Cuadra perfecto! ✅";
@@ -62,7 +86,7 @@ export function mensajeDiferencia(dif: number, esperado?: number): string {
 
 /** Se muestra ANTES de que el dueño escriba "¿Efectivo real en mano?" — el mismo cálculo de mensajeDiferencia, pero como previsualización, sin comparar contra nada todavía. */
 export function mensajeEsperado(esperado: number): string {
-  return `💰 Dinero que deberías tener: ${formatMoney(esperado)}`;
+  return `💰 Dinero que deberías tener: ${formatMoneyExacto(esperado)}`;
 }
 
 /** "2024-01-01T12:00:00Z" -> "Hace 2h". Para mostrar última actividad en el panel de admin. */
