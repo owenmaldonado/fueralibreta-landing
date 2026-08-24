@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { SiteFooter } from "@/components/site-footer";
-import { getAvailableSlots } from "@/lib/agenda";
+import { getAvailableSlots, getAvailableSlotsForDuracion } from "@/lib/agenda";
 import { fetchNegocioBySlug, fetchPublicBookingData, submitPublicCita, type PublicBookingData } from "@/lib/data";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { readDemoPreview, writeDemoPreview } from "@/lib/demoPreview";
@@ -139,7 +139,7 @@ export default function ReservaPublicaPage() {
   }
 
   const servicio = booking.servicios.find((s) => s.id === servicioId) ?? booking.servicios[0];
-  const slots = getAvailableSlots(booking, fecha);
+  const slots = servicio ? getAvailableSlotsForDuracion(booking, fecha, servicio.duracion_min) : getAvailableSlots(booking, fecha);
   const numeroWhatsapp = whatsappDe(business);
 
   async function reservar() {
@@ -273,7 +273,17 @@ export default function ReservaPublicaPage() {
           <Label className="text-sm normal-case tracking-normal text-foreground">Elige tu servicio</Label>
           <ChipGroup>
             {booking.servicios.map((s) => (
-              <Chip key={s.id} selected={(servicioId ?? booking.servicios[0]?.id) === s.id} onClick={() => setServicioId(s.id)}>
+              <Chip
+                key={s.id}
+                selected={(servicioId ?? booking.servicios[0]?.id) === s.id}
+                onClick={() => {
+                  setServicioId(s.id);
+                  // Duraciones distintas = huecos disponibles distintos (ver
+                  // getAvailableSlotsForDuracion) — la hora que tenía
+                  // seleccionada puede ya no alcanzar con el nuevo servicio.
+                  setHora(null);
+                }}
+              >
                 {s.nombre} · {formatMoney(s.precio)}
               </Chip>
             ))}

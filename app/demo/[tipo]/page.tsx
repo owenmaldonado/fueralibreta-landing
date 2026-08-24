@@ -203,8 +203,13 @@ export default function DemoIntakePage() {
               id={current.key}
               autoFocus
               type={"type" in current ? current.type : "text"}
+              inputMode={current.key === "telefono" ? "numeric" : undefined}
+              maxLength={current.key === "telefono" ? 10 : 50}
               value={value}
-              onChange={(e) => update(current.key, e.target.value)}
+              onChange={(e) => {
+                const raw = current.key === "telefono" ? e.target.value.replace(/\D/g, "") : e.target.value;
+                update(current.key, raw);
+              }}
               onKeyDown={(e) => e.key === "Enter" && next()}
               placeholder={current.placeholder}
               className="mt-3 h-14 text-lg"

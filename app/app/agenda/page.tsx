@@ -21,7 +21,7 @@ import { EmpleadoBadge } from "@/components/dashboards/empleado-badge";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { addDays, formatHora12, formatMoney, todayISO, toISODate, waLink } from "@/lib/mock";
-import { getDaySlots, diaCodigoDeFecha } from "@/lib/agenda";
+import { getDaySlots, getAvailableSlotsForDuracion, diaCodigoDeFecha } from "@/lib/agenda";
 import { getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente, usePendingSalesQueue, type VentaPendienteRow } from "@/lib/offline-sales-queue";
 import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
@@ -578,6 +578,19 @@ function MoverCitaSheet({
     () => (cita && fecha ? getDaySlots({ ...data, citas: data.citas.filter((c) => c.id !== cita.id) }, fecha) : []),
     [data, cita, fecha]
   );
+  // Igual que en Nueva Cita: un slot "libre" individual no basta, hace
+  // falta que la duración COMPLETA del servicio de esta cita quepa sin
+  // traslaparse con otra más adelante (ver getAvailableSlotsForDuracion).
+  const duracionServicio = data.servicios.find((s) => s.id === cita?.servicioId)?.duracion_min ?? 30;
+  const horasQueSiAlcanzan = React.useMemo(
+    () =>
+      new Set(
+        cita && fecha
+          ? getAvailableSlotsForDuracion({ ...data, citas: data.citas.filter((c) => c.id !== cita.id) }, fecha, duracionServicio)
+          : []
+      ),
+    [data, cita, fecha, duracionServicio]
+  );
 
   React.useEffect(() => {
     if (cita) {
@@ -610,10 +623,11 @@ function MoverCitaSheet({
               ) : (
                 <ChipGroup>
                   {slots.map((s) => (
-                    <Chip key={s.hora} selected={hora === s.hora} disabled={s.estado !== "libre"} onClick={() => setHora(s.hora)}>
+                    <Chip key={s.hora} selected={hora === s.hora} disabled={!horasQueSiAlcanzan.has(s.hora)} onClick={() => setHora(s.hora)}>
                       {formatHora12(s.hora)}
                       {s.estado === "comida" && " · En comida"}
                       {s.estado === "ocupado" && " · Ocupado"}
+                      {s.estado === "libre" && !horasQueSiAlcanzan.has(s.hora) && " · No alcanza"}
                     </Chip>
                   ))}
                 </ChipGroup>
