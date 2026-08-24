@@ -425,17 +425,19 @@ export default function GastosPage() {
       {modulo === "abarrotes" && (
         <div className="mx-4 mt-3 rounded-xl border border-border bg-card px-3 py-4">
           <p className="text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Hoy</p>
-          <div className="mt-2 flex items-center justify-center gap-3 text-center">
+          {/* Sin "−"/"=" entre los 3 números a propósito: "Ganancia real"
+              es margen por producto vendido (precio - costo), no Ventas -
+              Gastos, así que mostrarlos con símbolos de resta/igual daba a
+              entender una ecuación que los números no cumplen. */}
+          <div className="mt-2 grid grid-cols-3 gap-2 text-center">
             <div>
               <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ventas hoy</p>
               <p className="font-display text-lg font-bold text-ledger">{formatMoney(ventasHoy)}</p>
             </div>
-            <span className="text-muted-foreground">−</span>
             <div>
               <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Gastos hoy</p>
               <p className="font-display text-lg font-bold text-destructive">{formatMoney(gastosHoy)}</p>
             </div>
-            <span className="text-muted-foreground">=</span>
             <div>
               <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ganancia real hoy</p>
               <p className={cn("font-display text-lg font-bold", gananciaRealHoy >= 0 ? "text-ledger" : "text-destructive")}>
@@ -473,19 +475,18 @@ export default function GastosPage() {
         )
       ) : modulo === "abarrotes" ? null : (
         <div className="px-4 pt-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <StatTile label="Total ventas" value={formatMoney(totalVentas)} />
             <StatTile label="Total gastos" value={formatMoney(totalGastos)} />
+            <StatTile
+              label="Ganancia real"
+              value={formatMoney(totalGananciaNeta)}
+              valueClassName={totalGananciaNeta >= 0 ? "text-ledger" : "text-destructive"}
+            />
           </div>
-          <div className="mt-3 rounded-xl border border-border bg-card px-3 py-3 text-center">
-            <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">En caja (informativo)</p>
-            <p className={cn("font-display text-lg font-bold", totalGananciaNeta >= 0 ? "text-ledger" : "text-destructive")}>
-              {formatMoney(totalGananciaNeta)}
-            </p>
-            {faltaCostoEnFonda && (
-              <p className="mt-1 text-xs text-muted-foreground">Agrega costo a tus platillos para ver ganancia real.</p>
-            )}
-          </div>
+          {faltaCostoEnFonda && (
+            <p className="mt-2 px-1 text-xs text-muted-foreground">Agrega costo a tus platillos para ver ganancia real (con mermas incluidas).</p>
+          )}
         </div>
       )}
 
