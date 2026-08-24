@@ -226,7 +226,7 @@ export default function AgendaPage() {
         />
       )}
 
-      <MoverCitaSheet cita={moviendo} data={data} onClose={() => setMoviendo(null)} onGuardar={mover} />
+      <MoverCitaSheet cita={moviendo} data={data} timezone={session.business.timezone} onClose={() => setMoviendo(null)} onGuardar={mover} />
       <CobrarCitaDialog cita={cobrando} onClose={() => setCobrando(null)} onConfirmar={marcarListoConMetodo} />
 
       <Dialog open={!!cancelando} onOpenChange={(o) => !o && setCancelando(null)}>
@@ -566,11 +566,13 @@ function CitaRow({
 function MoverCitaSheet({
   cita,
   data,
+  timezone,
   onClose,
   onGuardar,
 }: {
   cita: Appointment | null;
   data: BarberiaData;
+  timezone?: string;
   onClose: () => void;
   onGuardar: (id: string, fecha: string, hora: string) => void;
 }) {
@@ -579,8 +581,8 @@ function MoverCitaSheet({
   // Sin la propia cita en la lista de ocupados: si no, su propio horario
   // actual se vería como "Ocupado" al reabrir el mismo día en el picker.
   const slots = React.useMemo(
-    () => (cita && fecha ? getDaySlots({ ...data, citas: data.citas.filter((c) => c.id !== cita.id) }, fecha) : []),
-    [data, cita, fecha]
+    () => (cita && fecha ? getDaySlots({ ...data, citas: data.citas.filter((c) => c.id !== cita.id) }, fecha, timezone) : []),
+    [data, cita, fecha, timezone]
   );
   // Igual que en Nueva Cita: un slot "libre" individual no basta, hace
   // falta que la duración COMPLETA del servicio de esta cita quepa sin
@@ -590,10 +592,10 @@ function MoverCitaSheet({
     () =>
       new Set(
         cita && fecha
-          ? getAvailableSlotsForDuracion({ ...data, citas: data.citas.filter((c) => c.id !== cita.id) }, fecha, duracionServicio)
+          ? getAvailableSlotsForDuracion({ ...data, citas: data.citas.filter((c) => c.id !== cita.id) }, fecha, duracionServicio, timezone)
           : []
       ),
-    [data, cita, fecha, duracionServicio]
+    [data, cita, fecha, duracionServicio, timezone]
   );
 
   React.useEffect(() => {

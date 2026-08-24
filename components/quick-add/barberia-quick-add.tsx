@@ -44,7 +44,7 @@ export function BarberiaQuickAdd({ active, onClose, session, update }: Props) {
   return (
     <>
       <Sheet open={active === "cita"} onOpenChange={(o) => !o && onClose()}>
-        <NuevaCitaForm data={data} onClose={onClose} update={update} />
+        <NuevaCitaForm data={data} timezone={session.business.timezone} onClose={onClose} update={update} />
       </Sheet>
       <Sheet open={active === "cliente"} onOpenChange={(o) => !o && onClose()}>
         <NuevoClienteForm onClose={onClose} update={update} clientesActuales={data.clientes.length} />
@@ -238,10 +238,12 @@ function ClienteBuscador({
 
 function NuevaCitaForm({
   data,
+  timezone,
   onClose,
   update,
 }: {
   data: NonNullable<TenantData["barberia"]>;
+  timezone?: string;
   onClose: () => void;
   update: Props["update"];
 }) {
@@ -250,7 +252,7 @@ function NuevaCitaForm({
   const [servicioId, setServicioId] = React.useState(data.servicios[0]?.id ?? "");
   const [fecha, setFecha] = React.useState(todayISO(0));
   const [hora, setHora] = React.useState<string | null>(null);
-  const slots = React.useMemo(() => getDaySlots(data, fecha), [data, fecha]);
+  const slots = React.useMemo(() => getDaySlots(data, fecha, timezone), [data, fecha, timezone]);
 
   const servicio = data.servicios.find((s) => s.id === servicioId);
   // Un slot individual puede verse "libre" y aun así no alcanzar para ESTE
@@ -258,8 +260,8 @@ function NuevaCitaForm({
   // uñas de 2h a las 9:00 con otra cita a las 10:30) — getDaySlots solo
   // sabe si CADA slot de 30 min está ocupado, no si el rango completo cabe.
   const horasQueSiAlcanzan = React.useMemo(
-    () => new Set(getAvailableSlotsForDuracion(data, fecha, servicio?.duracion_min ?? 30)),
-    [data, fecha, servicio?.duracion_min]
+    () => new Set(getAvailableSlotsForDuracion(data, fecha, servicio?.duracion_min ?? 30, timezone)),
+    [data, fecha, servicio?.duracion_min, timezone]
   );
   const clienteEsNuevo = !!cliente && !("id" in cliente);
   const maxClientes = plan.giroBarberia.maxClientes;

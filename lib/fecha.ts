@@ -26,3 +26,23 @@ export function getDeviceTimezone(): string {
 export function hoyEnZona(timezone?: string): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: timezone || getDeviceTimezone() });
 }
+
+/**
+ * "HH:MM" (24h) de la hora actual en la zona horaria del negocio — mismo
+ * criterio que hoyEnZona(). Existe porque getDaySlots (lib/agenda.ts)
+ * necesita saber si un horario del día "ya pasó": comparar con
+ * `new Date()` crudo asume que el runtime corre en la zona del negocio, lo
+ * cual es cierto en el navegador de un dueño en México pero NO en un
+ * servidor (Vercel corre en UTC) — sin esto, la reserva pública validada
+ * del lado del servidor marcaba como "pasado" cualquier horario de la
+ * tarde/noche en México, porque para el servidor en UTC ya eran horas
+ * "de madrugada" del día siguiente.
+ */
+export function horaActualEnZona(timezone?: string): string {
+  return new Date().toLocaleTimeString("en-GB", {
+    timeZone: timezone || getDeviceTimezone(),
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}

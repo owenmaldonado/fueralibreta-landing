@@ -165,7 +165,9 @@ export default function ReservaPublicaPage() {
   }
 
   const servicio = booking.servicios.find((s) => s.id === servicioId) ?? booking.servicios[0];
-  const slots = servicio ? getAvailableSlotsForDuracion(booking, fecha, servicio.duracion_min) : getAvailableSlots(booking, fecha);
+  const slots = servicio
+    ? getAvailableSlotsForDuracion(booking, fecha, servicio.duracion_min, business.timezone)
+    : getAvailableSlots(booking, fecha, business.timezone);
   const numeroWhatsapp = whatsappDe(business);
 
   async function reservar() {
