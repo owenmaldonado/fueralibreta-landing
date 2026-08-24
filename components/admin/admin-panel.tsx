@@ -13,7 +13,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { MetricsCards } from "./metrics-cards";
 import { UsersTable } from "./users-table";
-import { OrgsTable } from "./orgs-table";
+import { OrgsGrid } from "./orgs-grid";
 import { LeadsTable } from "./leads-table";
 import { ConsentimientosTable } from "./consentimientos-table";
 import { ClientesSearch } from "./clientes-search";
@@ -630,8 +630,8 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
                 ))}
               </ChipGroup>
             </div>
-            <div className="mt-4 max-w-full overflow-hidden rounded-2xl border border-border">
-              <OrgsTable
+            <div className="mt-4">
+              <OrgsGrid
                 negocios={filteredNegocios}
                 profiles={overview.profiles}
                 currentUserId={currentUserId}

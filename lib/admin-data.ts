@@ -56,6 +56,7 @@ export interface AdminNegocio {
   notasAdmin: string | null;
   /** Cuándo se registró por última vez un pago real (ver activarPlanConDias/updateNegocioTrial(id,30) abajo) — `null` si nunca, ya sea porque sigue en su trial gratis o porque solo se le extendió con "+7/+14 días" (esas no cuentan como pago). */
   ultimoPagoAt: string | null;
+  ingresosTotales: number;
 }
 
 export interface AdminMetrics {
@@ -115,29 +116,38 @@ export async function fetchAdminOverview(currentUserId: string): Promise<AdminOv
     negociosCount: negociosByOwner.get(p.id) ?? 0,
   }));
 
-  const negocios: AdminNegocio[] = (negociosRes.data ?? []).map((n) => ({
-    id: n.id,
-    slug: n.slug,
-    nombre: n.nombre,
-    tipo: n.tipo,
-    ownerId: n.owner_id,
-    ownerEmail: n.owner_id ? (profilesById.get(n.owner_id)?.email ?? null) : null,
-    // telefono_contacto (pedido obligatorio en /onboarding desde ahora) es
-    // el número confiable para contactar por WhatsApp. Si un negocio viejo
-    // no lo tiene, cae a whatsapp (el de citas, casi siempre un número real
-    // del dueño) y por último a telefono ("de recuperación", opcional y
-    // casi siempre vacío).
-    ownerPhone: (n.telefono_contacto as string) || (n.whatsapp as string) || n.telefono || "",
-    isActive: n.is_active,
-    createdAt: n.created_at,
-    plan: normalizarPlan(n.plan),
-    trialInicio: n.trial_inicio,
-    trialFin: n.trial_fin,
-    precioCustom: n.precio_custom != null ? Number(n.precio_custom) : null,
-    esFundador: (n.es_fundador as boolean) ?? false,
-    notasAdmin: (n.notas_admin as string | null) ?? null,
-    ultimoPagoAt: (n.ultimo_pago_at as string | null) ?? null,
-  }));
+  const negocios: AdminNegocio[] = await Promise.all(
+    (negociosRes.data ?? []).map(async (n) => {
+      const extra = await computeNegocioExtra(n.id, n.tipo).catch(() => ({
+        stats: [] as { label: string; value: number }[],
+        ingresosTotales: 0,
+      }));
+      return {
+        id: n.id,
+        slug: n.slug,
+        nombre: n.nombre,
+        tipo: n.tipo,
+        ownerId: n.owner_id,
+        ownerEmail: n.owner_id ? (profilesById.get(n.owner_id)?.email ?? null) : null,
+        // telefono_contacto (pedido obligatorio en /onboarding desde ahora) es
+        // el número confiable para contactar por WhatsApp. Si un negocio viejo
+        // no lo tiene, cae a whatsapp (el de citas, casi siempre un número real
+        // del dueño) y por último a telefono ("de recuperación", opcional y
+        // casi siempre vacío).
+        ownerPhone: (n.telefono_contacto as string) || (n.whatsapp as string) || n.telefono || "",
+        isActive: n.is_active,
+        createdAt: n.created_at,
+        plan: normalizarPlan(n.plan),
+        trialInicio: n.trial_inicio,
+        trialFin: n.trial_fin,
+        precioCustom: n.precio_custom != null ? Number(n.precio_custom) : null,
+        esFundador: (n.es_fundador as boolean) ?? false,
+        notasAdmin: (n.notas_admin as string | null) ?? null,
+        ultimoPagoAt: (n.ultimo_pago_at as string | null) ?? null,
+        ingresosTotales: extra.ingresosTotales,
+      };
+    })
+  );
 
   const totalMovimientos = (citasRes.count ?? 0) + (pedidosRes.count ?? 0) + (ventasRes.count ?? 0);
 
