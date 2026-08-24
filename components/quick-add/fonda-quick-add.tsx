@@ -185,8 +185,7 @@ function NuevoPedidoForm({
         };
         pedidoCreado = pedido;
         return { ...prev, fonda: { ...f, pedidos: [pedido, ...f.pedidos] } };
-      },
-      { ventaOffline: true }
+      }
     );
     if (typeof navigator !== "undefined" && !navigator.onLine && pedidoCreado) {
       encolarVentaPendiente({
