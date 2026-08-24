@@ -247,15 +247,31 @@ export default function GastosPage() {
     new Set([anioActual, ...gastos.map((g) => Number(g.fecha.slice(0, 4))), ...ventas.map((v) => Number(v.fecha.slice(0, 4)))])
   ).sort((a, b) => a - b);
 
+  // "Hoy" del negocio, no del dispositivo — ver lib/fecha.ts.
+  const hoy = hoyEnZona(session.business.timezone);
+
   // "Anual" con el año en curso sigue siendo el rolling de los últimos 12
   // meses (el default de siempre). Elegir un año pasado cambia el reloj de
   // referencia al 31 de diciembre de ese año — el mismo rolling de 12 meses
   // "terminando ahí" da exactamente Ene-Dic de ese año, sin duplicar la
   // lógica de buckets.
-  const now = rango === "anual" && anioSeleccionado !== anioActual ? new Date(anioSeleccionado, 11, 31) : new Date();
-
-  // "Hoy" del negocio, no del dispositivo — ver lib/fecha.ts.
-  const hoy = hoyEnZona(session.business.timezone);
+  //
+  // getBuckets (lib/chart-buckets.ts) construye los buckets con
+  // new Date(year, month, day) — componentes LOCALES del dispositivo, igual
+  // que parseFecha ahí mismo. Antes `now` salía de `new Date()` crudo (el
+  // reloj/zona del DISPOSITIVO), mientras que las fechas de ventas/gastos
+  // vienen de v.fecha ya en la zona del NEGOCIO (fechaCalendarioLocal arriba)
+  // — un dispositivo en otra zona horaria (o solo con la hora del sistema
+  // mal puesta) calculaba "hoy" como un día distinto al real del negocio, y
+  // como la semana es Lunes-Domingo, ese corrimiento podía sacar el día de
+  // hoy COMPLETO fuera de la ventana "Semanal" (sobre todo si hoy es lunes:
+  // un "hoy" corrido un día atrás cae en la semana pasada entera). Se parsea
+  // el string de hoy (ya correcto, en zona del negocio) como componentes
+  // locales — igual que parseFecha — para que "now" y las fechas de los
+  // items queden en el mismo sistema de referencia.
+  const [hoyY, hoyM, hoyD] = hoy.split("-").map(Number);
+  const now =
+    rango === "anual" && anioSeleccionado !== anioActual ? new Date(anioSeleccionado, 11, 31) : new Date(hoyY, hoyM - 1, hoyD);
   const ventasHoy = ventas.filter((v) => v.fecha === hoy).reduce((acc, v) => acc + v.monto, 0);
   const gastosHoy = gastos.filter((g) => g.fecha === hoy).reduce((acc, g) => acc + g.monto, 0);
   const gananciaBrutaHoy = gananciaPorVenta.filter((g) => g.fecha === hoy).reduce((acc, g) => acc + g.monto, 0);
