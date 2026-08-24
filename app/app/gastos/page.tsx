@@ -272,6 +272,26 @@ export default function GastosPage() {
   const [hoyY, hoyM, hoyD] = hoy.split("-").map(Number);
   const now =
     rango === "anual" && anioSeleccionado !== anioActual ? new Date(anioSeleccionado, 11, 31) : new Date(hoyY, hoyM - 1, hoyD);
+
+  // "Semanal": mismo cálculo Lunes-Domingo por STRING que ya usa el cuadro
+  // de Ventas del panel principal (fonda-dashboard.tsx) — comparar
+  // "YYYY-MM-DD" >= "YYYY-MM-DD" no pasa por ningún Date/zona horaria, así
+  // que no puede volver a tener el corrimiento de un día que sacaba las
+  // ventas de hoy de la ventana semanal (ver comentario de arriba en `now`).
+  // Se usa solo para la LISTA de abajo (filtrarPorRango) — la gráfica de
+  // barras sigue con aggregateByRange/Date porque necesita bucket por día,
+  // pero ya con `now` corregido eso también queda consistente.
+  const diasDesdeLunes = (new Date(hoyY, hoyM - 1, hoyD).getDay() + 6) % 7;
+  const semanaLunes = new Date(hoyY, hoyM - 1, hoyD - diasDesdeLunes);
+  const semanaDomingo = new Date(hoyY, hoyM - 1, hoyD - diasDesdeLunes + 6);
+  const toISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const semanaDesde = toISO(semanaLunes);
+  const semanaHasta = toISO(semanaDomingo);
+  function filtrarPorRango<T>(items: T[], fechaDe: (item: T) => string): T[] {
+    if (rango === "semanal") return items.filter((item) => fechaDe(item) >= semanaDesde && fechaDe(item) <= semanaHasta);
+    return filterByRango(items, rango, fechaDe, now);
+  }
+
   const ventasHoy = ventas.filter((v) => v.fecha === hoy).reduce((acc, v) => acc + v.monto, 0);
   const gastosHoy = gastos.filter((g) => g.fecha === hoy).reduce((acc, g) => acc + g.monto, 0);
   const gananciaBrutaHoy = gananciaPorVenta.filter((g) => g.fecha === hoy).reduce((acc, g) => acc + g.monto, 0);
@@ -294,12 +314,12 @@ export default function GastosPage() {
   // aparte (sin duplicar si "mensual"/"anual" ya lo incluían) para que
   // siempre sea visible con el badge "Programado" — no cuenta en
   // totalGastos/la gráfica todavía, porque ese dinero no se ha gastado.
-  const gastosEnRango = filterByRango(gastos, rango, (g) => g.fecha, now);
+  const gastosEnRango = filtrarPorRango(gastos, (g) => g.fecha);
   const idsEnRango = new Set(gastosEnRango.map((g) => g.id));
   const gastosFuturosFueraDeRango = gastos.filter((g) => g.fecha > hoy && !idsEnRango.has(g.id));
   const gastosFiltrados = gastosEnRango.concat(gastosFuturosFueraDeRango).sort((a, b) => b.fecha.localeCompare(a.fecha));
-  const ventasFiltradas = filterByRango(ventas, rango, (v) => v.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
-  const gananciaPorVentaFiltrada = filterByRango(gananciaPorVenta, rango, (g) => g.fecha, now).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const ventasFiltradas = filtrarPorRango(ventas, (v) => v.fecha).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const gananciaPorVentaFiltrada = filtrarPorRango(gananciaPorVenta, (g) => g.fecha).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const totalGastos = gastosEnRango.reduce((acc, g) => acc + g.monto, 0);
   const totalVentas = ventasFiltradas.reduce((acc, v) => acc + v.monto, 0);
   const totalGananciaBruta = gananciaPorVentaFiltrada.reduce((acc, g) => acc + g.monto, 0);
