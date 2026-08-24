@@ -52,7 +52,7 @@ export async function POST(req: Request) {
 
   const { data: negocio, error: negocioError } = await supabase
     .from("negocios")
-    .select("id, tipo")
+    .select("id, tipo, timezone")
     .eq("slug", input.slug)
     .eq("is_active", true)
     .maybeSingle();
@@ -128,7 +128,7 @@ export async function POST(req: Request) {
       servicioId: c.servicio_id as string,
     })),
   };
-  const huecosValidos = getAvailableSlotsForDuracion(slotSource, input.fecha, servicio.duracion_min);
+  const huecosValidos = getAvailableSlotsForDuracion(slotSource, input.fecha, servicio.duracion_min, negocio.timezone ?? undefined);
   if (!huecosValidos.includes(input.hora)) {
     return NextResponse.json({ error: "Ese horario ya no está disponible, elige otro." }, { status: 409 });
   }

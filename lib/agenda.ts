@@ -1,4 +1,4 @@
-import { todayISO } from "./mock";
+import { hoyEnZona, horaActualEnZona } from "./fecha";
 import type { Appointment, BarberiaData } from "./types";
 
 const DIAS_SEMANA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"] as const;
@@ -37,8 +37,14 @@ function enRango(hora: string, desde: string, hasta: string): boolean {
  * getAvailableSlots (reserva pública, /b/[slug]) como el picker de Nueva
  * Cita/Mover cita en la Agenda del dueño parten de aquí, para que ambos
  * respeten exactamente el mismo horario/comida/ocupación.
+ *
+ * `timezone` (negocios.timezone) decide qué es "hoy" y qué hora "ya pasó"
+ * — sin pasarla, cae a la zona del dispositivo que ejecuta esto (bien en
+ * el navegador de México, MAL en un servidor que corre en UTC, como la
+ * validación server-side de /api/public/citas). Pásala siempre que la
+ * tengas a mano.
  */
-export function getDaySlots(barberia: SlotSource, fecha: string): SlotDetallado[] {
+export function getDaySlots(barberia: SlotSource, fecha: string, timezone?: string): SlotDetallado[] {
   const date = new Date(`${fecha}T00:00:00`);
   const diaCodigo = DIAS_SEMANA[date.getDay()];
   const horarioDia = barberia.horario.find((h) => h.dia === diaCodigo);
@@ -68,8 +74,8 @@ export function getDaySlots(barberia: SlotSource, fecha: string): SlotDetallado[
       ocupados.add(horaDeMinutos(min));
     }
   }
-  const esHoy = fecha === todayISO(0);
-  const ahora = new Date();
+  const esHoy = fecha === hoyEnZona(timezone);
+  const horaActual = horaActualEnZona(timezone);
 
   const slots: SlotDetallado[] = [];
   let h = ih;
@@ -81,10 +87,8 @@ export function getDaySlots(barberia: SlotSource, fecha: string): SlotDetallado[
       estado = "comida";
     } else if (ocupados.has(hora)) {
       estado = "ocupado";
-    } else if (esHoy) {
-      const slotDate = new Date(date);
-      slotDate.setHours(h, m, 0, 0);
-      if (slotDate.getTime() <= ahora.getTime()) estado = "pasado";
+    } else if (esHoy && hora <= horaActual) {
+      estado = "pasado";
     }
     slots.push({ hora, estado });
     m += 30;
@@ -98,8 +102,8 @@ export function getDaySlots(barberia: SlotSource, fecha: string): SlotDetallado[
 }
 
 /** Calcula los huecos disponibles reales según horario, comida, excepciones y citas ya tomadas — usada por la reserva pública (/b/[slug]). */
-export function getAvailableSlots(barberia: SlotSource, fecha: string): string[] {
-  return getDaySlots(barberia, fecha)
+export function getAvailableSlots(barberia: SlotSource, fecha: string, timezone?: string): string[] {
+  return getDaySlots(barberia, fecha, timezone)
     .filter((s) => s.estado === "libre")
     .map((s) => s.hora);
 }
@@ -115,8 +119,8 @@ export function getAvailableSlots(barberia: SlotSource, fecha: string): string[]
  * de getAvailableSlots en cuanto se conozca la duración del servicio a
  * agendar (Nueva Cita del dueño y reserva pública /b/[slug]).
  */
-export function getAvailableSlotsForDuracion(barberia: SlotSource, fecha: string, duracionMin: number): string[] {
-  const dia = getDaySlots(barberia, fecha);
+export function getAvailableSlotsForDuracion(barberia: SlotSource, fecha: string, duracionMin: number, timezone?: string): string[] {
+  const dia = getDaySlots(barberia, fecha, timezone);
   const pasos = Math.max(1, Math.ceil(duracionMin / 30));
 
   return dia
