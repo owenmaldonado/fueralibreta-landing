@@ -1216,7 +1216,16 @@ export function useSession() {
       // no tiene caso intentarlo ni ensuciar la consola con el error.
       if (!opciones?.yaSincronizado && (typeof navigator === "undefined" || navigator.onLine)) {
         const escritura = syncTenantDiff(prev, next).catch((err) => {
+          // Antes esto solo iba a console.error: si Supabase rechazaba el
+          // guardado (columna faltante por una migración no corrida, RLS,
+          // lo que sea), la pantalla ya había aplicado el cambio de forma
+          // optimista y se veía como si hubiera funcionado — la venta/gasto/
+          // cita desaparecía sin aviso en cuanto alguien recargaba o volvía
+          // a entrar. Con esto, quien esté usando la app en ese momento se
+          // entera de inmediato y sabe que tiene que reintentar, en vez de
+          // enterarse horas después de que "no se guardó nada".
           console.error("No se pudo guardar el cambio en Supabase:", err);
+          toast.error("No se pudo guardar en el servidor. Revisa tu conexión e inténtalo de nuevo.", { duration: 8000 });
         });
         escriturasPendientes.add(escritura);
         escritura.finally(() => escriturasPendientes.delete(escritura));
