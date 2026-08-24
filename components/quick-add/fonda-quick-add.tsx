@@ -11,7 +11,8 @@ import { Stepper } from "@/components/ui/stepper";
 import { Button } from "@/components/ui/button";
 import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import type { FabAction } from "@/components/app-shell/fab";
-import { uid, formatHora12, formatMoney, todayISO } from "@/lib/mock";
+import { uid, formatHora12, formatMoney } from "@/lib/mock";
+import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
 import { usePlan } from "@/lib/planes";
 import { obtenerOCrearTurno } from "@/lib/turno-fonda";
@@ -42,13 +43,13 @@ export function FondaQuickAdd({ active, onClose, session, update }: Props) {
   return (
     <>
       <Sheet open={active === "pedido"} onOpenChange={(o) => !o && onClose()}>
-        <NuevoPedidoForm data={data} onClose={onClose} update={update} negocioId={session.business.id} />
+        <NuevoPedidoForm data={data} onClose={onClose} update={update} negocioId={session.business.id} timezone={session.business.timezone} />
       </Sheet>
       <Sheet open={active === "platillo"} onOpenChange={(o) => !o && onClose()}>
         <NuevoPlatilloForm onClose={onClose} update={update} />
       </Sheet>
       <Sheet open={active === "gasto"} onOpenChange={(o) => !o && onClose()}>
-        <NuevoGastoForm onClose={onClose} update={update} />
+        <NuevoGastoForm onClose={onClose} update={update} timezone={session.business.timezone} />
       </Sheet>
     </>
   );
@@ -64,11 +65,13 @@ function NuevoPedidoForm({
   onClose,
   update,
   negocioId,
+  timezone,
 }: {
   data: NonNullable<TenantData["fonda"]>;
   onClose: () => void;
   update: Props["update"];
   negocioId: string;
+  timezone?: string;
 }) {
   const plan = usePlan();
   const maxPedidos = plan.giroFonda.maxPedidos;
@@ -171,7 +174,7 @@ function NuevoPedidoForm({
         const pedido: FondaOrder = {
           id: pedidoId,
           clienteNombre: clienteNombre.trim(),
-          fecha: todayISO(0),
+          fecha: hoyEnZona(timezone),
           hora,
           horaEntrega,
           items,
@@ -400,7 +403,7 @@ function NuevoPlatilloForm({ onClose, update }: { onClose: () => void; update: P
   );
 }
 
-function NuevoGastoForm({ onClose, update }: { onClose: () => void; update: Props["update"] }) {
+function NuevoGastoForm({ onClose, update, timezone }: { onClose: () => void; update: Props["update"]; timezone?: string }) {
   const [categoria, setCategoria] = React.useState(GASTO_CHIPS[0]);
   const [monto, setMonto] = React.useState("");
 
@@ -410,7 +413,7 @@ function NuevoGastoForm({ onClose, update }: { onClose: () => void; update: Prop
     if (!puedeGuardar) return;
     update((prev) => {
       const f = prev.fonda!;
-      const gasto: Expense = { id: uid("exp"), categoria, monto: Number(monto), fecha: todayISO(0) };
+      const gasto: Expense = { id: uid("exp"), categoria, monto: Number(monto), fecha: hoyEnZona(timezone) };
       return { ...prev, fonda: { ...f, gastos: [gasto, ...f.gastos] } };
     });
     onClose();
