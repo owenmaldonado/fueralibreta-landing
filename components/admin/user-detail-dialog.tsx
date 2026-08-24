@@ -21,7 +21,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { NegocioBillingCard } from "./negocio-billing-card";
-import { fetchUserDetail, type AdminProfile, type UserDetailNegocio } from "@/lib/admin-data";
+import { fetchUserDetail, type AdminProfile, type UserDetailNegocio, type AdminConsentimiento } from "@/lib/admin-data";
 import { formatMoney, waLink } from "@/lib/mock";
 import type { PlanId } from "@/lib/planes";
 
@@ -70,6 +70,7 @@ export function UserDetailDialog({
   const [loading, setLoading] = React.useState(false);
   const [profile, setProfile] = React.useState<AdminProfile | null>(null);
   const [negocios, setNegocios] = React.useState<UserDetailNegocio[]>([]);
+  const [userConsentimientos, setUserConsentimientos] = React.useState<any[]>([]);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -82,6 +83,7 @@ export function UserDetailDialog({
         if (cancelled) return;
         setProfile(result.profile);
         setNegocios(result.negocios);
+        setUserConsentimientos(result.userConsentimientos);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "No se pudo cargar.");
@@ -116,12 +118,13 @@ export function UserDetailDialog({
         <div className="flex flex-col gap-5">
           <div className="flex items-center gap-3">
             <Avatar src={profile.avatarUrl} label={profile.email ?? "?"} className="h-12 w-12 text-base" />
-            <div>
+            <div className="flex-1">
               <p className="font-medium">{profile.email ?? "Sin email"}</p>
               <p className="text-xs text-muted-foreground">
                 Registrado el{" "}
                 {new Date(profile.createdAt).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })}
               </p>
+              <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">ID: {profile.id}</p>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 <Badge variant={profile.role === "admin" ? "default" : "outline"}>{profile.role}</Badge>
                 {esFundadorAlgunNegocio && (
@@ -136,6 +139,15 @@ export function UserDetailDialog({
                 )}
               </div>
             </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => copiarNumero(profile.id)}
+              className="h-8 w-8 p-0"
+              title="Copiar ID"
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
           </div>
 
           <div className="flex gap-4 rounded-xl border border-border bg-surface p-3">
@@ -223,6 +235,31 @@ export function UserDetailDialog({
               </div>
             )}
           </div>
+
+          {userConsentimientos.length > 0 && (
+            <div className="space-y-2 rounded-xl border border-border bg-surface p-3">
+              <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                Consentimientos · {userConsentimientos.length}
+              </p>
+              <div className="space-y-1.5">
+                {userConsentimientos.map((c: AdminConsentimiento) => (
+                  <div key={c.id} className="text-xs">
+                    <p className="font-medium">{c.negocioNombre ?? "Landing"}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {new Date(c.createdAt).toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      {" · "}
+                      IP: {c.ip ?? "—"}
+                    </p>
+                    <div className="mt-0.5 flex gap-1">
+                      <Badge variant={c.aceptoTerminos ? "ledger" : "outline"} className="text-[10px]">Términos: {c.aceptoTerminos ? "✓" : "✗"}</Badge>
+                      <Badge variant={c.aceptoPrivacidad ? "ledger" : "outline"} className="text-[10px]">Privacidad: {c.aceptoPrivacidad ? "✓" : "✗"}</Badge>
+                      <Badge variant={c.aceptoCookies ? "ledger" : "outline"} className="text-[10px]">Cookies: {c.aceptoCookies ? "✓" : "✗"}</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-3 border-t border-border pt-4">
             <AccionesGrupo titulo="Ver">

@@ -1147,6 +1147,29 @@ export function useSession() {
     };
   }, [loadFromDemoPreview]);
 
+  // Bug real: una cita nueva reservada desde /b/[slug] mientras el dueño
+  // tiene Agenda abierta llega por escucharCitasEnVivo (arriba) y SOLO
+  // hacía setSessionState — nunca tocaba `cachedTenant` (el cache
+  // compartido en memoria del módulo). Mismo hueco en el resto de
+  // escuchar*EnVivo (ventas, pedidos, negocio, gastos, caja, clientes):
+  // ninguno pasa por actualizarCacheTenant(), a diferencia de update()
+  // (abajo), que sí lo hace explícito tras cada cambio local. Resultado:
+  // el dueño navegaba de Agenda a Clientes y de vuelta — el mount de
+  // Agenda se destruye, y el nuevo mount de useSession() en la Agenda que
+  // vuelve a montar reusa `cachedTenant` (ver "reusando cache" en
+  // resolveForUser arriba) para no repetir 7+ queries, pero ese cache
+  // nunca se había enterado del insert por realtime — la cita recién
+  // agendada desaparecía hasta un F5 duro (que sí pega directo a Supabase).
+  // Este efecto cierra el hueco en un solo lugar para las 7 fuentes de
+  // cambio a la vez: cualquier cambio a `session` (venga de update() local
+  // o de cualquier canal de realtime) se refleja también en el cache
+  // compartido, así un remount siempre parte de datos al día.
+  useEffect(() => {
+    if (session && sourceRef.current === "supabase" && session.business.ownerId) {
+      actualizarCacheTenant(session.business.ownerId, session);
+    }
+  }, [session]);
+
   const update = useCallback((updater: (prev: TenantData) => TenantData, opciones?: { ventaOffline?: boolean; yaSincronizado?: boolean }) => {
     const prev = sessionRef.current;
     if (!prev) return;
