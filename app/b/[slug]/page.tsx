@@ -72,22 +72,22 @@ export default function ReservaPublicaPage() {
   // "Negocio no encontrado".
   const [modoDemo, setModoDemo] = React.useState(false);
 
+  function cargarDesdeDemo(): boolean {
+    const demo = readDemoPreview();
+    if (demo?.business.slug !== params.slug || demo.business.tipo !== "barberia" || !demo.barberia) return false;
+    setBusiness(demo.business);
+    setBooking({
+      servicios: demo.barberia.servicios,
+      horario: demo.barberia.horario,
+      excepciones: demo.barberia.excepciones,
+      citas: demo.barberia.citas.map((c) => ({ fecha: c.fecha, hora: c.hora, estado: c.estado, servicioId: c.servicioId })),
+    });
+    setModoDemo(true);
+    return true;
+  }
+
   React.useEffect(() => {
     let cancelled = false;
-
-    function cargarDesdeDemo(): boolean {
-      const demo = readDemoPreview();
-      if (demo?.business.slug !== params.slug || demo.business.tipo !== "barberia" || !demo.barberia) return false;
-      setBusiness(demo.business);
-      setBooking({
-        servicios: demo.barberia.servicios,
-        horario: demo.barberia.horario,
-        excepciones: demo.barberia.excepciones,
-        citas: demo.barberia.citas.map((c) => ({ fecha: c.fecha, hora: c.hora, estado: c.estado, servicioId: c.servicioId })),
-      });
-      setModoDemo(true);
-      return true;
-    }
 
     async function load() {
       try {
@@ -117,7 +117,33 @@ export default function ReservaPublicaPage() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cargarDesdeDemo se redefine cada render pero solo lee readDemoPreview(), no hace falta re-suscribir por eso
   }, [params.slug]);
+
+  /**
+   * `booking.citas` se carga UNA vez al entrar a la página — si alguien más
+   * agenda (o el dueño da de alta una cita a mano) mientras este cliente
+   * sigue viendo la misma pestaña, los huecos que ve quedan desactualizados
+   * (un horario ya tomado se sigue viendo libre). Se refresca solo, sin
+   * pedirle nada al cliente, cada vez que cambia de día — que es también el
+   * momento en que más importa tener datos frescos — y otra vez si el
+   * servidor rechaza la hora elegida por ya no estar disponible (ver
+   * reservar() más abajo).
+   */
+  async function refrescarDisponibilidad() {
+    if (modoDemo || !business) return;
+    try {
+      const data = await fetchPublicBookingData(business.id);
+      setBooking(data);
+    } catch (err) {
+      console.error("No se pudo refrescar la disponibilidad:", err);
+    }
+  }
+
+  React.useEffect(() => {
+    refrescarDisponibilidad();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo debe re-disparar cuando cambia el día elegido, no en cada render por business/modoDemo
+  }, [fecha]);
 
   if (loading) return <LoadingBlock />;
 
@@ -208,6 +234,13 @@ export default function ReservaPublicaPage() {
       console.error("No se pudo agendar la cita.");
       setReservaError(err instanceof Error ? err.message : "No se pudo agendar tu cita. Intenta de nuevo.");
       setEnviando(false);
+      // El servidor rechazó la hora por ya no estar disponible (alguien más
+      // la tomó desde que se cargó esta página) — se refresca la lista y se
+      // limpia la selección para que el cliente vea de una vez cuáles horas
+      // siguen realmente libres, en vez de seguir viendo la misma que
+      // acaba de fallar.
+      setHora(null);
+      refrescarDisponibilidad();
     }
   }
 
