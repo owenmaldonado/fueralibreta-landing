@@ -542,7 +542,11 @@ function CitaRow({
       <WhatsappRecordatorioButton cita={c} negocioNombre={negocioNombre} disponible={msg28} />
       <DropdownMenu
         items={[
-          ...(c.clienteTelefono
+          // Mismo candado que el botón rápido de arriba (msg28, plan Pro/
+          // Pro+): antes este ítem del menú mandaba el mismo mensaje sin
+          // ningún bloqueo, así que básico se lo saltaba entero por aquí —
+          // no tiene caso bloquear un lado y dejar la otra puerta abierta.
+          ...(c.clienteTelefono && msg28
             ? [
                 {
                   label: "WhatsApp",
