@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatHora12, formatMoney } from "@/lib/mock";
-import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
 import { usePlan } from "@/lib/planes";
 import { obtenerOCrearTurno } from "@/lib/turno-fonda";
@@ -75,7 +74,10 @@ function NuevoPedidoForm({
 }) {
   const plan = usePlan();
   const maxPedidos = plan.giroFonda.maxPedidos;
-  const mesActual = hoyEnZona(timezone).slice(0, 7);
+  const hoyEnSuZona = new Date().toLocaleDateString("en-CA", {
+    timeZone: timezone || "America/Bahia_Banderas",
+  });
+  const mesActual = hoyEnSuZona.slice(0, 7);
   const bloqueadoPorLimite = maxPedidos !== null && data.pedidos.filter((p) => p.fecha.startsWith(mesActual)).length >= maxPedidos;
   const [clienteNombre, setClienteNombre] = React.useState("");
   const [hora] = React.useState(nowHHMM());
@@ -174,7 +176,7 @@ function NuevoPedidoForm({
         const pedido: FondaOrder = {
           id: pedidoId,
           clienteNombre: clienteNombre.trim(),
-          fecha: hoyEnZona(timezone),
+          fecha: hoyEnSuZona,
           hora,
           horaEntrega,
           items,
@@ -407,13 +409,17 @@ function NuevoGastoForm({ onClose, update, timezone }: { onClose: () => void; up
   const [categoria, setCategoria] = React.useState(GASTO_CHIPS[0]);
   const [monto, setMonto] = React.useState("");
 
+  const hoyEnSuZona = new Date().toLocaleDateString("en-CA", {
+    timeZone: timezone || "America/Bahia_Banderas",
+  });
+
   const puedeGuardar = Number(monto) > 0;
 
   function guardar() {
     if (!puedeGuardar) return;
     update((prev) => {
       const f = prev.fonda!;
-      const gasto: Expense = { id: uid("exp"), categoria, monto: Number(monto), fecha: hoyEnZona(timezone) };
+      const gasto: Expense = { id: uid("exp"), categoria, monto: Number(monto), fecha: hoyEnSuZona };
       return { ...prev, fonda: { ...f, gastos: [gasto, ...f.gastos] } };
     });
     onClose();
