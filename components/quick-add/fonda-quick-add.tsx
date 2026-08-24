@@ -11,7 +11,7 @@ import { Stepper } from "@/components/ui/stepper";
 import { Button } from "@/components/ui/button";
 import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import type { FabAction } from "@/components/app-shell/fab";
-import { uid, formatHora12, formatMoney, todayISO } from "@/lib/mock";
+import { uid, formatHora12, formatMoney } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
 import { usePlan } from "@/lib/planes";
 import { obtenerOCrearTurno } from "@/lib/turno-fonda";
@@ -42,13 +42,13 @@ export function FondaQuickAdd({ active, onClose, session, update }: Props) {
   return (
     <>
       <Sheet open={active === "pedido"} onOpenChange={(o) => !o && onClose()}>
-        <NuevoPedidoForm data={data} onClose={onClose} update={update} negocioId={session.business.id} />
+        <NuevoPedidoForm data={data} onClose={onClose} update={update} negocioId={session.business.id} timezone={session.business.timezone} />
       </Sheet>
       <Sheet open={active === "platillo"} onOpenChange={(o) => !o && onClose()}>
         <NuevoPlatilloForm onClose={onClose} update={update} />
       </Sheet>
       <Sheet open={active === "gasto"} onOpenChange={(o) => !o && onClose()}>
-        <NuevoGastoForm onClose={onClose} update={update} />
+        <NuevoGastoForm onClose={onClose} update={update} timezone={session.business.timezone} />
       </Sheet>
     </>
   );
@@ -64,15 +64,20 @@ function NuevoPedidoForm({
   onClose,
   update,
   negocioId,
+  timezone,
 }: {
   data: NonNullable<TenantData["fonda"]>;
   onClose: () => void;
   update: Props["update"];
   negocioId: string;
+  timezone?: string;
 }) {
   const plan = usePlan();
   const maxPedidos = plan.giroFonda.maxPedidos;
-  const mesActual = todayISO(0).slice(0, 7);
+  const hoyEnSuZona = new Date().toLocaleDateString("en-CA", {
+    timeZone: timezone || "America/Bahia_Banderas",
+  });
+  const mesActual = hoyEnSuZona.slice(0, 7);
   const bloqueadoPorLimite = maxPedidos !== null && data.pedidos.filter((p) => p.fecha.startsWith(mesActual)).length >= maxPedidos;
   const [clienteNombre, setClienteNombre] = React.useState("");
   const [hora] = React.useState(nowHHMM());
@@ -171,7 +176,7 @@ function NuevoPedidoForm({
         const pedido: FondaOrder = {
           id: pedidoId,
           clienteNombre: clienteNombre.trim(),
-          fecha: todayISO(0),
+          fecha: hoyEnSuZona,
           hora,
           horaEntrega,
           items,
@@ -185,8 +190,7 @@ function NuevoPedidoForm({
         };
         pedidoCreado = pedido;
         return { ...prev, fonda: { ...f, pedidos: [pedido, ...f.pedidos] } };
-      },
-      { ventaOffline: true }
+      }
     );
     if (typeof navigator !== "undefined" && !navigator.onLine && pedidoCreado) {
       encolarVentaPendiente({
@@ -401,9 +405,13 @@ function NuevoPlatilloForm({ onClose, update }: { onClose: () => void; update: P
   );
 }
 
-function NuevoGastoForm({ onClose, update }: { onClose: () => void; update: Props["update"] }) {
+function NuevoGastoForm({ onClose, update, timezone }: { onClose: () => void; update: Props["update"]; timezone?: string }) {
   const [categoria, setCategoria] = React.useState(GASTO_CHIPS[0]);
   const [monto, setMonto] = React.useState("");
+
+  const hoyEnSuZona = new Date().toLocaleDateString("en-CA", {
+    timeZone: timezone || "America/Bahia_Banderas",
+  });
 
   const puedeGuardar = Number(monto) > 0;
 
@@ -411,7 +419,7 @@ function NuevoGastoForm({ onClose, update }: { onClose: () => void; update: Prop
     if (!puedeGuardar) return;
     update((prev) => {
       const f = prev.fonda!;
-      const gasto: Expense = { id: uid("exp"), categoria, monto: Number(monto), fecha: todayISO(0) };
+      const gasto: Expense = { id: uid("exp"), categoria, monto: Number(monto), fecha: hoyEnSuZona };
       return { ...prev, fonda: { ...f, gastos: [gasto, ...f.gastos] } };
     });
     onClose();
