@@ -4,6 +4,8 @@ import { ZodError } from "zod";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { createSupabasePublicClient } from "@/lib/supabase-public";
 import { citaPublicaSchema } from "@/lib/validation";
+import { getAvailableSlotsForDuracion } from "@/lib/agenda";
+import type { Appointment, HorarioDia } from "@/lib/types";
 
 /**
  * Reserva pública de cita (/b/[slug]). Reemplaza al insert directo desde el
@@ -66,7 +68,7 @@ export async function POST(req: Request) {
 
   const { data: servicio, error: servicioError } = await supabase
     .from("barberia_servicios")
-    .select("id, nombre, precio")
+    .select("id, nombre, precio, duracion_min")
     .eq("id", input.servicioId)
     .eq("negocio_id", negocio.id)
     .maybeSingle();
@@ -74,6 +76,61 @@ export async function POST(req: Request) {
   if (servicioError || !servicio) {
     console.error("[citas] servicio no encontrado:", { negocioId: negocio.id, servicioId: input.servicioId, servicioError });
     return NextResponse.json({ error: "Servicio no encontrado." }, { status: 404 });
+  }
+
+  // El picker del cliente (/b/[slug]) ya solo ofrece huecos donde el
+  // servicio completo cabe (getAvailableSlotsForDuracion, lib/agenda.ts),
+  // pero un cliente desactualizado o dos personas reservando el mismo
+  // hueco a la vez podrían mandar una hora que ya no alcanza — se
+  // recalcula aquí, del lado del servidor, antes de insertar.
+  const [horarioRes, excepcionesRes, todosServiciosRes, citasDelDiaRes] = await Promise.all([
+    supabase.from("barberia_horario").select("*").eq("negocio_id", negocio.id),
+    supabase.from("barberia_excepciones").select("*").eq("negocio_id", negocio.id),
+    supabase.from("barberia_servicios").select("id, nombre, precio, duracion_min").eq("negocio_id", negocio.id),
+    supabase
+      .from("barberia_citas_publicas")
+      .select("fecha, hora, estado, servicio_id")
+      .eq("negocio_id", negocio.id)
+      .eq("fecha", input.fecha),
+  ]);
+  for (const r of [horarioRes, excepcionesRes, todosServiciosRes, citasDelDiaRes]) {
+    if (r.error) {
+      console.error("[citas] no se pudo validar disponibilidad:", r.error);
+      return NextResponse.json({ error: "No se pudo agendar tu cita." }, { status: 500 });
+    }
+  }
+  const slotSource = {
+    horario: (horarioRes.data ?? []).map((h) => ({
+      dia: h.dia as HorarioDia["dia"],
+      abierto: h.abierto as boolean,
+      inicio: (h.inicio as string).slice(0, 5),
+      fin: (h.fin as string).slice(0, 5),
+      comidaInicio: h.comida_inicio ? (h.comida_inicio as string).slice(0, 5) : undefined,
+      comidaFin: h.comida_fin ? (h.comida_fin as string).slice(0, 5) : undefined,
+    })),
+    excepciones: (excepcionesRes.data ?? []).map((e) => ({
+      id: e.id as string,
+      fecha: e.fecha as string,
+      etiqueta: e.etiqueta as string,
+      cerrado: e.cerrado as boolean,
+      horaEspecialFin: e.hora_especial_fin ? (e.hora_especial_fin as string).slice(0, 5) : undefined,
+    })),
+    servicios: (todosServiciosRes.data ?? []).map((s) => ({
+      id: s.id as string,
+      nombre: s.nombre as string,
+      precio: Number(s.precio),
+      duracion_min: s.duracion_min as number,
+    })),
+    citas: (citasDelDiaRes.data ?? []).map((c) => ({
+      fecha: c.fecha as string,
+      hora: (c.hora as string).slice(0, 5),
+      estado: c.estado as Appointment["estado"],
+      servicioId: c.servicio_id as string,
+    })),
+  };
+  const huecosValidos = getAvailableSlotsForDuracion(slotSource, input.fecha, servicio.duracion_min);
+  if (!huecosValidos.includes(input.hora)) {
+    return NextResponse.json({ error: "Ese horario ya no está disponible, elige otro." }, { status: 409 });
   }
 
   const { data: clienteId, error: clienteError } = await supabase.rpc("find_or_create_barberia_cliente", {

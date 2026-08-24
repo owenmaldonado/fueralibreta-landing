@@ -106,8 +106,16 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
     };
   }, [open, onClose]);
 
-  const productosOrdenados = React.useMemo(() => ordenarPorMasVendidos(data), [data]);
-  const categorias = React.useMemo(() => ["Todas", ...Array.from(new Set(data.productos.map((p) => p.categoria))).sort()], [data]);
+  // Frutas y Verdura (isVolatile) es Pro (ver app/app/frutas-verdura/page.tsx,
+  // plan.giroAbarrotes.editor) — en básico esos productos no deben aparecer
+  // como vendibles aquí: solo estorbarían en la grilla de venta sin poder
+  // usarse (el panel donde sí se editan/ven ya está bloqueado con blur).
+  const productosVendibles = React.useMemo(
+    () => (plan.giroAbarrotes.editor ? data.productos : data.productos.filter((p) => !p.isVolatile)),
+    [data, plan.giroAbarrotes.editor]
+  );
+  const productosOrdenados = React.useMemo(() => ordenarPorMasVendidos({ ...data, productos: productosVendibles }), [data, productosVendibles]);
+  const categorias = React.useMemo(() => ["Todas", ...Array.from(new Set(productosVendibles.map((p) => p.categoria))).sort()], [productosVendibles]);
   const productosVisibles = categoria === "Todas" ? productosOrdenados : productosOrdenados.filter((p) => p.categoria === categoria);
 
   function stockDisponible(productoId: string | null): number {
@@ -197,7 +205,7 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
 
   function handleScan(codigo: string) {
     setScanning(false);
-    const producto = data.productos.find((p) => p.codigo === codigo);
+    const producto = productosVendibles.find((p) => p.codigo === codigo);
     if (!producto) {
       toast.error("No se encontró ningún producto con ese código");
       return;

@@ -16,7 +16,7 @@ import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import type { FabAction } from "@/components/app-shell/fab";
 import { usePlan } from "@/lib/planes";
 import { uid, todayISO, formatHora12, normalizarTelefono } from "@/lib/mock";
-import { getDaySlots } from "@/lib/agenda";
+import { getDaySlots, getAvailableSlotsForDuracion } from "@/lib/agenda";
 import { cn } from "@/lib/utils";
 import { camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
@@ -253,6 +253,14 @@ function NuevaCitaForm({
   const slots = React.useMemo(() => getDaySlots(data, fecha), [data, fecha]);
 
   const servicio = data.servicios.find((s) => s.id === servicioId);
+  // Un slot individual puede verse "libre" y aun así no alcanzar para ESTE
+  // servicio si su duración se traslapa con una cita más adelante (ej.
+  // uñas de 2h a las 9:00 con otra cita a las 10:30) — getDaySlots solo
+  // sabe si CADA slot de 30 min está ocupado, no si el rango completo cabe.
+  const horasQueSiAlcanzan = React.useMemo(
+    () => new Set(getAvailableSlotsForDuracion(data, fecha, servicio?.duracion_min ?? 30)),
+    [data, fecha, servicio?.duracion_min]
+  );
   const clienteEsNuevo = !!cliente && !("id" in cliente);
   const maxClientes = plan.giroBarberia.maxClientes;
   const bloqueadoPorLimiteClientes = clienteEsNuevo && maxClientes !== null && data.clientes.length >= maxClientes;
@@ -326,7 +334,16 @@ function NuevaCitaForm({
         <ClienteBuscador clientes={data.clientes} onChange={setCliente} autoFocus />
         <div className="space-y-1.5">
           <Label>Servicio</Label>
-          <Select value={servicioId} onChange={(e) => setServicioId(e.target.value)}>
+          <Select
+            value={servicioId}
+            onChange={(e) => {
+              setServicioId(e.target.value);
+              // Cambiar de servicio cambia la duración, y con ella qué
+              // horas alcanzan — la hora que tenía elegida puede ya no
+              // servir (ver horasQueSiAlcanzan arriba).
+              setHora(null);
+            }}
+          >
             {data.servicios.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.nombre} · ${s.precio}
@@ -355,12 +372,13 @@ function NuevaCitaForm({
                 <Chip
                   key={s.hora}
                   selected={hora === s.hora}
-                  disabled={s.estado !== "libre"}
+                  disabled={!horasQueSiAlcanzan.has(s.hora)}
                   onClick={() => setHora(s.hora)}
                 >
                   {formatHora12(s.hora)}
                   {s.estado === "comida" && " · En comida"}
                   {s.estado === "ocupado" && " · Ocupado"}
+                  {s.estado === "libre" && !horasQueSiAlcanzan.has(s.hora) && " · No alcanza"}
                 </Chip>
               ))}
             </ChipGroup>

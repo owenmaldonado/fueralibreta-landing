@@ -5,7 +5,7 @@
 // Cachea SOLO el shell de la app (HTML de navegación ya visitada + fallback
 // offline, JS/CSS/fuentes de /_next/static). Nunca cachea Supabase ni /api/*
 // — esas peticiones siempre van directo a la red, con o sin conexión.
-const CACHE_VERSION = "2026-08-24T00:48:21.841Z";
+const CACHE_VERSION = "2026-08-24T04:53:10.444Z";
 const PRECACHE = `fl-precache-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `fl-runtime-${CACHE_VERSION}`;
 const CURRENT_CACHES = new Set([PRECACHE, RUNTIME_CACHE]);

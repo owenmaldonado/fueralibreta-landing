@@ -104,6 +104,31 @@ export function getAvailableSlots(barberia: SlotSource, fecha: string): string[]
     .map((s) => s.hora);
 }
 
+/**
+ * Igual que getAvailableSlots, pero exige que TODO el rango [inicio,
+ * inicio+duracion) esté libre — no solo el slot de arranque. Antes, un
+ * servicio largo (ej. uñas, 120 min) podía agendarse a las 9:00 aunque ya
+ * hubiera otra cita a las 10:30 (dentro de esas 2 horas): el picker solo
+ * miraba si 9:00 en sí estaba ocupado, sin ver que el servicio se
+ * traslaparía con algo más adelante. También respeta que la cita completa
+ * no se salga de la hora de comida ni del cierre del negocio. Úsala en vez
+ * de getAvailableSlots en cuanto se conozca la duración del servicio a
+ * agendar (Nueva Cita del dueño y reserva pública /b/[slug]).
+ */
+export function getAvailableSlotsForDuracion(barberia: SlotSource, fecha: string, duracionMin: number): string[] {
+  const dia = getDaySlots(barberia, fecha);
+  const pasos = Math.max(1, Math.ceil(duracionMin / 30));
+
+  return dia
+    .filter((_, i) => {
+      for (let k = 0; k < pasos; k++) {
+        if (dia[i + k]?.estado !== "libre") return false;
+      }
+      return true;
+    })
+    .map((s) => s.hora);
+}
+
 /** "Lun".."Dom" del día de la semana al que cae una fecha ISO — mismo índice que HorarioDia.dia. */
 export function diaCodigoDeFecha(fecha: string): (typeof DIAS_SEMANA)[number] {
   return DIAS_SEMANA[new Date(`${fecha}T00:00:00`).getDay()];

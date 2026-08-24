@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 
 import { mensajeRecordatorioCita, waLink } from "@/lib/mock";
@@ -14,8 +13,11 @@ import type { Appointment } from "@/lib/types";
  * Básico no lo tiene: reusa el mismo candado que ya gatea el aviso de
  * "28 días sin venir" (plan.giroBarberia.msg28, ver lib/planes.ts) en vez
  * de inventar una feature nueva — si algún día se separan, aquí es donde
- * cambiar la condición. Sin `disponible` se ve con un badge "Pro" y manda
- * a /planes en vez de abrir WhatsApp.
+ * cambiar la condición. Sin `disponible` no se renderiza nada — el mismo
+ * envío de WhatsApp ya está disponible sin candado en el menú ⋮ de la
+ * cita (ver CitaRow en app/app/agenda/page.tsx), así que mostrar este
+ * botón bloqueado con badge "Pro" solo confundía (misma acción, un lado
+ * bloqueado y el otro no).
  */
 export function WhatsappRecordatorioButton({
   cita,
@@ -26,23 +28,7 @@ export function WhatsappRecordatorioButton({
   negocioNombre: string;
   disponible: boolean;
 }) {
-  if (!cita.clienteTelefono) return null;
-
-  if (!disponible) {
-    return (
-      <Link
-        href="/planes"
-        aria-label="Recordatorio por WhatsApp — disponible en Pro y Pro+"
-        title="Disponible en Pro y Pro+"
-        className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground opacity-60"
-      >
-        <MessageCircle className="h-4 w-4" />
-        <span className="absolute -right-1.5 -top-1.5 rounded-full bg-primary px-1 py-0.5 font-mono text-[8px] font-bold uppercase leading-none text-primary-foreground">
-          Pro
-        </span>
-      </Link>
-    );
-  }
+  if (!cita.clienteTelefono || !disponible) return null;
 
   return (
     <a

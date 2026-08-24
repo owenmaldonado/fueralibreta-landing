@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { normalizarPlan, type PlanId } from "./planes";
+import { normalizarPlan, precioReal, type PlanId } from "./planes";
 import { todayISO } from "./mock";
 import type { BusinessType } from "./types";
 import type { LeadTipoNegocio } from "./validation";
@@ -67,6 +67,10 @@ export interface AdminMetrics {
   totalBarberias: number;
   totalFondas: number;
   totalAbarrotes: number;
+  /** MRR: suma de precioReal() de negocios activos que sí pagan (fundadores = $0, no cuentan). Snapshot de hoy, no histórico — no hay tabla de pagos con fecha/monto. */
+  mrrMensual: number;
+  /** Desglose por negocio para la gráfica del modal — mismo criterio que mrrMensual. */
+  mrrPorNegocio: { nombre: string; tipo: BusinessType; monto: number }[];
 }
 
 export interface AdminOverview {
@@ -187,6 +191,16 @@ export async function fetchAdminOverview(currentUserId: string): Promise<AdminOv
 export function computeAdminMetrics(profiles: AdminProfile[], negocios: AdminNegocio[], totalMovimientos: number): AdminMetrics {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
+
+  // MRR: solo negocios activos, no fundador (pagan $0) y que sí pagan (plan
+  // contratado != basico o tienen precio_custom). Snapshot de hoy: no hay
+  // tabla de pagos con fecha/monto para reconstruir un histórico real.
+  const pagan = negocios.filter((n) => n.isActive && !n.esFundador && (n.plan !== "basico" || n.precioCustom != null));
+  const mrrPorNegocio = pagan
+    .map((n) => ({ nombre: n.nombre, tipo: n.tipo, monto: precioReal(n) }))
+    .sort((a, b) => b.monto - a.monto);
+  const mrrMensual = mrrPorNegocio.reduce((sum, n) => sum + n.monto, 0);
+
   return {
     totalUsuarios: profiles.length,
     totalNegocios: negocios.length,
@@ -195,6 +209,8 @@ export function computeAdminMetrics(profiles: AdminProfile[], negocios: AdminNeg
     totalBarberias: negocios.filter((n) => n.tipo === "barberia").length,
     totalFondas: negocios.filter((n) => n.tipo === "fonda").length,
     totalAbarrotes: negocios.filter((n) => n.tipo === "abarrotes").length,
+    mrrMensual,
+    mrrPorNegocio,
   };
 }
 
