@@ -1215,6 +1215,7 @@ export function useSession() {
       // conexión) — la Parte 4 sube lo pendiente cuando regrese la señal,
       // no tiene caso intentarlo ni ensuciar la consola con el error.
       if (!opciones?.yaSincronizado && (typeof navigator === "undefined" || navigator.onLine)) {
+        console.log("[session] Sincronizando cambios a Supabase...", { prevFondaPedidos: prev.fonda?.pedidos.length, nextFondaPedidos: next.fonda?.pedidos.length });
         const escritura = syncTenantDiff(prev, next).catch((err) => {
           console.error("No se pudo guardar el cambio en Supabase:", err);
         });
