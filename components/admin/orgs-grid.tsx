@@ -5,7 +5,6 @@ import { MessageCircle, MoreVertical } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AdminActionsMenu } from "./admin-actions-menu";
 import { waLink, formatMoney } from "@/lib/mock";
 import type { AdminNegocio, AdminProfile } from "@/lib/admin-data";
 import {
@@ -87,7 +86,18 @@ export function OrgsGrid({
         const estado = estadoNegocio({ trialFin: n.trialFin, esFundador: n.esFundador, isActive: n.isActive, ultimoPagoAt: n.ultimoPagoAt });
 
         return (
-          <div key={n.id} className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 hover:border-primary/50 transition-colors">
+          <div
+            key={n.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => onViewDetail(n)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onViewDetail(n);
+              }
+            }}
+            className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 hover:border-primary/50 hover:bg-secondary/30 transition-colors cursor-pointer">
             {/* Header */}
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
@@ -142,37 +152,16 @@ export function OrgsGrid({
               </div>
             </div>
 
-            {/* Acciones */}
-            <div className="flex gap-2 border-t border-border pt-2 mt-1">
-              {n.ownerPhone && (
-                <Button asChild variant="outline" size="sm" className="flex-1 text-xs h-8">
+            {/* Acción rápida: WhatsApp */}
+            {n.ownerPhone && (
+              <div className="border-t border-border pt-2 mt-1">
+                <Button asChild variant="outline" size="sm" className="w-full text-xs h-8" onClick={(e) => e.stopPropagation()}>
                   <a href={waLink(n.ownerPhone, `Hola, te escribo de Fuera Libreta sobre ${n.nombre}.`)} target="_blank" rel="noreferrer">
-                    <MessageCircle className="h-3 w-3" />
+                    <MessageCircle className="h-3 w-3" /> WhatsApp
                   </a>
                 </Button>
-              )}
-              {(cobranza === "vencido" || cobranza === "por_vencer") && n.ownerPhone && (
-                <Button asChild variant="outline" size="sm" className="flex-1 text-xs h-8">
-                  <a href={waLink(n.ownerPhone, mensajeRecordatorioCobranza(n))} target="_blank" rel="noreferrer">
-                    Recordatorio
-                  </a>
-                </Button>
-              )}
-              <AdminActionsMenu
-                profile={profile}
-                negocio={n}
-                isSelf={isSelf}
-                onViewDetail={() => onViewDetail(n)}
-                onImpersonate={() => profile && onImpersonate(profile)}
-                onSetPlan={(plan) => onSetPlan(n, plan)}
-                onSetTrial={(dias) => onSetTrial(n, dias)}
-                onActivarPlan={(plan) => onActivarPlan(n, plan)}
-                onSetPrecioCustom={() => onSetPrecioCustom(n)}
-                onToggleFundador={() => onToggleFundador(n)}
-                onToggleBanned={() => profile && onToggleBanned(profile)}
-                onDelete={() => onDeleteRequest(n)}
-              />
-            </div>
+              </div>
+            )}
           </div>
         );
       })}
