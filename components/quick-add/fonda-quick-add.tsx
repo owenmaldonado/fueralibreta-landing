@@ -75,7 +75,7 @@ function NuevoPedidoForm({
 }) {
   const plan = usePlan();
   const maxPedidos = plan.giroFonda.maxPedidos;
-  const mesActual = todayISO(0).slice(0, 7);
+  const mesActual = hoyEnZona(timezone).slice(0, 7);
   const bloqueadoPorLimite = maxPedidos !== null && data.pedidos.filter((p) => p.fecha.startsWith(mesActual)).length >= maxPedidos;
   const [clienteNombre, setClienteNombre] = React.useState("");
   const [hora] = React.useState(nowHHMM());
