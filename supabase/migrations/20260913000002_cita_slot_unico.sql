@@ -39,26 +39,30 @@
 -- ============================================================================
 -- Si algún negocio YA tiene dos citas pendientes a la misma hora (de antes
 -- de este índice), el `create unique index` de abajo truena con un mensaje
--- de Postgres que no dice cuáles son. Esto los nombra primero, para poder
--- arreglarlos (cancelar o mover uno de los dos) sin adivinar.
+-- de Postgres que no dice cuáles son. Esto los nombra primero — dentro del
+-- propio mensaje de error y con la consulta para arreglarlos en el hint,
+-- porque es lo único que el SQL Editor de Supabase alcanza a mostrar.
 do $$
 declare
-  d record;
-  hay boolean := false;
+  lista text;
 begin
-  for d in
-    select negocio_id, fecha, hora, count(*) as n
+  -- El detalle va DENTRO del mensaje de la excepción, no en `raise warning`.
+  -- Los warnings no se ven en el SQL Editor de Supabase (solo muestra el
+  -- error final), así que quien corría esto se topaba con "hay horarios
+  -- repetidos" sin ninguna forma de saber CUÁLES. Pasó de verdad.
+  select string_agg(format('%s a las %s (%s citas)', fecha, hora, n), '; ' order by fecha, hora)
+  into lista
+  from (
+    select fecha, hora, count(*) as n
     from barberia_citas
     where estado = 'pendiente'
     group by negocio_id, fecha, hora
     having count(*) > 1
-  loop
-    hay := true;
-    raise warning 'Citas encimadas: negocio % el % a las % (% citas pendientes)', d.negocio_id, d.fecha, d.hora, d.n;
-  end loop;
+  ) d;
 
-  if hay then
-    raise exception 'Hay horarios con más de una cita pendiente (ver los avisos de arriba). Cancela o mueve las repetidas y vuelve a correr esta migración.';
+  if lista is not null then
+    raise exception 'Hay horarios con más de una cita pendiente: %. Cancela o mueve las repetidas y vuelve a correr esta migración.', lista
+      using hint = 'Para dejar la más vieja de cada horario y cancelar las demás: update barberia_citas set estado = ''cancelada'' where id in (select id from (select id, row_number() over (partition by negocio_id, fecha, hora order by created_at asc, id asc) as lugar from barberia_citas where estado = ''pendiente'') x where lugar > 1);';
   end if;
 end $$;
 
