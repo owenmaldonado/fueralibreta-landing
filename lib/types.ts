@@ -119,7 +119,6 @@ export interface BarberClient {
   ultimaVisita: string | null; // ISO date
   visitas: number;
   notas?: string;
-  cumpleanos?: string; // MM-DD
 }
 
 export type AppointmentStatus = "pendiente" | "listo" | "cancelada";

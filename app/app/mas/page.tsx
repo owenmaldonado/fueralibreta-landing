@@ -33,10 +33,15 @@ const LINKS_BARBERIA = [
 
 /** Mismo criterio que middleware.ts (RUTAS_SOLO_DUENO/RUTAS_SOLO_DUENO_O_ENCARGADO): oculta lo que esa ruta igual va a rebotar. */
 function linkVisible(href: string, rol: "dueno" | "encargado" | "vendedor"): boolean {
+  // Mismas rutas que RUTAS_SOLO_DUENO en middleware.ts. Gastos/Caja
+  // (reportes) entraron ahí, pero desde /app/mas no se llega a ellas, así
+  // que no hace falta filtrarlas aquí — quien las esconde es BottomNav.
   const soloDueno = href.startsWith("/app/configuracion") || href.startsWith("/app/empleados");
   if (soloDueno) return rol === "dueno";
-  const soloDuenoOEncargado = href.startsWith("/app/productos");
-  if (soloDuenoOEncargado) return rol !== "vendedor";
+  // /app/productos ya NO se le esconde al vendedor: ajustar inventario es
+  // parte de su trabajo cuando le dejan la tienda sola (ver
+  // PERMISOS.vendedor.ajustarInventario en lib/empleados.ts y la lista
+  // vacía RUTAS_SOLO_DUENO_O_ENCARGADO en middleware.ts).
   return true;
 }
 

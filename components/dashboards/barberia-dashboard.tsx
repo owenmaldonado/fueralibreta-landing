@@ -65,16 +65,9 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
         .filter((c) => !ignorados.has(`alerta-${c.id}`))
     : [];
 
-  // MM-DD sacado de `hoy` (día del negocio), NO de new Date().toISOString()
-  // — toISOString() da la fecha en UTC, y México va 6/7 horas atrás: desde
-  // las ~6pm hora local, para UTC ya es el día siguiente. El aviso "Hoy
-  // cumple X" salía la TARDE ANTERIOR y desaparecía a las 6pm del día real,
-  // justo cuando la barbería está llena y es cuando sirve felicitarlo.
-  const hoyMMDD = hoy.slice(5, 10);
-  const cumples = data.clientes.filter((c) => c.cumpleanos === hoyMMDD);
   const productosBajos = data.productos.filter((p) => p.stock <= p.minimo && !ignorados.has(`bajo-${p.id}`));
 
-  const nada = citasHoy.length === 0 && clientesAlerta.length === 0 && cumples.length === 0 && productosBajos.length === 0;
+  const nada = citasHoy.length === 0 && clientesAlerta.length === 0 && productosBajos.length === 0;
 
   // "Equipo hoy" (PR #121, trazabilidad vendedor/encargado): cortes ya
   // cobrados hoy ("listo", no "pendiente" como citasHoy arriba) por quién —
@@ -135,19 +128,6 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
             actions={[{ label: "Ir", href: "/app/agenda" }]}
           />
         )}
-        {cumples.map((c) => (
-          <ActionCard
-            key={c.id}
-            level="red"
-            title={`Hoy cumple ${c.nombre}`}
-            actions={[
-              {
-                label: "Felicitar",
-                href: waLink(c.telefono, `¡Feliz cumpleaños ${c.nombre}! De parte de todo el equipo de ${business.nombre} 🎉`),
-              },
-            ]}
-          />
-        ))}
         {clientesAlerta.map((c) => (
           <ActionCard
             key={c.id}

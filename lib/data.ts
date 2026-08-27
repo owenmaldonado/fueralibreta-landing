@@ -323,7 +323,6 @@ export const clienteFromRow = (r: Row): BarberClient => ({
   ultimaVisita: (r.ultima_visita as string) ?? null,
   visitas: r.visitas as number,
   notas: (r.notas as string) ?? undefined,
-  cumpleanos: (r.cumpleanos as string) ?? undefined,
 });
 const clienteToRow = (c: BarberClient, negocioId: string): Row => ({
   id: c.id,
@@ -333,7 +332,6 @@ const clienteToRow = (c: BarberClient, negocioId: string): Row => ({
   ultima_visita: c.ultimaVisita ?? null,
   visitas: c.visitas,
   notas: c.notas ?? null,
-  cumpleanos: c.cumpleanos ?? null,
 });
 
 export const citaFromRow = (r: Row): Appointment => ({

@@ -12,7 +12,8 @@ import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { insertGastoDirecto, cleanInsert } from "@/lib/data";
 import { useOnlineStatus } from "@/lib/use-online-status";
 import { CierreBloqueado } from "./cierre-bloqueado";
-import { formatMoney, formatMoneyExacto, mensajeDiferencia, mensajeEsperado, redondear2, uid } from "@/lib/mock";
+import { formatMoney, formatMoneyExacto, redondear2, uid } from "@/lib/mock";
+import { MensajeCorte } from "./mensaje-corte";
 import { camposEmpleado } from "@/lib/empleados";
 import { cerrarTurno } from "@/lib/turno-fonda";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
@@ -326,17 +327,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
             <div className="space-y-1.5">
               <Label>¿Efectivo real en mano?</Label>
               <Input type="number" inputMode="decimal" autoFocus value={efectivoReal} onChange={(e) => setEfectivoReal(e.target.value)} placeholder="$0" />
-              {diferencia != null ? (
-                <p
-                  className={`px-1 text-xs font-medium ${
-                    diferencia === 0 ? "text-ledger" : diferencia < 0 ? "text-destructive" : "text-muted-foreground"
-                  }`}
-                >
-                  {mensajeDiferencia(diferencia, esperado)}
-                </p>
-              ) : (
-                <p className="px-1 text-xs font-medium text-muted-foreground">{mensajeEsperado(esperado)}</p>
-              )}
+              <MensajeCorte diferencia={diferencia} esperado={esperado} />
             </div>
             <div className="space-y-1.5">
               <Label>¿Gastaste hoy?</Label>

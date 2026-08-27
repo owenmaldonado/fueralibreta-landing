@@ -47,17 +47,27 @@ const NAV_BY_TYPE: Record<BusinessType, NavItem[]> = {
   abarrotes: NAV_ABARROTES,
 };
 
-// Reportes financieros (Gastos/Caja) — un rol "vendedor" solo vende y
-// cobra, sin ver reportes; "encargado" sí los ve (le corresponde el corte
-// del día), la distinción más fina de "sin ganancias históricas" se
-// resuelve dentro de esas pantallas, no ocultando la pestaña entera.
+// Reportes financieros (Gastos/Caja): totales acumulados, ganancia
+// histórica y gráficas. Ahora se ocultan a TODO el que no sea dueño, no
+// solo al vendedor — antes el encargado sí los veía aquí, cosa que
+// contradecía su propio rol (PERMISOS.encargado tiene
+// verGananciasHistoricas y verGraficasCompletas en false, lib/empleados.ts)
+// y que además ya no coincide con el middleware, que desde ahora rebota
+// esas dos rutas para cualquier no-dueño. Mostrar una pestaña que al
+// tocarla rebota es peor que no mostrarla.
+//
+// Registrar un gasto o una venta no se pierde: eso vive en el botón + del
+// FAB, disponible para todos los roles.
 const HREFS_REPORTES = new Set(["/app/gastos", "/app/caja"]);
 
 export function BottomNav({ tipo, rolActual }: { tipo: BusinessType; rolActual?: RolEmpleado }) {
   const pathname = usePathname();
   const items = NAV_BY_TYPE[tipo].filter((item) => {
-    if (rolActual !== "vendedor") return true;
+    // rolActual undefined = dueño puro (nadie eligió empleado en este
+    // dispositivo): ve todo.
+    if (!rolActual || rolActual === "dueno") return true;
     if (HREFS_REPORTES.has(item.href)) return false;
+    if (rolActual !== "vendedor") return true;
     // "Cerrar turno"/"Cerrar día" para vendedor vive en el botón rojo de
     // TurnoControl en las 3 verticales (ver components/app-shell/
     // turno-control.tsx), no en Mi Plan — que ahí ya no le ofrece nada, así

@@ -176,7 +176,12 @@ export const PERMISOS: Record<RolEmpleado, PermisosRol> = {
     verCorteDelDia: false,
     verGananciasHistoricas: false,
     verGraficasCompletas: false,
-    ajustarInventario: false,
+    // true por decisión de producto: pasa seguido que le dejen la tienda
+    // sola al vendedor, y si no puede corregir el stock cuando entra
+    // mercancía (o cuando algo sale mal contado) el inventario se
+    // desincroniza y ya nadie confía en él. Ajustar existencias no revela
+    // cuánto gana el negocio, que es lo que sí se le cuida a este rol.
+    ajustarInventario: true,
     gestionarEmpleados: false,
     editarConfiguracion: false,
     borrarVentas: false,

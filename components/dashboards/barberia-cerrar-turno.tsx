@@ -12,9 +12,10 @@ import { supabase } from "@/lib/supabase";
 import { cleanInsert } from "@/lib/data";
 import { useOnlineStatus } from "@/lib/use-online-status";
 import { CierreBloqueado } from "./cierre-bloqueado";
-import { formatMoney, formatMoneyExacto, fechaCalendarioLocal, mensajeDiferencia, mensajeEsperado, redondear2, uid } from "@/lib/mock";
+import { formatMoney, formatMoneyExacto, fechaCalendarioLocal, redondear2, uid } from "@/lib/mock";
+import { MensajeCorte } from "./mensaje-corte";
 import { hoyEnZona } from "@/lib/fecha";
-import { camposEmpleado } from "@/lib/empleados";
+import { camposEmpleado, permisosActuales } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, CajaEntry, InventoryProduct } from "@/lib/types";
 
 const MATERIALES = ["Gel", "Navajas", "Cera"];
@@ -76,6 +77,15 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
   const [gastoMonto, setGastoMonto] = React.useState("");
   const [gastoConcepto, setGastoConcepto] = React.useState("");
   const [propinas, setPropinas] = React.useState("");
+  // permisosActuales() lee una cookie: se resuelve en un efecto para no
+  // desalinear el render del servidor con el del cliente. Arranca en false
+  // (tapado) a propósito — si va a cambiar, que sea a destapado y no al
+  // revés, para no alcanzar a enseñar la ganancia a quien no debe verla.
+  const [puedeVerCorte, setPuedeVerCorte] = React.useState(false);
+
+  React.useEffect(() => {
+    setPuedeVerCorte(permisosActuales().verCorteDelDia);
+  }, []);
   const [materiales, setMateriales] = React.useState<Record<string, string>>({});
   const [otroChecked, setOtroChecked] = React.useState(false);
   const [otroConcepto, setOtroConcepto] = React.useState("");
@@ -297,7 +307,11 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
     if (r.gastoConceptos.length > 0) {
       partes.push(`gastaste ${r.gastoConceptos.map((g) => `${formatMoney(g.monto)} en ${g.concepto.toLowerCase()}`).join(", ")}`);
     }
-    partes.push(`ganancia ${formatMoney(r.ganancia)}`);
+    // La GANANCIA solo la ve quien tiene verCorteDelDia (o sea: no el
+    // vendedor). Es el número que de verdad importa cuidar — lo demás de
+    // este resumen es lo que esa persona acaba de capturar con sus propias
+    // manos, así que ocultárselo no protegería nada y solo se vería raro.
+    if (puedeVerCorte) partes.push(`ganancia ${formatMoney(r.ganancia)}`);
     return `${partes.join(", ")}.`;
   }
 
@@ -348,17 +362,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
                 onChange={(e) => setEfectivoReal(e.target.value)}
                 placeholder="$0"
               />
-              {diferencia != null ? (
-                <p
-                  className={`px-1 text-xs font-medium ${
-                    diferencia === 0 ? "text-ledger" : diferencia < 0 ? "text-destructive" : "text-muted-foreground"
-                  }`}
-                >
-                  {mensajeDiferencia(diferencia, esperado)}
-                </p>
-              ) : (
-                <p className="px-1 text-xs font-medium text-muted-foreground">{mensajeEsperado(esperado)}</p>
-              )}
+              <MensajeCorte diferencia={diferencia} esperado={esperado} />
             </div>
             <div className="space-y-1.5">
               <Label>¿Gastaste hoy?</Label>

@@ -13,7 +13,18 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 // entrar aquí por URL directa se bloquea y regresa a Hoy — esto corre en el
 // edge (antes de renderizar la página), por eso fl_empleado es una cookie
 // normal y no localStorage: localStorage no existe aquí.
-const RUTAS_SOLO_DUENO = ["/app/empleados", "/app/configuracion"];
+// Gastos y Caja son la sección de REPORTES: totales acumulados, ganancia
+// histórica y las gráficas. PERMISOS (lib/empleados.ts) ya decía que ni
+// encargado ni vendedor pueden ver eso (verGananciasHistoricas /
+// verGraficasCompletas en false para ambos), pero nada lo comprobaba: esas
+// rutas no estaban en ninguna lista, así que un vendedor con PIN entraba a
+// /app/gastos y veía cuánto gana el negocio. El permiso existía en la tabla
+// y no en la puerta.
+//
+// Registrar un gasto o una venta NO se pierde: eso vive en el botón + del
+// FAB, que sigue disponible para todos los roles. Lo que se cierra es el
+// reporte, no la captura.
+const RUTAS_SOLO_DUENO = ["/app/empleados", "/app/configuracion", "/app/gastos", "/app/caja"];
 
 // Igual que RUTAS_SOLO_DUENO pero solo bloquea "vendedor" — un "encargado"
 // SÍ puede ajustar inventario (PERMISOS.encargado.ajustarInventario=true en
@@ -21,7 +32,17 @@ const RUTAS_SOLO_DUENO = ["/app/empleados", "/app/configuracion"];
 // roles están igual de restringidos. Un vendedor podía entrar a Productos
 // por URL directa y cambiar precios/costos aunque el botón estuviera
 // oculto en /app/mas.
-const RUTAS_SOLO_DUENO_O_ENCARGADO = ["/app/productos"];
+// Vacío a propósito. Antes /app/productos estaba aquí, con la idea de que
+// un vendedor no tocara precios ni stock. Se abre a los tres roles porque
+// pasa seguido que le dejen la tienda sola al vendedor: si no puede
+// corregir existencias cuando entra mercancía, el inventario se
+// desincroniza y deja de servirle a nadie. Ajustar stock no revela cuánto
+// gana el negocio — eso es lo que cuidan RUTAS_SOLO_DUENO de arriba. Ver
+// PERMISOS.vendedor.ajustarInventario en lib/empleados.ts.
+//
+// Se deja la lista (y el mecanismo) en pie, no borrada, porque es donde va
+// a caer la siguiente ruta que necesite "todos menos vendedor".
+const RUTAS_SOLO_DUENO_O_ENCARGADO: string[] = [];
 
 // Mismo set que SEGMENTOS_DE_NEGOCIO en
 // components/app-shell/authenticated-shell.tsx — duplicado a propósito: ese
