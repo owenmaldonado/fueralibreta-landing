@@ -85,3 +85,5 @@ lib/
 - **Colores:** variables HSL en `app/globals.css` (`--primary` ámbar,
   `--ledger` verde, `--destructive` rojo del "tachón").
 - **Textos:** todo el copy está en español dentro de `app/page.tsx`.
+
+<!-- Deployment trigger: ensuring production deploys from main -->
