@@ -69,6 +69,8 @@ export interface VentaPendienteRow {
   creadaEn: string;
   empleadoId?: string;
   empleadoNombreCache?: string;
+  /** Rol de esa persona al momento de la venta. Sin esto, una venta hecha sin señal subía sin rol y las listas del dueño la etiquetaban como "vendedor" aunque la hubiera cobrado un encargado. */
+  empleadoRolCache?: RolEmpleado;
   estado?: EstadoVentaPendiente;
   ultimoError?: string;
   intentos?: number;

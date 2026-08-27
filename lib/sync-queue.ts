@@ -133,6 +133,7 @@ async function subirAbarrotesVenta(negocioId: string, fila: VentaPendienteRow): 
     fecha: venta.fecha,
     empleado_id: empleadoId,
     empleado_nombre_cache: empleadoNombreCache,
+    empleado_rol_cache: venta.empleadoRolCache ?? null,
   });
 
   let { error } = await supabase.from("abarrotes_ventas").upsert(filaVenta(), { onConflict: "id" });
@@ -196,6 +197,7 @@ async function subirBarberiaCaja(negocioId: string, fila: VentaPendienteRow): Pr
     costo: entry.costo ?? null,
     empleado_id: empleadoId,
     empleado_nombre_cache: empleadoNombreCache,
+    empleado_rol_cache: entry.empleadoRolCache ?? null,
   });
 
   let { error } = await supabase.from("barberia_caja").upsert(filaEntry(), { onConflict: "id" });
@@ -224,7 +226,13 @@ async function subirBarberiaCobroCita(negocioId: string, fila: VentaPendienteRow
   async function intentar() {
     return supabase
       .from("barberia_citas")
-      .update({ estado: "listo", metodo, empleado_id: empleadoId, empleado_nombre_cache: empleadoNombreCache })
+      .update({
+        estado: "listo",
+        metodo,
+        empleado_id: empleadoId,
+        empleado_nombre_cache: empleadoNombreCache,
+        empleado_rol_cache: fila.empleadoRolCache ?? null,
+      })
       .eq("id", citaId)
       .neq("estado", "cancelada")
       .select("id");
@@ -280,6 +288,7 @@ async function subirBarberiaVentaRapida(negocioId: string, fila: VentaPendienteR
     metodo: cita.metodo ?? null,
     empleado_id: empleadoId,
     empleado_nombre_cache: empleadoNombreCache,
+    empleado_rol_cache: cita.empleadoRolCache ?? null,
   });
 
   let { error } = await supabase.from("barberia_citas").upsert(filaCita(), { onConflict: "id" });
@@ -313,6 +322,7 @@ async function subirFondaPedido(negocioId: string, fila: VentaPendienteRow): Pro
     total: pedido.total,
     empleado_id: empleadoId,
     empleado_nombre_cache: empleadoNombreCache,
+    empleado_rol_cache: pedido.empleadoRolCache ?? null,
   });
 
   let { error } = await supabase.from("fonda_pedidos").upsert(filaPedido(), { onConflict: "id" });

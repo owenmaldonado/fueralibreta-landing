@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { InventarioDB, disponible, type TipoVentaPendiente, type VentaPendienteRow } from "./local-cache";
-import type { GroceryProduct } from "./types";
+import type { GroceryProduct, RolEmpleado } from "./types";
 
 export type { TipoVentaPendiente, VentaPendienteRow };
 
@@ -34,6 +34,7 @@ export async function encolarVentaPendiente(params: {
   payload: unknown;
   empleadoId?: string;
   empleadoNombreCache?: string;
+  empleadoRolCache?: RolEmpleado;
   productosActualizados?: GroceryProduct[];
 }): Promise<void> {
   if (!disponible()) return;
@@ -47,6 +48,7 @@ export async function encolarVentaPendiente(params: {
         creadaEn: new Date().toISOString(),
         empleadoId: params.empleadoId,
         empleadoNombreCache: params.empleadoNombreCache,
+        empleadoRolCache: params.empleadoRolCache,
         estado: "pendiente",
       });
       if (params.productosActualizados) {
