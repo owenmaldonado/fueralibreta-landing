@@ -14,9 +14,9 @@ import { LimiteBar } from "@/components/dashboards/limite-bar";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { formatMoney, formatHora12, todayISO } from "@/lib/mock";
-import { getEmpleadoActual, permisosActuales } from "@/lib/empleados";
+import { getEmpleadoActual, permisosActuales, camposEmpleado } from "@/lib/empleados";
 import { obtenerOCrearTurno } from "@/lib/turno-fonda";
-import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
+import { usePendingSalesQueue, encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
 import { cn } from "@/lib/utils";
 import type { FondaOrder } from "@/lib/types";
@@ -67,13 +67,37 @@ export default function PedidosPage() {
     // pedido programado que se entrega en este turno, aunque se haya
     // agendado en un turno anterior — ver lib/turno-fonda.ts.
     const turno = obtenerOCrearTurno(session!.business.id);
-    update((prev) => {
-      const f = prev.fonda!;
-      return {
-        ...prev,
-        fonda: { ...f, pedidos: f.pedidos.map((p) => (p.id === id ? { ...p, estado: "entregado" as const, turnoId: turno.turnoId } : p)) },
-      };
-    });
+    const negocioId = session!.business.id;
+    let pedidoEntregado: FondaOrder | null = null;
+    // Entregar es el momento en que se COBRA el pedido — es una venta, no
+    // administración. Sin ventaOffline el guardia de update() lo rechazaba
+    // sin señal, así que un pedido programado no se podía cerrar hasta que
+    // volviera el internet.
+    update(
+      (prev) => {
+        const f = prev.fonda!;
+        const pedidos = f.pedidos.map((p) => {
+          if (p.id !== id) return p;
+          const actualizado = { ...p, estado: "entregado" as const, turnoId: turno.turnoId };
+          pedidoEntregado = actualizado;
+          return actualizado;
+        });
+        return { ...prev, fonda: { ...f, pedidos } };
+      },
+      { ventaOffline: true }
+    );
+    // subirFondaPedido hace upsert del pedido completo (incluido `estado`),
+    // así que encolar el pedido ya actualizado cierra el cobro al reconectar
+    // aunque el pedido se haya creado en otro momento.
+    if (pedidoEntregado && typeof navigator !== "undefined" && !navigator.onLine) {
+      encolarVentaPendiente({
+        id,
+        negocioId,
+        tipo: "fonda_pedido",
+        payload: pedidoEntregado,
+        ...camposEmpleado(),
+      }).catch((err) => console.error("No se pudo encolar la venta pendiente:", err));
+    }
   }
 
   function eliminar(id: string) {

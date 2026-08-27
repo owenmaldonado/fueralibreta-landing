@@ -25,7 +25,7 @@ import { insertCajaEntryDirecto, updateCajaEntryDirecto, deleteCajaEntryDirecto 
 import { formatMoney, uid } from "@/lib/mock";
 import { aggregateTwoByRange, type RangoTiempo } from "@/lib/chart-buckets";
 import { camposEmpleado, permisosActuales, ROL_LABEL } from "@/lib/empleados";
-import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
+import { usePendingSalesQueue, encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
 import { cn } from "@/lib/utils";
 import type { CajaEntry, RolEmpleado } from "@/lib/types";
@@ -422,14 +422,32 @@ function CajaForm({
       return;
     }
 
-    update((prev) => {
-      const b = prev.barberia!;
-      if (entry) {
-        return { ...prev, barberia: { ...b, caja: b.caja.map((m) => (m.id === entry.id ? { ...m, ...datos } : m)) } };
-      }
-      const nuevo: CajaEntry = { id: uid("caja"), ...datos, ...camposEmpleado() };
-      return { ...prev, barberia: { ...b, caja: [nuevo, ...b.caja] } };
-    });
+    // Cobrar aquí (venta o propina) es EL flujo de venta de la barbería, no
+    // administración: sin ventaOffline el guardia de update() lo rechazaba
+    // sin señal con "solo puedes seguir vendiendo" — justo mientras se
+    // intentaba vender. Editar un movimiento que ya existe sí es
+    // administración y se queda bloqueado (no se marca).
+    const esNuevoIngreso = !entry;
+    const nuevo: CajaEntry | null = esNuevoIngreso ? { id: uid("caja"), ...datos, ...camposEmpleado() } : null;
+    update(
+      (prev) => {
+        const b = prev.barberia!;
+        if (entry) {
+          return { ...prev, barberia: { ...b, caja: b.caja.map((m) => (m.id === entry.id ? { ...m, ...datos } : m)) } };
+        }
+        return { ...prev, barberia: { ...b, caja: [nuevo!, ...b.caja] } };
+      },
+      esNuevoIngreso ? { ventaOffline: true } : undefined
+    );
+    if (esNuevoIngreso && nuevo && typeof navigator !== "undefined" && !navigator.onLine) {
+      encolarVentaPendiente({
+        id: nuevo.id,
+        negocioId,
+        tipo: "barberia_caja",
+        payload: nuevo,
+        ...camposEmpleado(),
+      }).catch((err) => console.error("No se pudo encolar la venta pendiente:", err));
+    }
     onClose();
   }
 

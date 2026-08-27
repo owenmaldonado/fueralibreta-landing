@@ -89,19 +89,28 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
   // comentario en barberia-dashboard.tsx.
   const hoy = hoyEnZona(negocio.timezone);
 
-  // Verificar si ya fue cerrado hoy
+  // Verificar si ya fue cerrado hoy. El builder de supabase-js es un
+  // PromiseLike (solo .then), no una Promise — encadenarle .catch() no
+  // compila; de ahí el try/catch dentro de un async.
   React.useEffect(() => {
     if (!open || !esNegocioReal) return;
-    supabase
-      .from("barberia_cortes")
-      .select("id")
-      .eq("negocio_id", negocio.id)
-      .eq("fecha", hoy)
-      .limit(1)
-      .then(({ data: cortes }) => {
-        setYaFueCerrado((cortes?.length ?? 0) > 0);
-      })
-      .catch((err) => console.error("No se pudo verificar si ya fue cerrado:", err));
+    let cancelado = false;
+    (async () => {
+      try {
+        const { data: cortes } = await supabase
+          .from("barberia_cortes")
+          .select("id")
+          .eq("negocio_id", negocio.id)
+          .eq("fecha", hoy)
+          .limit(1);
+        if (!cancelado) setYaFueCerrado((cortes?.length ?? 0) > 0);
+      } catch (err) {
+        console.error("No se pudo verificar si ya fue cerrado:", err);
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
   }, [open, esNegocioReal, negocio.id, hoy]);
 
   const citasHoyListo = data.citas.filter((c) => c.fecha === hoy && c.estado === "listo");

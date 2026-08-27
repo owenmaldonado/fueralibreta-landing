@@ -190,7 +190,14 @@ function NuevoPedidoForm({
         };
         pedidoCreado = pedido;
         return { ...prev, fonda: { ...f, pedidos: [pedido, ...f.pedidos] } };
-      }
+      },
+      // Tanto "Cobrar ahora" (venta ya entregada) como "Programar" (pedido
+      // para más tarde) son el trabajo real de la fonda, no administración:
+      // sin esto update() los rechazaba sin señal y, peor, `pedidoCreado`
+      // se quedaba en null, así que tampoco se encolaban — el pedido se
+      // perdía por completo. Un pedido es una fila nueva con id propio,
+      // no hay riesgo de chocar con nada de otro dispositivo.
+      { ventaOffline: true }
     );
     if (typeof navigator !== "undefined" && !navigator.onLine && pedidoCreado) {
       encolarVentaPendiente({

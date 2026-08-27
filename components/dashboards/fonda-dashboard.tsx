@@ -258,7 +258,8 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
         pedidoCreado = pedido;
         negocioId = prev.business.id;
         return { ...prev, fonda: { ...f, pedidos: [pedido, ...f.pedidos] } };
-      }
+      },
+      { ventaOffline: true }
     );
     if (typeof navigator !== "undefined" && !navigator.onLine && pedidoCreado) {
       encolarVentaPendiente({
