@@ -23,7 +23,7 @@ import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { insertCajaEntryDirecto, updateCajaEntryDirecto, deleteCajaEntryDirecto } from "@/lib/data";
 import { formatMoney, uid } from "@/lib/mock";
-import { hoyEnZona } from "@/lib/fecha";
+import { useHoy } from "@/lib/use-hoy";
 import { VentaRapidaSheet, VentaRapidaBoton } from "@/components/dashboards/barberia-venta-rapida";
 import { aggregateTwoByRange, type RangoTiempo } from "@/lib/chart-buckets";
 import { camposEmpleado, permisosActuales, ROL_LABEL } from "@/lib/empleados";
@@ -45,6 +45,10 @@ const RANGO_TABS = [
 
 export default function CajaPage() {
   const { session, ready, update } = useSession();
+  // Reactivo a la medianoche del negocio (ver lib/use-hoy.ts) — Venta
+  // rápida ancla la cita que crea a este día, así que una Caja abierta
+  // desde antes de medianoche cobraba con la fecha de ayer.
+  const hoy = useHoy(session?.business.timezone);
   const plan = usePlan();
   const [addOpen, setAddOpen] = React.useState(false);
   const [ventaRapidaOpen, setVentaRapidaOpen] = React.useState(false);
@@ -377,7 +381,7 @@ export default function CajaPage() {
         onClose={() => setVentaRapidaOpen(false)}
         session={session}
         update={update}
-        hoy={hoyEnZona(session.business.timezone)}
+        hoy={hoy}
       />
 
       <Sheet open={!!editando} onOpenChange={(o) => !o && setEditando(null)}>

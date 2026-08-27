@@ -8,7 +8,7 @@ import { EmptyState } from "./empty-state";
 import { StatTile } from "./stat-tile";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { formatMoney, fechaCalendarioLocal, waLink } from "@/lib/mock";
-import { hoyEnZona } from "@/lib/fecha";
+import { useHoy } from "@/lib/use-hoy";
 import { avisosIgnoradosHoy, ignorarAvisoHoy } from "@/lib/dismissed-alerts";
 import { usePlan } from "@/lib/planes";
 import type { TenantData, SessionUpdater } from "@/lib/types";
@@ -18,11 +18,21 @@ export function AbarrotesDashboard({ session }: { session: TenantData; update: S
   const plan = usePlan();
   // "Hoy" del negocio (zona guardada al darlo de alta), no del dispositivo
   // — ver lib/fecha.ts. Antes era todayISO(0) (zona del navegador/celular).
-  const hoy = hoyEnZona(session.business.timezone);
-  const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy(session.business.id));
+  // useHoy y no hoyEnZona() suelta: la pantalla de la tienda se queda
+  // abierta todo el día, y sola no se entera de que cambió el día hasta que
+  // alguien la toca (ver lib/use-hoy.ts).
+  const hoy = useHoy(session.business.timezone);
+  const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy(session.business.id, hoy));
+
+  // Al cruzar la medianoche del negocio (useHoy), lo que se ignoró AYER
+  // deja de aplicar: los avisos de hoy tienen que volver a salir sin que
+  // nadie recargue la pantalla.
+  React.useEffect(() => {
+    setIgnorados(avisosIgnoradosHoy(session.business.id, hoy));
+  }, [session.business.id, hoy]);
 
   function ignorar(id: string) {
-    ignorarAvisoHoy(session.business.id, id);
+    ignorarAvisoHoy(session.business.id, id, hoy);
     setIgnorados((prev) => new Set(prev).add(id));
   }
 

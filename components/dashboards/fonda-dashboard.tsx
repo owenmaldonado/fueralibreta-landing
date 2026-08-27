@@ -12,7 +12,7 @@ import { BloqueoPlan } from "./bloqueo-plan";
 import { EmpleadoBadge } from "./empleado-badge";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { formatMoney, formatHora12, toISODate, uid } from "@/lib/mock";
-import { hoyEnZona } from "@/lib/fecha";
+import { useHoy } from "@/lib/use-hoy";
 import { supabase } from "@/lib/supabase";
 import { fetchPedidosPendientes } from "@/lib/data";
 import { camposEmpleado } from "@/lib/empleados";
@@ -91,10 +91,21 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
     });
   }, [data.pedidos, filtro, esNegocioReal]);
 
-  const hoyEnSuZona = hoyEnZona(negocio.timezone);
-  const ayerEnSuZona = new Date(Date.now() - 86_400_000).toLocaleDateString("en-CA", {
-    timeZone: negocio.timezone || "America/Bahia_Banderas",
-  });
+  // useHoy en vez de hoyEnZona(): ESTE es el componente donde se reportó
+  // "la gráfica semanal se reseteaba y se iba para otro día". La fonda deja
+  // la tablet prendida desde antes de abrir hasta después de cerrar; al
+  // cruzar la medianoche `hoyEnSuZona` se quedaba en el día anterior hasta
+  // que un pedido nuevo (o un toque en la pantalla) forzaba el re-render, y
+  // entonces TODO saltaba de día de golpe. Ver lib/use-hoy.ts.
+  const hoyEnSuZona = useHoy(negocio.timezone);
+  // "Ayer" derivado de hoyEnSuZona (ya reactivo) en vez de un Date.now()
+  // nuevo — si no, al cambiar el día quedaban desfasados un rato: hoy ya
+  // sería el día nuevo y "ayer" seguiría siendo antier.
+  const ayerEnSuZona = (() => {
+    const [y, m, d] = hoyEnSuZona.split("-").map(Number);
+    const ayer = new Date(y, m - 1, d - 1);
+    return `${ayer.getFullYear()}-${String(ayer.getMonth() + 1).padStart(2, "0")}-${String(ayer.getDate()).padStart(2, "0")}`;
+  })();
 
   // Lunes a domingo de la semana de calendario en curso, anclada a hoyEnSuZona (misma definición que "Semanal" en la gráfica de Gastos).
   const [semanaDesde, semanaHasta] = (() => {

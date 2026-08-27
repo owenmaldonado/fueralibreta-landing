@@ -11,7 +11,7 @@ import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { WhatsappRecordatorioButton } from "./whatsapp-recordatorio-button";
 import { VentaRapidaSheet, VentaRapidaBoton } from "./barberia-venta-rapida";
 import { daysSince, formatHora12, formatMoney, statsVisitasCliente, waLink } from "@/lib/mock";
-import { hoyEnZona } from "@/lib/fecha";
+import { useHoy } from "@/lib/use-hoy";
 import { camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import { avisosIgnoradosHoy, ignorarAvisoHoy } from "@/lib/dismissed-alerts";
@@ -26,14 +26,25 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
   // todayISO(0) (getters LOCALES del Date del navegador/celular), que da
   // el día equivocado si el dispositivo tiene otra zona horaria que la del
   // negocio. Mismo criterio que fonda-dashboard.tsx (hoyEnSuZona).
-  const hoy = hoyEnZona(business.timezone);
+  //
+  // useHoy en vez de hoyEnZona() a secas: la barbería es la que más tiempo
+  // pasa con la pantalla abierta sin tocarse, y hoyEnZona() sola se congela
+  // en el día en que se montó el componente (ver lib/use-hoy.ts).
+  const hoy = useHoy(business.timezone);
   const plan = usePlan();
   const [cobrando, setCobrando] = React.useState<Appointment | null>(null);
   const [ventaRapida, setVentaRapida] = React.useState(false);
-  const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy(business.id));
+  const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy(business.id, hoy));
+
+  // Al cruzar la medianoche del negocio (useHoy), lo que se ignoró AYER
+  // deja de aplicar: los avisos de hoy tienen que volver a salir sin que
+  // nadie recargue la pantalla.
+  React.useEffect(() => {
+    setIgnorados(avisosIgnoradosHoy(business.id, hoy));
+  }, [business.id, hoy]);
 
   function ignorar(id: string) {
-    ignorarAvisoHoy(business.id, id);
+    ignorarAvisoHoy(business.id, id, hoy);
     setIgnorados((prev) => new Set(prev).add(id));
   }
 
@@ -54,7 +65,12 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
         .filter((c) => !ignorados.has(`alerta-${c.id}`))
     : [];
 
-  const hoyMMDD = new Date().toISOString().slice(5, 10);
+  // MM-DD sacado de `hoy` (día del negocio), NO de new Date().toISOString()
+  // — toISOString() da la fecha en UTC, y México va 6/7 horas atrás: desde
+  // las ~6pm hora local, para UTC ya es el día siguiente. El aviso "Hoy
+  // cumple X" salía la TARDE ANTERIOR y desaparecía a las 6pm del día real,
+  // justo cuando la barbería está llena y es cuando sirve felicitarlo.
+  const hoyMMDD = hoy.slice(5, 10);
   const cumples = data.clientes.filter((c) => c.cumpleanos === hoyMMDD);
   const productosBajos = data.productos.filter((p) => p.stock <= p.minimo && !ignorados.has(`bajo-${p.id}`));
 

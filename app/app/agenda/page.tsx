@@ -26,6 +26,7 @@ import { getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
 import { encolarVentaPendiente, usePendingSalesQueue, type VentaPendienteRow } from "@/lib/offline-sales-queue";
 import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
 import type { Appointment, BarberiaData } from "@/lib/types";
+import { useHoy } from "@/lib/use-hoy";
 
 type Modo = "hoy" | "manana" | "semanal" | "fecha";
 
@@ -39,6 +40,9 @@ const MODO_TABS = [
 export default function AgendaPage() {
   const { session, ready, update } = useSession();
   const plan = usePlan();
+  // Día del negocio, reactivo a su medianoche (ver lib/use-hoy.ts) — la
+  // Agenda es la pantalla que más se queda abierta en la barbería.
+  const hoy = useHoy(session?.business.timezone);
   const [modo, setModo] = React.useState<Modo>("hoy");
   const [fecha, setFecha] = React.useState(todayISO(0));
   // "Fecha" empieza SIEMPRE mostrando todas las próximas citas (hoy en
@@ -64,7 +68,12 @@ export default function AgendaPage() {
   const data = session.barberia!;
   const negocioNombre = session.business.nombre;
   const negocioId = session.business.id;
-  const mesActual = todayISO(0).slice(0, 7);
+  // Mes de la zona del NEGOCIO, no la del dispositivo — todayISO(0) usa los
+  // getters locales del navegador, así que el último día del mes por la
+  // noche (o el primero de madrugada) un celular en otra zona contaba las
+  // citas contra el mes equivocado: la barra de límite del plan saltaba de
+  // "98 de 100" a "3 de 100" y de regreso según qué dispositivo la mirara.
+  const mesActual = hoy.slice(0, 7);
   const maxCitas = plan.giroBarberia.maxCitas;
   const citasDelMes = data.citas.filter((c) => c.fecha.startsWith(mesActual) && c.estado !== "cancelada").length;
 
@@ -190,6 +199,7 @@ export default function AgendaPage() {
 
       {modo === "fecha" && !fechaFiltroActiva ? (
         <ProximasView
+          hoy={hoy}
           data={data}
           onCobrar={setCobrando}
           onMover={setMoviendo}
@@ -201,6 +211,7 @@ export default function AgendaPage() {
         />
       ) : modo === "semanal" ? (
         <SemanaView
+          hoy={hoy}
           data={data}
           fecha={fecha}
           onCambiarFecha={setFecha}
@@ -215,7 +226,7 @@ export default function AgendaPage() {
       ) : (
         <DiaView
           data={data}
-          fecha={modo === "hoy" ? todayISO(0) : modo === "manana" ? todayISO(1) : fecha}
+          fecha={modo === "hoy" ? hoy : modo === "manana" ? diaSiguiente(hoy) : fecha}
           onCobrar={setCobrando}
           onMover={setMoviendo}
           onCancelar={setCancelando}
@@ -259,6 +270,7 @@ export default function AgendaPage() {
  * infinito de verdad.
  */
 function ProximasView({
+  hoy,
   data,
   onCobrar,
   onMover,
@@ -268,6 +280,7 @@ function ProximasView({
   pendientesPorId,
   msg28,
 }: {
+  hoy: string;
   data: BarberiaData;
   onCobrar: (c: Appointment) => void;
   onMover: (c: Appointment) => void;
@@ -277,7 +290,11 @@ function ProximasView({
   pendientesPorId: Map<string, VentaPendienteRow>;
   msg28: boolean;
 }) {
-  const hoy = todayISO(0);
+  // `hoy` llega por prop (día del NEGOCIO, ver useHoy en AgendaPage) en vez
+  // de todayISO(0) — con la zona del dispositivo, un celular adelantado
+  // filtraba fuera las citas de HOY (c.fecha >= hoy) y el barbero veía su
+  // agenda del día vacía.
+  const manana = diaSiguiente(hoy);
   const fechas = Array.from(new Set(data.citas.filter((c) => c.fecha >= hoy && c.estado !== "cancelada").map((c) => c.fecha))).sort();
   const porDia = fechas.map((fecha) => {
     const citas = data.citas.filter((c) => c.fecha === fecha && c.estado !== "cancelada").sort((a, b) => a.hora.localeCompare(b.hora));
@@ -295,9 +312,9 @@ function ProximasView({
         porDia.map((d) => (
           <div key={d.fecha}>
             <p className="mb-2 px-1 font-mono text-xs uppercase tracking-widest text-muted-foreground">
-              {d.fecha === todayISO(0)
+              {d.fecha === hoy
                 ? "Hoy"
-                : d.fecha === todayISO(1)
+                : d.fecha === manana
                   ? "Mañana"
                   : new Date(`${d.fecha}T00:00:00`).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "short" })}
             </p>
@@ -349,6 +366,17 @@ function DiaView({
 }
 
 /** Lunes (ISO) de la semana de calendario que contiene `fechaISO` — mismo criterio que "Semanal" en la gráfica de Caja/Gastos. */
+/**
+ * "Mañana" a partir de un día "YYYY-MM-DD" del negocio, por componentes —
+ * no con addDays(new Date(fecha)), que reintroduce la zona del dispositivo
+ * justo en el cálculo que estamos tratando de sacar de ahí.
+ */
+function diaSiguiente(fechaISO: string): string {
+  const [y, m, d] = fechaISO.split("-").map(Number);
+  const sig = new Date(y, m - 1, d + 1);
+  return `${sig.getFullYear()}-${String(sig.getMonth() + 1).padStart(2, "0")}-${String(sig.getDate()).padStart(2, "0")}`;
+}
+
 function inicioDeSemana(fechaISO: string): string {
   const d = new Date(`${fechaISO}T00:00:00`);
   const diasDesdeLunes = (d.getDay() + 6) % 7;
@@ -356,6 +384,7 @@ function inicioDeSemana(fechaISO: string): string {
 }
 
 function SemanaView({
+  hoy,
   data,
   fecha,
   onCambiarFecha,
@@ -367,6 +396,7 @@ function SemanaView({
   pendientesPorId,
   msg28,
 }: {
+  hoy: string;
   data: BarberiaData;
   /** Cualquier fecha dentro de la semana a mostrar — mismo estado que usa la pestaña "Fecha" (ver AgendaPage), así que elegir un día ahí y volver a Semanal muestra esa semana. */
   fecha: string;
@@ -407,10 +437,10 @@ function SemanaView({
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        {inicio !== inicioDeSemana(todayISO(0)) && (
+        {inicio !== inicioDeSemana(hoy) && (
           <button
             type="button"
-            onClick={() => onCambiarFecha(todayISO(0))}
+            onClick={() => onCambiarFecha(hoy)}
             className="font-mono text-[10px] uppercase tracking-widest text-primary"
           >
             Volver a esta semana
@@ -433,9 +463,9 @@ function SemanaView({
           .map((d) => (
             <div key={d.fecha}>
               <p className="mb-2 px-1 font-mono text-xs uppercase tracking-widest text-muted-foreground">
-                {d.fecha === todayISO(0)
+                {d.fecha === hoy
                   ? "Hoy"
-                  : d.fecha === todayISO(1)
+                  : d.fecha === diaSiguiente(hoy)
                     ? "Mañana"
                     : new Date(`${d.fecha}T00:00:00`).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "short" })}
               </p>

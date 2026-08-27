@@ -27,7 +27,7 @@ import { VentaForm } from "@/components/abarrotes/venta-form";
 import { useSession } from "@/lib/session";
 import { insertGastoDirecto, updateGastoDirecto, deleteGastoDirecto } from "@/lib/data";
 import { formatMoney, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
-import { hoyEnZona } from "@/lib/fecha";
+import { useHoy } from "@/lib/use-hoy";
 import { aggregateByRange, filterByRango, type RangoTiempo } from "@/lib/chart-buckets";
 import { permisosActuales, getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
 import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
@@ -247,8 +247,13 @@ export default function GastosPage() {
     new Set([anioActual, ...gastos.map((g) => Number(g.fecha.slice(0, 4))), ...ventas.map((v) => Number(v.fecha.slice(0, 4)))])
   ).sort((a, b) => a - b);
 
-  // "Hoy" del negocio, no del dispositivo — ver lib/fecha.ts.
-  const hoy = hoyEnZona(session.business.timezone);
+  // "Hoy" del negocio, no del dispositivo — ver lib/fecha.ts. Y con useHoy
+  // (no hoyEnZona() suelta) porque de este string cuelga TODO lo de abajo:
+  // `now`, los buckets de la gráfica y la ventana Lunes-Domingo. Congelado
+  // en el día en que se abrió la pantalla, la gráfica semanal se queda
+  // pintando la semana pasada — el reporte original de Fondita. Ver
+  // lib/use-hoy.ts.
+  const hoy = useHoy(session.business.timezone);
 
   // "Anual" con el año en curso sigue siendo el rolling de los últimos 12
   // meses (el default de siempre). Elegir un año pasado cambia el reloj de

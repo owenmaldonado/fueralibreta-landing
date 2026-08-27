@@ -16,6 +16,7 @@ import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import type { FabAction } from "@/components/app-shell/fab";
 import { usePlan } from "@/lib/planes";
 import { uid, todayISO, formatHora12, formatMoney, normalizarTelefono } from "@/lib/mock";
+import { hoyEnZona } from "@/lib/fecha";
 import { getDaySlots, getAvailableSlotsForDuracion } from "@/lib/agenda";
 import { cn } from "@/lib/utils";
 import { camposEmpleado } from "@/lib/empleados";
@@ -266,7 +267,11 @@ function NuevaCitaForm({
   const clienteEsNuevo = !!cliente && !("id" in cliente);
   const maxClientes = plan.giroBarberia.maxClientes;
   const bloqueadoPorLimiteClientes = clienteEsNuevo && maxClientes !== null && data.clientes.length >= maxClientes;
-  const mesActual = todayISO(0).slice(0, 7);
+  // Mes de la zona del negocio (mismo criterio que /app/agenda y que
+  // barberia-venta-rapida.tsx) — con todayISO(0), la zona del dispositivo,
+  // el conteo de "citas este mes" cambiaba según qué celular lo mirara en
+  // el cambio de mes.
+  const mesActual = hoyEnZona(timezone).slice(0, 7);
   const maxCitas = plan.giroBarberia.maxCitas;
   const bloqueadoPorLimiteCitas =
     maxCitas !== null && data.citas.filter((c) => c.fecha.startsWith(mesActual) && c.estado !== "cancelada").length >= maxCitas;
