@@ -166,6 +166,20 @@ export async function POST(req: Request) {
   });
 
   if (insertError) {
+    // Dos personas apartando el MISMO hueco en el mismo instante: la
+    // revalidación de arriba las dejó pasar a las dos (entre "consulté" y
+    // "guardé" siempre hay una rendija), y el índice único de la base
+    // rechaza a la segunda. Gana quien llegó primero; a la otra se le
+    // responde lo mismo que cuando el horario ya estaba ocupado desde
+    // antes — 409 y un mensaje que dice qué pasó, no un 500 de "algo
+    // salió mal" que la deja sin saber si su cita quedó o no.
+    if (insertError.code === "23505") {
+      console.warn("[citas] choque de horario, alguien apartó primero:", { negocioId: negocio.id, fecha: input.fecha, hora: input.hora });
+      return NextResponse.json(
+        { error: "Alguien apartó ese horario justo antes que tú. Elige otro, por favor." },
+        { status: 409 }
+      );
+    }
     console.error("[citas] insert en barberia_citas falló:", {
       negocioId: negocio.id,
       fecha: input.fecha,

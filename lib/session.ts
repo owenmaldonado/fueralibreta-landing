@@ -17,6 +17,7 @@ import {
   gastoFromRow,
   cajaFromRow,
   clienteFromRow,
+  HorarioYaApartadoError,
 } from "./data";
 import { readDemoPreview, writeDemoPreview, clearDemoPreview, DEMO_PREVIEW_EVENT } from "./demoPreview";
 import { leerCacheLocal, sincronizarCacheLocalEnSegundoPlano } from "./local-cache";
@@ -1366,6 +1367,29 @@ export function useSession() {
           // a entrar. Con esto, quien esté usando la app en ese momento se
           // entera de inmediato y sabe que tiene que reintentar, en vez de
           // enterarse horas después de que "no se guardó nada".
+          // Choque de horario: alguien apartó ese hueco primero (lo decide
+          // el índice único de la base, ver migración 20260913000002). Gana
+          // el primero; al segundo hay que decirle QUÉ pasó, no un "no se
+          // pudo guardar" que suena a falla de red y lo deja reintentando
+          // el mismo horario para siempre.
+          if (err instanceof HorarioYaApartadoError) {
+            const cuando = err.hora ? ` de las ${formatHora12(err.hora)}` : "";
+            toast.error(`Ese horario${cuando} ya lo apartó alguien más desde otro dispositivo. Elige otra hora.`, { duration: 9000 });
+            // La pantalla ya se pintó con la cita de forma optimista, así
+            // que ahorita muestra un apartado que NO existe en la base. Se
+            // vuelven a pedir las citas para que quede lo que de verdad hay
+            // (el apartado del que ganó) en vez de un fantasma que
+            // desaparecería al recargar, cuando ya sea tarde.
+            const negocioId = sessionRef.current?.business.id;
+            if (negocioId) {
+              fetchCitasDeNegocio(negocioId)
+                .then((citasFrescas) => {
+                  setSessionState((actual) => (actual?.barberia ? { ...actual, barberia: { ...actual.barberia, citas: citasFrescas } } : actual));
+                })
+                .catch((e) => console.error("No se pudieron recargar las citas tras el choque de horario:", e));
+            }
+            return;
+          }
           console.error("No se pudo guardar el cambio en Supabase:", err);
           toast.error("No se pudo guardar en el servidor. Revisa tu conexión e inténtalo de nuevo.", { duration: 8000 });
         });

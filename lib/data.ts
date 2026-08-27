@@ -38,6 +38,36 @@ import type {
 
 type Row = Record<string, unknown>;
 
+/**
+ * Alguien más apartó ese horario primero.
+ *
+ * La decide la base de datos, no la pantalla: el índice único
+ * barberia_citas_slot_apartado_unico (migración 20260913000002) solo deja
+ * UNA cita pendiente por negocio/fecha/hora, así que de dos personas
+ * apartando el mismo hueco al mismo tiempo, la segunda choca aquí. Se
+ * convierte en un error con nombre —en vez del "23505" crudo de Postgres—
+ * para que quien esté guardando reciba un mensaje que explique QUÉ pasó y
+ * pueda elegir otra hora, en lugar del aviso genérico de "no se pudo
+ * guardar" que no dice nada.
+ */
+export class HorarioYaApartadoError extends Error {
+  readonly fecha?: string;
+  readonly hora?: string;
+  constructor(fecha?: string, hora?: string) {
+    super("Ese horario ya está apartado.");
+    this.name = "HorarioYaApartadoError";
+    this.fecha = fecha;
+    this.hora = hora;
+  }
+}
+
+/** 23505 = unique_violation. Se mira el nombre del índice para no confundir este choque con cualquier otro duplicado. */
+export function esChoqueDeHorario(error: { code?: string; message?: string; details?: string } | null): boolean {
+  if (!error || error.code !== "23505") return false;
+  const texto = `${error.message ?? ""} ${error.details ?? ""}`;
+  return texto.includes("barberia_citas_slot_apartado_unico");
+}
+
 // ---------- negocios ----------
 
 export function businessFromRow(row: Row): Business {
@@ -168,6 +198,15 @@ export async function cleanInsert(table: string, rows: Row[]): Promise<void> {
   const { error } = await supabase.from(table).insert(rows);
   if (!error) return;
 
+  // Choque de horario: no es un fallo de red ni de esquema, es "alguien te
+  // ganó el lugar". Se sube como error con nombre para que la pantalla
+  // pueda decir cuál horario y por qué, en vez del aviso genérico de "no se
+  // pudo guardar". Ver HorarioYaApartadoError arriba.
+  if (esChoqueDeHorario(error)) {
+    const choque = rows.find((r) => r.fecha && r.hora);
+    throw new HorarioYaApartadoError(choque?.fecha as string | undefined, choque?.hora as string | undefined);
+  }
+
   const columna = nombreColumnaFaltante(error);
   if (!columna) {
     console.error(`cleanInsert: insert en "${table}" falló:`, error);
@@ -195,6 +234,12 @@ async function cleanUpdate(table: string, row: Row): Promise<void> {
     .update(row)
     .eq("id", row.id as string);
   if (!error) return;
+
+  // Mover una cita a un horario que ya está apartado cae aquí, no en el
+  // insert — mismo trato.
+  if (esChoqueDeHorario(error)) {
+    throw new HorarioYaApartadoError(row.fecha as string | undefined, row.hora as string | undefined);
+  }
 
   const columna = nombreColumnaFaltante(error);
   if (!columna) {

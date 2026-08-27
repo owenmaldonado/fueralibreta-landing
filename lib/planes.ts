@@ -314,7 +314,13 @@ export interface LimitesAbarrotes {
 }
 
 export const LIMITES_ABARROTES: Record<PlanId, LimitesAbarrotes> = {
-  basico: { maxProductos: 200, maxCuentas: 1, recordatorio: false, editor: false, grafica: "semanal" },
+  // 200 productos era una pared que se topaba DANDO DE ALTA el inventario,
+  // antes de vender el primer peso: una tiendita de barrio carga fácil entre
+  // 500 y 1500 claves distintas. Se abandona la app en el onboarding, que es
+  // el peor momento posible para toparse un límite. 600 deja operar de
+  // verdad a una tienda chica y sigue dejando "productos ilimitados" como
+  // razón real para subir a Pro.
+  basico: { maxProductos: 600, maxCuentas: 1, recordatorio: false, editor: false, grafica: "semanal" },
   pro: { maxProductos: null, maxCuentas: 3, recordatorio: true, editor: true, grafica: "anual" },
   pro_plus: { maxProductos: null, maxCuentas: 8, recordatorio: true, editor: true, grafica: "anual" },
 };
@@ -334,7 +340,20 @@ export interface LimitesBarberia {
 }
 
 export const LIMITES_BARBERIA: Record<PlanId, LimitesBarberia> = {
-  basico: { maxClientes: 100, maxServicios: 20, maxCuentas: 1, msg28: false, grafica: "ventas", excepciones: false, reservas: false, maxCitas: 100 },
+  // maxClientes 100 -> 1000 y maxCitas 100 -> 400.
+  //
+  // Los dos topes viejos frenaban la OPERACIÓN, no el tamaño del negocio:
+  //  - Un barbero solo hace entre 8 y 12 cortes al día. Con 26 días
+  //    trabajados son 200-300 citas al mes: se quedaba sin poder agendar
+  //    como al día 12 y de ahí a fin de mes no podía trabajar. 400 no lo
+  //    alcanza ni el barbero más lleno (400/26 ≈ 15 cortes diarios), así
+  //    que el tope ya solo atrapa uso raro, no a un cliente normal.
+  //  - Los clientes solo se ACUMULAN, nunca bajan. 100 son como 4 meses de
+  //    operación y después no podía dar de alta a nadie nuevo — el tope
+  //    llegaba justo cuando el negocio ya iba bien.
+  // maxServicios se queda en 20: 20 servicios distintos es un catálogo
+  // grande para una barbería, y ahí sí el límite marca tamaño, no ritmo.
+  basico: { maxClientes: 1000, maxServicios: 20, maxCuentas: 1, msg28: false, grafica: "ventas", excepciones: false, reservas: false, maxCitas: 400 },
   // reservas ahora también en Pro (antes solo Pro+) — Owen lo confirmó como
   // beneficio real de Pro, no exclusivo de Pro+.
   pro: { maxClientes: null, maxServicios: null, maxCuentas: 5, msg28: true, grafica: "completa", excepciones: true, reservas: true, maxCitas: null },
@@ -364,7 +383,14 @@ export interface LimitesFonda {
 }
 
 export const LIMITES_FONDA: Record<PlanId, LimitesFonda> = {
-  basico: { variantes: false, mesas: 1, maxProductos: 100, maxProductosActivos: 45, comandas: false, grafica: "semanal", maxPedidos: 100 },
+  // maxPedidos 100 -> 2000. Es el MISMO bug que el tope de ventas de
+  // abarrotes, nada más que en fonda: una fondita de comida corrida
+  // levanta entre 40 y 80 pedidos AL DÍA, así que 100 al mes se agotaban
+  // el segundo día y el resto del mes no se podía levantar un pedido.
+  // 2000 (≈65 diarios por 30 días) cubre a una fonda llena.
+  // El catálogo (100 platillos, 45 activos a la vez) y "1 mesa a la vez"
+  // se quedan: esos sí son tamaño y funciones, no ritmo de trabajo.
+  basico: { variantes: false, mesas: 1, maxProductos: 100, maxProductosActivos: 45, comandas: false, grafica: "semanal", maxPedidos: 2000 },
   pro: { variantes: true, mesas: null, maxProductos: 500, maxProductosActivos: null, comandas: false, grafica: "anual", maxPedidos: null },
   pro_plus: { variantes: true, mesas: null, maxProductos: null, maxProductosActivos: null, comandas: true, grafica: "anual", maxPedidos: null },
 };
@@ -372,17 +398,17 @@ export const LIMITES_FONDA: Record<PlanId, LimitesFonda> = {
 /** Beneficios en texto plano por giro — alimenta las cards de /planes y /planes-bloqueado sin repetir la lista a mano en 3 lugares. */
 export const BENEFICIOS_POR_GIRO: Record<BusinessType, Record<PlanId, string[]>> = {
   abarrotes: {
-    basico: ["Hasta 200 productos", "1 cuenta", "Gráfica semanal"],
+    basico: ["Hasta 600 productos", "1 cuenta", "Gráfica semanal"],
     pro: ["Productos ilimitados", "3 cuentas", "Gráfica anual", "Recordatorios de cobro", "Editor de ventas"],
     pro_plus: ["Productos ilimitados", "8 cuentas", "Gráfica anual", "Recordatorios de cobro", "Editor de ventas", "Exportar a Excel"],
   },
   barberia: {
-    basico: ["Hasta 100 clientes", "Hasta 20 servicios", "Hasta 100 citas/mes", "1 cuenta", "Gráfica de ventas"],
+    basico: ["Hasta 1,000 clientes", "Hasta 20 servicios", "Hasta 400 citas/mes", "1 cuenta", "Gráfica de ventas"],
     pro: ["Clientes ilimitados", "Servicios ilimitados", "Citas ilimitadas", "5 cuentas", "Gráfica completa", "Mensaje a 28 días sin venir", "Reservas en línea"],
     pro_plus: ["Clientes ilimitados", "Servicios ilimitados", "Citas ilimitadas", "10 cuentas", "Gráfica completa", "Mensaje a 28 días sin venir", "Reservas en línea"],
   },
   fonda: {
-    basico: ["Hasta 100 productos", "Hasta 100 pedidos/mes", "1 mesa a la vez"],
+    basico: ["Hasta 100 platillos", "Hasta 2,000 pedidos/mes", "1 mesa a la vez"],
     pro: ["Hasta 500 productos", "Pedidos ilimitados", "Variantes de platillo", "Carrito por mesa"],
     pro_plus: ["Productos ilimitados", "Pedidos ilimitados", "Variantes de platillo", "Carrito por mesa", "Comandas para cocina"],
   },
