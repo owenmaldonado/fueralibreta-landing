@@ -186,7 +186,16 @@ async function borrarBaseDeNegocio(negocioId: string): Promise<void> {
  * resto del módulo): si esta query truena, productos/precios/clientes
  * igual se guardan bien. */
 async function fetchEmpleadosParaCache(negocioId: string): Promise<Empleado[]> {
-  const { data, error } = await supabase.from("negocio_empleados").select("*").eq("negocio_id", negocioId);
+  // Columnas explícitas, NUNCA select("*"): esta tabla guarda `pin_hash` y
+  // RLS es por fila, no por columna — con "*" el navegador del dueño se
+  // bajaba el hash del PIN de todos sus empleados. El mapeo de abajo ya lo
+  // descartaba, así que nunca llegó a IndexedDB, pero igual viajaba por la
+  // red y quedaba en memoria. La migración 20260913000000 lo cierra por el
+  // otro lado (grant por columna) para que no dependa de recordarlo aquí.
+  const { data, error } = await supabase
+    .from("negocio_empleados")
+    .select("id, negocio_id, nombre, rol, user_id, activo, created_at")
+    .eq("negocio_id", negocioId);
   if (error) throw error;
   return (data ?? []).map((r) => ({
     id: r.id as string,

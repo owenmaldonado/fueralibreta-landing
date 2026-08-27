@@ -588,6 +588,89 @@ function suscribirseAClientesEnVivo(negocioId: string, onEvento: (evento: { tipo
 }
 
 /**
+ * Canal de CATÁLOGO: precios, servicios, platillos, stock y empleados.
+ *
+ * Todo lo transaccional (citas, ventas, pedidos, caja, gastos, clientes) ya
+ * tenía su canal arriba; el catálogo no tenía ninguno, y eso se sentía como
+ * "la app se quedó pegada, hay que refrescar":
+ *
+ * - El dueño sube el precio de un servicio desde su celular y la tablet del
+ *   mostrador sigue cobrando el precio viejo el resto del día.
+ * - La fonda marca un platillo como agotado y la otra pantalla lo sigue
+ *   ofreciendo, así que se siguen levantando pedidos de algo que ya no hay.
+ * - El dueño da de alta a un empleado nuevo y el kiosko no lo ofrece hasta
+ *   que alguien recarga.
+ * - Dos cajas de abarrotes venden el mismo producto y cada una descuenta
+ *   stock sobre el número que tenía en memoria al abrir.
+ *
+ * A diferencia de los canales de arriba, este NO arma la fila desde el
+ * payload: vuelve a pedir el catálogo completo (con debounce) y reemplaza
+ * solo esas listas. Es a propósito — el catálogo cambia poco y en ráfagas
+ * (guardar el menú del día toca 20 platillos de un jalón), así que un
+ * re-fetch amortiguado sale más barato y más simple que 4 merges por fila,
+ * y no hay riesgo de reconstruir mal una fila con variantes/lotes anidados.
+ *
+ * Las listas transaccionales NO se tocan aquí, aunque el fetch las traiga:
+ * tienen su propio realtime y su propio estado optimista, y pisarlas desde
+ * aquí borraría una venta que se acaba de cobrar y todavía no sube.
+ */
+/**
+ * negocio_empleados NO está en esta lista a propósito, aunque "el empleado
+ * nuevo no aparece sin recargar" sería la misma clase de molestia que el
+ * resto: esa tabla guarda `pin_hash` (ver el esquema), y meterla en la
+ * publication de realtime significa mandar el hash del PIN de cada empleado
+ * por el WebSocket en cada INSERT/UPDATE. Un PIN de 4 dígitos son 10 mil
+ * combinaciones: un hash filtrado se rompe al instante. El roster de
+ * empleados cambia una vez cada varias semanas y ya se refresca al entrar
+ * al kiosko — no vale ese precio.
+ */
+const TABLAS_CATALOGO = [
+  "barberia_servicios",
+  "barberia_productos",
+  "abarrotes_productos",
+  "fonda_platillos",
+] as const;
+
+let catalogoChannel: ReturnType<typeof supabase.channel> | null = null;
+let catalogoChannelNegocioId: string | null = null;
+const catalogoListeners = new Set<() => void>();
+
+function suscribirseACatalogoEnVivo(negocioId: string, onCambio: () => void): () => void {
+  if (!negocioId) return () => {};
+  if (catalogoChannelNegocioId !== negocioId) {
+    if (catalogoChannel) supabase.removeChannel(catalogoChannel);
+    catalogoChannel = null;
+    catalogoChannelNegocioId = null;
+
+    let canal = supabase.channel(`catalogo-${negocioId}`);
+    for (const tabla of TABLAS_CATALOGO) {
+      // "*" cubre INSERT/UPDATE/DELETE: un platillo BORRADO tiene que
+      // desaparecer de la otra pantalla igual que uno nuevo tiene que
+      // aparecer. Como esto solo dispara un re-fetch, no hace falta
+      // distinguir el evento.
+      canal = canal.on("postgres_changes", { event: "*", schema: "public", table: tabla, filter: `negocio_id=eq.${negocioId}` }, () => {
+        catalogoListeners.forEach((l) => l());
+      });
+    }
+    canal.subscribe((status, err) => {
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") console.error("[session] canal de catálogo falló:", err);
+    });
+
+    catalogoChannel = canal;
+    catalogoChannelNegocioId = negocioId;
+  }
+  catalogoListeners.add(onCambio);
+  return () => {
+    catalogoListeners.delete(onCambio);
+    if (catalogoListeners.size === 0 && catalogoChannel) {
+      supabase.removeChannel(catalogoChannel);
+      catalogoChannel = null;
+      catalogoChannelNegocioId = null;
+    }
+  };
+}
+
+/**
  * Sesión del negocio activo. Dos fuentes posibles:
  *
  * - "supabase": el usuario está logueado y ya tiene un negocio real en la
@@ -609,6 +692,8 @@ export function useSession() {
   const gastosUnsubRef = useRef<(() => void) | null>(null);
   const cajaUnsubRef = useRef<(() => void) | null>(null);
   const clientesUnsubRef = useRef<(() => void) | null>(null);
+  const catalogoUnsubRef = useRef<(() => void) | null>(null);
+  const catalogoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   sessionRef.current = session;
 
   const loadFromDemoPreview = useCallback(() => {
@@ -657,6 +742,54 @@ export function useSession() {
     function detenerClientesEnVivo() {
       clientesUnsubRef.current?.();
       clientesUnsubRef.current = null;
+    }
+
+    function detenerCatalogoEnVivo() {
+      catalogoUnsubRef.current?.();
+      catalogoUnsubRef.current = null;
+      if (catalogoTimerRef.current) {
+        clearTimeout(catalogoTimerRef.current);
+        catalogoTimerRef.current = null;
+      }
+    }
+
+    /**
+     * Precios, servicios, platillos, stock y empleados en vivo — ver
+     * suscribirseACatalogoEnVivo arriba para el porqué del re-fetch en vez
+     * del merge por fila.
+     */
+    function escucharCatalogoEnVivo(negocioId: string, userId: string) {
+      detenerCatalogoEnVivo();
+      catalogoUnsubRef.current = suscribirseACatalogoEnVivo(negocioId, () => {
+        // Debounce: guardar el menú del día dispara un evento por platillo.
+        // Sin esto serían 20 re-fetches seguidos por una sola acción.
+        if (catalogoTimerRef.current) clearTimeout(catalogoTimerRef.current);
+        catalogoTimerRef.current = setTimeout(() => {
+          fetchTenantFresco(userId)
+            .then((fresco) => {
+              if (cancelled || !fresco) return;
+              setSessionState((prev) => {
+                if (!prev) return prev;
+                // Llegó un evento de OTRO negocio (se cambió de cuenta
+                // mientras el fetch estaba en vuelo) — descartar.
+                if (prev.business.id !== fresco.business.id) return prev;
+                // SOLO las listas de catálogo. citas/ventas/pedidos/caja/
+                // gastos/clientes se quedan como están: tienen su propio
+                // realtime y su propio estado optimista, y pisarlas aquí
+                // borraría una venta recién cobrada que todavía no sube.
+                return {
+                  ...prev,
+                  barberia: prev.barberia
+                    ? { ...prev.barberia, servicios: fresco.barberia?.servicios ?? prev.barberia.servicios, productos: fresco.barberia?.productos ?? prev.barberia.productos }
+                    : prev.barberia,
+                  abarrotes: prev.abarrotes ? { ...prev.abarrotes, productos: fresco.abarrotes?.productos ?? prev.abarrotes.productos } : prev.abarrotes,
+                  fonda: prev.fonda ? { ...prev.fonda, platillos: fresco.fonda?.platillos ?? prev.fonda.platillos } : prev.fonda,
+                };
+              });
+            })
+            .catch((err) => console.error("[session] no se pudo refrescar el catálogo en vivo:", err));
+        }, 800);
+      });
     }
 
     /**
@@ -978,6 +1111,13 @@ export function useSession() {
           // Refresca el catálogo local (productos/precios, clientes,
           // empleados) en segundo plano — nunca bloquea lo de arriba.
           sincronizarCacheLocalEnSegundoPlano(userId, tenant);
+          // Catálogo en vivo: aplica a los 3 giros (precios/servicios/
+          // platillos/stock/empleados), por eso va antes del switch por tipo.
+          try {
+            escucharCatalogoEnVivo(tenant.business.id, userId);
+          } catch (err) {
+            console.error("[session] no se pudo suscribir al catálogo en vivo (la sesión sigue cargada bien):", err);
+          }
           if (tenant.business.tipo === "barberia") {
             try {
               escucharCitasEnVivo(tenant.business.id);
@@ -1114,6 +1254,7 @@ export function useSession() {
         detenerGastosEnVivo();
         detenerCajaEnVivo();
         detenerClientesEnVivo();
+        detenerCatalogoEnVivo();
         limpiarCacheTenant();
         return;
       }
@@ -1144,6 +1285,7 @@ export function useSession() {
       detenerGastosEnVivo();
       detenerCajaEnVivo();
       detenerClientesEnVivo();
+      detenerCatalogoEnVivo();
     };
   }, [loadFromDemoPreview]);
 

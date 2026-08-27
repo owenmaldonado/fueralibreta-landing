@@ -80,8 +80,12 @@ export function SeleccionarEmpleado({
 
   React.useEffect(() => {
     supabase
+      // Columnas explícitas y nunca "*": negocio_empleados guarda pin_hash
+      // y RLS es por fila, no por columna. Además de la razón de seguridad,
+      // la migración 20260913000000 revoca el select sobre esa columna, así
+      // que un "*" aquí ya truena con "permission denied for column".
       .from("negocio_empleados")
-      .select("*")
+      .select("id, negocio_id, nombre, rol, user_id, activo, created_at")
       .eq("negocio_id", negocioId)
       .eq("activo", true)
       .order("rol", { ascending: true })
