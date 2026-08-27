@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
+import { supabase } from "@/lib/supabase";
 import { cleanInsert } from "@/lib/data";
 import { formatMoney, formatMoneyExacto, fechaCalendarioLocal, mensajeDiferencia, mensajeEsperado, redondear2, uid } from "@/lib/mock";
 import { hoyEnZona } from "@/lib/fecha";
@@ -79,6 +80,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
   const [otroMonto, setOtroMonto] = React.useState("");
   const [resumen, setResumen] = React.useState<Resumen | null>(null);
   const [guardando, setGuardando] = React.useState(false);
+  const [yaFueCerrado, setYaFueCerrado] = React.useState(false);
 
   const data = session.barberia!;
   const negocio = session.business;
@@ -86,6 +88,21 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
   // "Hoy" del negocio (zona configurada), no del dispositivo — ver
   // comentario en barberia-dashboard.tsx.
   const hoy = hoyEnZona(negocio.timezone);
+
+  // Verificar si ya fue cerrado hoy
+  React.useEffect(() => {
+    if (!open || !esNegocioReal) return;
+    supabase
+      .from("barberia_cortes")
+      .select("id")
+      .eq("negocio_id", negocio.id)
+      .eq("fecha", hoy)
+      .limit(1)
+      .then(({ data: cortes }) => {
+        setYaFueCerrado((cortes?.length ?? 0) > 0);
+      })
+      .catch((err) => console.error("No se pudo verificar si ya fue cerrado:", err));
+  }, [open, esNegocioReal, negocio.id, hoy]);
 
   const citasHoyListo = data.citas.filter((c) => c.fecha === hoy && c.estado === "listo");
   // El corte solo sumaba citas — cualquier "Nueva venta"/"Nuevo gasto"
@@ -271,7 +288,24 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && resetYCerrar()}>
-      {paso === 1 ? (
+      {yaFueCerrado ? (
+        <>
+          <SheetHeader title="Turno cerrado" description="Hoy ya fue cerrado" onClose={resetYCerrar} />
+          <div className="flex flex-col gap-4">
+            <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-4">
+              <p className="text-center text-sm font-medium text-destructive">✓ El turno de hoy ya fue cerrado.</p>
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                No se puede cerrar turno 2 veces el mismo día. Mañana podrás cerrar un nuevo turno.
+              </p>
+            </div>
+          </div>
+          <SheetFooter>
+            <Button size="lg" variant="outline" onClick={resetYCerrar}>
+              Entendido
+            </Button>
+          </SheetFooter>
+        </>
+      ) : paso === 1 ? (
         <>
           <SheetHeader title="Cerrar turno" description="Paso 1 de 2 · Corte" onClose={resetYCerrar} />
           <div className="flex flex-col gap-4">
