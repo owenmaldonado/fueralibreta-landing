@@ -10,6 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { insertGastoDirecto, cleanInsert } from "@/lib/data";
+import { supabase } from "@/lib/supabase";
+import { useOnlineStatus } from "@/lib/use-online-status";
+import { CierreBloqueado } from "./cierre-bloqueado";
 import { formatMoney, formatMoneyExacto, fechaCalendarioLocal, mensajeDiferencia, mensajeEsperado, redondear2, uid } from "@/lib/mock";
 import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
@@ -66,12 +69,41 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
   const [gastoConcepto, setGastoConcepto] = React.useState("");
   const [decisiones, setDecisiones] = React.useState<Record<string, Decision>>({});
   const [guardando, setGuardando] = React.useState(false);
+  const [yaFueCerrado, setYaFueCerrado] = React.useState(false);
 
   const data = session.abarrotes!;
   const negocio = session.business;
   const esNegocioReal = Boolean(negocio.ownerId);
   // "Hoy" del negocio, no del dispositivo — ver lib/fecha.ts.
   const hoy = hoyEnZona(negocio.timezone);
+  const online = useOnlineStatus();
+  const sinConexion = !online && esNegocioReal;
+
+  // Abarrotera cierra por DÍA (a diferencia de la fonda, que cierra por
+  // turno): un segundo cierre el mismo día volvería a contar las mismas
+  // ventas y a duplicar el gasto del corte. Ojo con el nombre de la tabla:
+  // es abarroteRA_cortes, no abarrotes_cortes — consultar la equivocada
+  // devuelve vacío siempre y el bloqueo nunca se activaría.
+  React.useEffect(() => {
+    if (!open || !esNegocioReal || !online) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const { data: cortes } = await supabase
+          .from("abarrotera_cortes")
+          .select("id")
+          .eq("negocio_id", negocio.id)
+          .eq("fecha", hoy)
+          .limit(1);
+        if (!cancelado) setYaFueCerrado((cortes?.length ?? 0) > 0);
+      } catch (err) {
+        console.error("No se pudo verificar si el día ya fue cerrado:", err);
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [open, esNegocioReal, online, negocio.id, hoy]);
 
   const ventasHoyList = data.ventas.filter((v) => !v.cancelada && fechaCalendarioLocal(v.fecha, negocio.timezone) === hoy);
   const ventasHoyTotal = ventasHoyList.reduce((acc, v) => acc + v.total, 0);
@@ -263,7 +295,11 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && resetYCerrar()}>
-      {paso === 1 ? (
+      {sinConexion ? (
+        <CierreBloqueado motivo="sin-conexion" titulo="Sin conexión" queEs="día" onClose={resetYCerrar} />
+      ) : yaFueCerrado ? (
+        <CierreBloqueado motivo="ya-cerrado" titulo="Día cerrado" queEs="día" onClose={resetYCerrar} />
+      ) : paso === 1 ? (
         <>
           <SheetHeader title="Cerrar día" description="Paso 1 de 2 · Corte" onClose={resetYCerrar} />
           <div className="flex flex-col gap-4">

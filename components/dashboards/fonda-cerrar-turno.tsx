@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Chip, ChipGroup } from "@/components/ui/chip";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { insertGastoDirecto, cleanInsert } from "@/lib/data";
+import { useOnlineStatus } from "@/lib/use-online-status";
+import { CierreBloqueado } from "./cierre-bloqueado";
 import { formatMoney, formatMoneyExacto, mensajeDiferencia, mensajeEsperado, redondear2, uid } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
 import { cerrarTurno } from "@/lib/turno-fonda";
@@ -66,6 +68,13 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
   const data = session.fonda!;
   const negocio = session.business;
   const esNegocioReal = Boolean(negocio.ownerId);
+  const online = useOnlineStatus();
+  // A diferencia de barbería/abarrotera, aquí NO hay bloqueo de "ya se
+  // cerró hoy": la fonda cierra por TURNO, no por día (ver
+  // turnoFondaCerradoEn abajo), así que cerrar dos veces el mismo día es
+  // legítimo — turno de la mañana y turno de la tarde. El propio marcador
+  // de turno evita que el segundo corte vuelva a contar lo del primero.
+  const sinConexion = !online && esNegocioReal;
 
   // Mismo criterio que el StatTile "Ventas" del dashboard (ver comentario
   // en fonda-dashboard.tsx): el corte es de todo lo entregado desde el
@@ -283,7 +292,9 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && resetYCerrar()}>
-      {paso === 1 ? (
+      {sinConexion ? (
+        <CierreBloqueado motivo="sin-conexion" titulo="Sin conexión" queEs="turno" onClose={resetYCerrar} />
+      ) : paso === 1 ? (
         <>
           <SheetHeader title="Cerrar turno" description="Paso 1 de 2 · Corte" onClose={resetYCerrar} />
           <div className="flex flex-col gap-4">

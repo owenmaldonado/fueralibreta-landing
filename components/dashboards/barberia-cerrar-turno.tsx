@@ -10,6 +10,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { supabase } from "@/lib/supabase";
 import { cleanInsert } from "@/lib/data";
+import { useOnlineStatus } from "@/lib/use-online-status";
+import { CierreBloqueado } from "./cierre-bloqueado";
 import { formatMoney, formatMoneyExacto, fechaCalendarioLocal, mensajeDiferencia, mensajeEsperado, redondear2, uid } from "@/lib/mock";
 import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
@@ -81,6 +83,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
   const [resumen, setResumen] = React.useState<Resumen | null>(null);
   const [guardando, setGuardando] = React.useState(false);
   const [yaFueCerrado, setYaFueCerrado] = React.useState(false);
+  const online = useOnlineStatus();
 
   const data = session.barberia!;
   const negocio = session.business;
@@ -88,6 +91,9 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
   // "Hoy" del negocio (zona configurada), no del dispositivo — ver
   // comentario en barberia-dashboard.tsx.
   const hoy = hoyEnZona(negocio.timezone);
+  // El modo demo no escribe nada a Supabase, así que ahí el cierre sí puede
+  // correr sin señal (mismo criterio que el guardia de update()).
+  const sinConexion = !online && esNegocioReal;
 
   // Verificar si ya fue cerrado hoy. El builder de supabase-js es un
   // PromiseLike (solo .then), no una Promise — encadenarle .catch() no
@@ -297,23 +303,10 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && resetYCerrar()}>
-      {yaFueCerrado ? (
-        <>
-          <SheetHeader title="Turno cerrado" description="Hoy ya fue cerrado" onClose={resetYCerrar} />
-          <div className="flex flex-col gap-4">
-            <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-4">
-              <p className="text-center text-sm font-medium text-destructive">✓ El turno de hoy ya fue cerrado.</p>
-              <p className="mt-2 text-center text-xs text-muted-foreground">
-                No se puede cerrar turno 2 veces el mismo día. Mañana podrás cerrar un nuevo turno.
-              </p>
-            </div>
-          </div>
-          <SheetFooter>
-            <Button size="lg" variant="outline" onClick={resetYCerrar}>
-              Entendido
-            </Button>
-          </SheetFooter>
-        </>
+      {sinConexion ? (
+        <CierreBloqueado motivo="sin-conexion" titulo="Sin conexión" queEs="turno" onClose={resetYCerrar} />
+      ) : yaFueCerrado ? (
+        <CierreBloqueado motivo="ya-cerrado" titulo="Turno cerrado" queEs="turno" onClose={resetYCerrar} />
       ) : paso === 1 ? (
         <>
           <SheetHeader title="Cerrar turno" description="Paso 1 de 2 · Corte" onClose={resetYCerrar} />
