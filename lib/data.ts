@@ -331,6 +331,7 @@ export const cajaFromRow = (r: Row): CajaEntry => ({
   monto: Number(r.monto),
   metodo: r.metodo as CajaEntry["metodo"],
   fecha: r.fecha as string,
+  costo: r.costo == null ? undefined : Number(r.costo),
   empleadoId: (r.empleado_id as string) ?? undefined,
   empleadoNombreCache: (r.empleado_nombre_cache as string) ?? undefined,
   empleadoRolCache: (r.empleado_rol_cache as CajaEntry["empleadoRolCache"]) ?? undefined,
@@ -343,6 +344,7 @@ const cajaToRow = (c: CajaEntry, negocioId: string): Row => ({
   monto: c.monto,
   metodo: c.metodo,
   fecha: c.fecha,
+  costo: c.costo ?? null,
   empleado_id: c.empleadoId ?? null,
   empleado_nombre_cache: c.empleadoNombreCache ?? null,
   empleado_rol_cache: c.empleadoRolCache ?? null,
@@ -386,6 +388,8 @@ const productoBarberiaFromRow = (r: Row): InventoryProduct => ({
   stock: r.stock as number,
   minimo: r.minimo as number,
   eliminarEnCero: (r.eliminar_en_cero as boolean) ?? false,
+  precio: r.precio == null ? undefined : Number(r.precio),
+  costo: r.costo == null ? undefined : Number(r.costo),
 });
 const productoBarberiaToRow = (p: InventoryProduct, negocioId: string): Row => ({
   id: p.id,
@@ -394,6 +398,8 @@ const productoBarberiaToRow = (p: InventoryProduct, negocioId: string): Row => (
   stock: p.stock,
   minimo: p.minimo,
   eliminar_en_cero: p.eliminarEnCero ?? false,
+  precio: p.precio ?? null,
+  costo: p.costo ?? null,
 });
 
 async function fetchBarberiaData(negocioId: string): Promise<BarberiaData> {

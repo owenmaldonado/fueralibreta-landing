@@ -15,7 +15,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import type { FabAction } from "@/components/app-shell/fab";
 import { usePlan } from "@/lib/planes";
-import { uid, todayISO, formatHora12, normalizarTelefono } from "@/lib/mock";
+import { uid, todayISO, formatHora12, formatMoney, normalizarTelefono } from "@/lib/mock";
 import { getDaySlots, getAvailableSlotsForDuracion } from "@/lib/agenda";
 import { cn } from "@/lib/utils";
 import { camposEmpleado } from "@/lib/empleados";
@@ -589,6 +589,7 @@ function ConsumoForm({
   const [motivo, setMotivo] = React.useState<(typeof MOTIVOS)[number]>("Vendido");
   const [cantidades, setCantidades] = React.useState<Record<string, number>>({});
   const [confirmando, setConfirmando] = React.useState(false);
+  const [metodo, setMetodo] = React.useState<CajaEntry["metodo"]>("efectivo");
 
   function toggleSeleccion(id: string, checked: boolean) {
     setSeleccionados((prev) => {
@@ -610,22 +611,72 @@ function ConsumoForm({
 
   const puedeDescontar = seleccionados.size > 0;
 
+  // "Vendido" ya no es solo una nota mental: cobra de verdad. Se suma el
+  // precio de cada producto seleccionado (los que tienen precio — un
+  // producto de uso interno no aporta) y se guarda un CajaEntry de venta
+  // con el COSTO de esa mercancía adjunto, para que Caja pueda mostrar la
+  // ganancia real y no solo el ingreso bruto. Los demás motivos (merma,
+  // uso en servicio) siguen siendo puro ajuste de inventario.
+  const esVenta = motivo === "Vendido";
+  const vendidos = data.productos.filter((p) => seleccionados.has(p.id));
+  const totalVenta = vendidos.reduce((acc, p) => acc + (p.precio ?? 0) * cantidadDe(p.id), 0);
+  const costoVenta = vendidos.reduce((acc, p) => acc + (p.costo ?? 0) * cantidadDe(p.id), 0);
+  const cobrable = esVenta && totalVenta > 0;
+  const sinPrecio = esVenta && vendidos.filter((p) => p.precio == null);
+
   function descontar() {
     if (!puedeDescontar) return;
-    update((prev) => {
-      const b = prev.barberia!;
-      const productos = b.productos.reduce<InventoryProduct[]>((acc, p) => {
-        if (!seleccionados.has(p.id)) {
-          acc.push(p);
+    const entryId = uid("caja");
+    let entryCreada: CajaEntry | null = null;
+    let negocioId = "";
+    update(
+      (prev) => {
+        const b = prev.barberia!;
+        const productos = b.productos.reduce<InventoryProduct[]>((acc, p) => {
+          if (!seleccionados.has(p.id)) {
+            acc.push(p);
+            return acc;
+          }
+          const nuevoStock = stockResultante(p);
+          if (nuevoStock === 0 && p.eliminarEnCero) return acc; // se omite = se elimina
+          acc.push({ ...p, stock: nuevoStock });
           return acc;
-        }
-        const nuevoStock = stockResultante(p);
-        if (nuevoStock === 0 && p.eliminarEnCero) return acc; // se omite = se elimina
-        acc.push({ ...p, stock: nuevoStock });
-        return acc;
-      }, []);
-      return { ...prev, barberia: { ...b, productos } };
-    });
+        }, []);
+        negocioId = prev.business.id;
+        if (!cobrable) return { ...prev, barberia: { ...b, productos } };
+
+        const detalle = vendidos
+          .filter((p) => p.precio != null)
+          .map((p) => `${p.nombre} x${cantidadDe(p.id)}`)
+          .join(", ");
+        const entry: CajaEntry = {
+          id: entryId,
+          tipo: "venta",
+          concepto: detalle.length <= 60 ? detalle : "Venta de productos",
+          monto: totalVenta,
+          metodo,
+          fecha: new Date().toISOString(),
+          // Snapshot: editar el costo del producto después ya no reescribe
+          // la ganancia de esta venta.
+          costo: costoVenta > 0 ? costoVenta : undefined,
+          ...camposEmpleado(),
+        };
+        entryCreada = entry;
+        return { ...prev, barberia: { ...b, productos, caja: [entry, ...b.caja] } };
+      },
+      // Vender producto es vender. Ajustar inventario por merma/uso interno
+      // sigue bloqueado sin señal, como cualquier otra administración.
+      cobrable ? { ventaOffline: true } : undefined
+    );
+    if (cobrable && entryCreada && typeof navigator !== "undefined" && !navigator.onLine) {
+      encolarVentaPendiente({
+        id: entryId,
+        negocioId,
+        tipo: "barberia_caja",
+        payload: entryCreada,
+        ...camposEmpleado(),
+      }).catch((err) => console.error("No se pudo encolar la venta pendiente:", err));
+    }
     setConfirmando(false);
     onClose();
   }
@@ -645,6 +696,37 @@ function ConsumoForm({
           </ChipGroup>
         </div>
 
+        {esVenta && seleccionados.size > 0 && (
+          <>
+            <div className="rounded-xl border border-ledger/30 bg-ledger/10 p-3 text-center">
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Se cobra</p>
+              <p className="font-display text-2xl font-bold text-ledger">{formatMoney(totalVenta)}</p>
+              {costoVenta > 0 && (
+                <p className="mt-0.5 text-xs text-muted-foreground">Ganas {formatMoney(totalVenta - costoVenta)}</p>
+              )}
+            </div>
+            {sinPrecio && sinPrecio.length > 0 && (
+              <p className="px-1 text-xs text-muted-foreground">
+                {sinPrecio.map((p) => p.nombre).join(", ")} no {sinPrecio.length === 1 ? "tiene" : "tienen"} precio de venta — solo se
+                descuenta{sinPrecio.length === 1 ? "" : "n"} del inventario. Ponle precio en Productos para cobrarlo.
+              </p>
+            )}
+            {cobrable && (
+              <div className="space-y-1.5">
+                <Label>¿Cómo pagó?</Label>
+                <ChipGroup>
+                  <Chip selected={metodo === "efectivo"} onClick={() => setMetodo("efectivo")}>
+                    Efectivo
+                  </Chip>
+                  <Chip selected={metodo === "transferencia"} onClick={() => setMetodo("transferencia")}>
+                    Transferencia
+                  </Chip>
+                </ChipGroup>
+              </div>
+            )}
+          </>
+        )}
+
         <div className="space-y-1.5">
           <Label>Productos · {seleccionados.size} seleccionado{seleccionados.size === 1 ? "" : "s"}</Label>
           <div className="flex flex-col gap-1.5">
@@ -663,7 +745,12 @@ function ConsumoForm({
                   <label className="flex min-w-0 flex-1 items-center gap-3">
                     <Checkbox checked={marcado} onCheckedChange={(v) => toggleSeleccion(p.id, v)} />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{p.nombre}</p>
+                      <p className="truncate text-sm font-medium">
+                        {p.nombre}
+                        {esVenta && p.precio != null && (
+                          <span className="ml-1.5 font-mono text-xs font-normal text-ledger">{formatMoney(p.precio)}</span>
+                        )}
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         Stock actual: {p.stock}
                         {marcado && (
@@ -693,15 +780,19 @@ function ConsumoForm({
       </div>
       <SheetFooter>
         <Button size="lg" disabled={!puedeDescontar} onClick={() => setConfirmando(true)}>
-          Descontar {seleccionados.size} producto{seleccionados.size === 1 ? "" : "s"}
+          {cobrable ? `Cobrar ${formatMoney(totalVenta)}` : `Descontar ${seleccionados.size} producto${seleccionados.size === 1 ? "" : "s"}`}
         </Button>
       </SheetFooter>
 
       <ConfirmDialog
         open={confirmando}
-        title="Descontar productos"
-        description={`¿Seguro? Se descontará de ${seleccionados.size} producto${seleccionados.size === 1 ? "" : "s"} (${motivo.toLowerCase()}).`}
-        confirmLabel="Descontar"
+        title={cobrable ? "Cobrar productos" : "Descontar productos"}
+        description={
+          cobrable
+            ? `Se cobra ${formatMoney(totalVenta)} en ${metodo} y se descuenta del inventario.`
+            : `¿Seguro? Se descontará de ${seleccionados.size} producto${seleccionados.size === 1 ? "" : "s"} (${motivo.toLowerCase()}).`
+        }
+        confirmLabel={cobrable ? "Cobrar" : "Descontar"}
         tone="ledger"
         onClose={() => setConfirmando(false)}
         onConfirm={descontar}

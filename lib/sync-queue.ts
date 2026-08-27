@@ -193,6 +193,7 @@ async function subirBarberiaCaja(negocioId: string, fila: VentaPendienteRow): Pr
     monto: entry.monto,
     metodo: entry.metodo,
     fecha: entry.fecha,
+    costo: entry.costo ?? null,
     empleado_id: empleadoId,
     empleado_nombre_cache: empleadoNombreCache,
   });

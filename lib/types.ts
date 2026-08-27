@@ -154,6 +154,8 @@ export interface CajaEntry {
   monto: number;
   metodo: "efectivo" | "transferencia";
   fecha: string; // ISO datetime
+  /** Costo de la mercancía vendida en este movimiento — snapshot al momento de la venta, para que editar el costo del producto después no reescriba la ganancia histórica. Solo en ventas de producto; un corte (servicio) no tiene costo de mercancía. */
+  costo?: number;
   empleadoId?: string;
   empleadoNombreCache?: string;
   empleadoRolCache?: RolEmpleado;
@@ -164,6 +166,10 @@ export interface InventoryProduct {
   nombre: string;
   stock: number;
   minimo: number;
+  /** A cuánto se vende al cliente. Ausente = producto de uso interno (navajas, toallas): no aparece para vender, solo para consumir. */
+  precio?: number;
+  /** A cuánto se compró. Ausente = no se sabe, así que esa venta no aporta margen conocido (mismo criterio que Dish.costo en Fondita). */
+  costo?: number;
   /** Si al descontar stock (Consumir / Eliminar del inventario) llega a 0, elimina el producto en vez de dejarlo en stock 0. Se configura por producto (Nuevo/editar producto), OFF por defecto. */
   eliminarEnCero: boolean;
 }

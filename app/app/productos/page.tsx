@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetHeader, SheetFooter } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useSession } from "@/lib/session";
-import { uid } from "@/lib/mock";
+import { uid, formatMoney } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 import type { InventoryProduct } from "@/lib/types";
 
@@ -262,31 +262,45 @@ function ProductoForm({
   const [stock, setStock] = React.useState(String(producto?.stock ?? 1));
   const [minimo, setMinimo] = React.useState(String(producto?.minimo ?? 3));
   const [eliminarEnCero, setEliminarEnCero] = React.useState(producto?.eliminarEnCero ?? false);
+  const [precio, setPrecio] = React.useState(producto?.precio != null ? String(producto.precio) : "");
+  const [costo, setCosto] = React.useState(producto?.costo != null ? String(producto.costo) : "");
 
   const puedeGuardar = nombre.trim().length > 1;
 
+  // Vacío = "no aplica", no cero: un producto de uso interno (toallas,
+  // navajas) sin precio no debe aparecer para vender, y uno sin costo no
+  // debe reportar 100% de margen — se distingue con undefined, no con 0.
+  function aNumeroOpcional(v: string): number | undefined {
+    const t = v.trim();
+    if (t === "") return undefined;
+    const n = Number(t);
+    return isNaN(n) || n < 0 ? undefined : n;
+  }
+
   function guardar() {
     if (!puedeGuardar) return;
+    const campos = {
+      nombre: nombre.trim(),
+      stock: Number(stock) || 0,
+      minimo: Number(minimo) || 0,
+      eliminarEnCero,
+      precio: aNumeroOpcional(precio),
+      costo: aNumeroOpcional(costo),
+    };
     update((prev) => {
       const b = prev.barberia!;
       if (producto) {
         return {
           ...prev,
-          barberia: {
-            ...b,
-            productos: b.productos.map((p) =>
-              p.id === producto.id
-                ? { ...p, nombre: nombre.trim(), stock: Number(stock) || 0, minimo: Number(minimo) || 0, eliminarEnCero }
-                : p
-            ),
-          },
+          barberia: { ...b, productos: b.productos.map((p) => (p.id === producto.id ? { ...p, ...campos } : p)) },
         };
       }
-      const nuevo = { id: uid("prod"), nombre: nombre.trim(), stock: Number(stock) || 0, minimo: Number(minimo) || 0, eliminarEnCero };
-      return { ...prev, barberia: { ...b, productos: [nuevo, ...b.productos] } };
+      return { ...prev, barberia: { ...b, productos: [{ id: uid("prod"), ...campos }, ...b.productos] } };
     });
     onClose();
   }
+
+  const margen = aNumeroOpcional(precio) != null && aNumeroOpcional(costo) != null ? aNumeroOpcional(precio)! - aNumeroOpcional(costo)! : null;
 
   return (
     <>
@@ -306,6 +320,25 @@ function ProductoForm({
             <Input type="number" inputMode="numeric" value={minimo} onChange={(e) => setMinimo(e.target.value)} />
           </div>
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Me cuesta</Label>
+            <Input type="number" inputMode="decimal" value={costo} onChange={(e) => setCosto(e.target.value)} placeholder="$0" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Lo vendo en</Label>
+            <Input type="number" inputMode="decimal" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="$0" />
+          </div>
+        </div>
+        <p className="-mt-2 px-1 text-xs text-muted-foreground">
+          {margen != null ? (
+            <>
+              Ganas <span className="font-medium text-ledger">{formatMoney(margen)}</span> por cada uno que vendas.
+            </>
+          ) : (
+            "Déjalos vacíos si es de uso interno (toallas, navajas) y no lo vendes."
+          )}
+        </p>
         <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
           <div>
             <p className="text-sm font-medium">Auto-eliminar cuando llegue a 0</p>

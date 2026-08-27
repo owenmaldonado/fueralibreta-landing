@@ -115,7 +115,14 @@ export default function CajaPage() {
   const propinas = cajaFiltrada.filter((e) => e.tipo === "propina").reduce((acc, e) => acc + e.monto, 0);
   const ingresos = ventas + propinas + totalCortes;
   const gastos = cajaFiltrada.filter((e) => e.tipo === "gasto").reduce((acc, e) => acc + e.monto, 0);
-  const gananciaNeta = ingresos - gastos;
+  // Lo que costó la mercancía vendida (gel, cera...) — snapshot guardado en
+  // cada venta de producto, ver CajaEntry.costo. Sin restarlo, vender un
+  // producto de $200 que costó $180 se veía como $200 de ganancia. Un corte
+  // (servicio) no trae costo y sigue aportando margen completo, igual que
+  // antes; las ventas de antes de este campo tampoco traen costo, así que
+  // el histórico no cambia.
+  const costoMercancia = cajaFiltrada.filter((e) => e.tipo === "venta").reduce((acc, e) => acc + (e.costo ?? 0), 0);
+  const gananciaNeta = ingresos - gastos - costoMercancia;
   const efectivo =
     cajaFiltrada.filter((e) => e.tipo !== "gasto" && e.metodo === "efectivo").reduce((acc, e) => acc + e.monto, 0) +
     cortes.filter((c) => (c.metodo ?? "efectivo") === "efectivo").reduce((acc, c) => acc + c.precio, 0);
