@@ -9,7 +9,7 @@ import {
   type VentaPendienteRow,
 } from "./offline-sales-queue";
 import { actualizarStockLocal } from "./local-cache";
-import type { GrocerySale, CajaEntry, FondaOrder } from "./types";
+import type { GrocerySale, CajaEntry, FondaOrder, Appointment } from "./types";
 
 /**
  * Parte 4 de PWA — sube la cola de ventas pendientes (lib/offline-sales-queue.ts)
@@ -251,6 +251,50 @@ async function subirBarberiaCobroCita(negocioId: string, fila: VentaPendienteRow
   return { ok: true };
 }
 
+/**
+ * Venta rápida de barbería: una cita NUEVA que ya nació cobrada ("listo",
+ * sin cliente). Es un upsert de la fila completa — no el UPDATE ciego de
+ * subirBarberiaCobroCita, porque aquí la cita no existía en Postgres, la
+ * creó este dispositivo estando sin señal.
+ */
+async function subirBarberiaVentaRapida(negocioId: string, fila: VentaPendienteRow): Promise<ResultadoItem> {
+  const cita = fila.payload as Appointment;
+  let empleadoId = cita.empleadoId ?? null;
+  let empleadoNombreCache = cita.empleadoNombreCache ?? null;
+
+  const filaCita = () => ({
+    id: cita.id,
+    negocio_id: negocioId,
+    // Una venta rápida no tiene cliente: cliente_id es FK a
+    // barberia_clientes, así que "" tiene que viajar como null.
+    cliente_id: cita.clienteId || null,
+    cliente_nombre: cita.clienteNombre,
+    cliente_telefono: cita.clienteTelefono ?? "",
+    servicio_id: cita.servicioId || null,
+    servicio_nombre: cita.servicioNombre,
+    precio: cita.precio,
+    fecha: cita.fecha,
+    hora: cita.hora,
+    estado: cita.estado,
+    metodo: cita.metodo ?? null,
+    empleado_id: empleadoId,
+    empleado_nombre_cache: empleadoNombreCache,
+  });
+
+  let { error } = await supabase.from("barberia_citas").upsert(filaCita(), { onConflict: "id" });
+  if (error && esErrorDeEmpleadoBorrado(error)) {
+    empleadoId = null;
+    empleadoNombreCache = notaEmpleadoBorrado(empleadoNombreCache);
+    ({ error } = await supabase.from("barberia_citas").upsert(filaCita(), { onConflict: "id" }));
+  }
+  if (error) {
+    if (esErrorDeRed(error)) return { ok: false, redCaida: true };
+    await marcarVentaComoError(negocioId, fila.id, mensajeDeError(error));
+    return { ok: false };
+  }
+  return { ok: true };
+}
+
 async function subirFondaPedido(negocioId: string, fila: VentaPendienteRow): Promise<ResultadoItem> {
   const pedido = fila.payload as FondaOrder;
   let empleadoId = pedido.empleadoId ?? null;
@@ -310,6 +354,8 @@ async function subirUna(negocioId: string, fila: VentaPendienteRow): Promise<Res
       return subirBarberiaCaja(negocioId, fila);
     case "barberia_cobro_cita":
       return subirBarberiaCobroCita(negocioId, fila);
+    case "barberia_venta_rapida":
+      return subirBarberiaVentaRapida(negocioId, fila);
     case "fonda_pedido":
       return subirFondaPedido(negocioId, fila);
   }

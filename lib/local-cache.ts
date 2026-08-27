@@ -49,7 +49,17 @@ interface MetaRow {
  *   el historial). Filas de la Parte 3 (de antes de este campo) no tienen
  *   `estado` guardado — se tratan como "pendiente" al leerlas.
  */
-export type TipoVentaPendiente = "abarrotes_venta" | "barberia_caja" | "barberia_cobro_cita" | "fonda_pedido";
+/**
+ * barberia_venta_rapida es una cita NUEVA ya cobrada (walk-in sin cliente,
+ * ver VentaRapidaSheet) — a diferencia de barberia_cobro_cita, que hace
+ * UPDATE de una cita que ya existía, esta hace upsert de la fila completa.
+ */
+export type TipoVentaPendiente =
+  | "abarrotes_venta"
+  | "barberia_caja"
+  | "barberia_cobro_cita"
+  | "barberia_venta_rapida"
+  | "fonda_pedido";
 export type EstadoVentaPendiente = "pendiente" | "error";
 
 export interface VentaPendienteRow {

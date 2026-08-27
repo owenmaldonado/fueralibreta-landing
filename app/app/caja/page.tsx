@@ -23,6 +23,8 @@ import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { insertCajaEntryDirecto, updateCajaEntryDirecto, deleteCajaEntryDirecto } from "@/lib/data";
 import { formatMoney, uid } from "@/lib/mock";
+import { hoyEnZona } from "@/lib/fecha";
+import { VentaRapidaSheet, VentaRapidaBoton } from "@/components/dashboards/barberia-venta-rapida";
 import { aggregateTwoByRange, type RangoTiempo } from "@/lib/chart-buckets";
 import { camposEmpleado, permisosActuales, ROL_LABEL } from "@/lib/empleados";
 import { usePendingSalesQueue, encolarVentaPendiente } from "@/lib/offline-sales-queue";
@@ -45,6 +47,7 @@ export default function CajaPage() {
   const { session, ready, update } = useSession();
   const plan = usePlan();
   const [addOpen, setAddOpen] = React.useState(false);
+  const [ventaRapidaOpen, setVentaRapidaOpen] = React.useState(false);
   const [editando, setEditando] = React.useState<CajaEntry | null>(null);
   const [borrando, setBorrando] = React.useState<CajaEntry | null>(null);
   const [rango, setRango] = React.useState<RangoTiempo>("semanal");
@@ -228,7 +231,12 @@ export default function CajaPage() {
           </ChipGroup>
         </div>
       )}
-      <div className="grid grid-cols-3 gap-2 px-4">
+      {/* Mismo botón que en Hoy: Caja es la pantalla de dinero, es el otro
+          lugar donde el barbero busca cobrar un walk-in. */}
+      <div className="px-4 pt-3">
+        <VentaRapidaBoton onClick={() => setVentaRapidaOpen(true)} />
+      </div>
+      <div className="grid grid-cols-3 gap-2 px-4 pt-3">
         <StatTile label="Ingresos" value={formatMoney(ingresos)} />
         <StatTile label="Gastos" value={formatMoney(gastos)} />
         <StatTile label="Ganancia neta" value={formatMoney(gananciaNeta)} />
@@ -344,6 +352,14 @@ export default function CajaPage() {
       <Sheet open={addOpen} onOpenChange={setAddOpen}>
         <CajaForm negocioId={session.business.id} onClose={() => setAddOpen(false)} update={update} />
       </Sheet>
+
+      <VentaRapidaSheet
+        open={ventaRapidaOpen}
+        onClose={() => setVentaRapidaOpen(false)}
+        session={session}
+        update={update}
+        hoy={hoyEnZona(session.business.timezone)}
+      />
 
       <Sheet open={!!editando} onOpenChange={(o) => !o && setEditando(null)}>
         {editando && <CajaForm negocioId={session.business.id} entry={editando} onClose={() => setEditando(null)} update={update} />}

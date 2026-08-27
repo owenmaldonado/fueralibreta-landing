@@ -9,6 +9,7 @@ import { EmptyState } from "./empty-state";
 import { CobrarCitaDialog } from "./cobrar-cita-dialog";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { WhatsappRecordatorioButton } from "./whatsapp-recordatorio-button";
+import { VentaRapidaSheet, VentaRapidaBoton } from "./barberia-venta-rapida";
 import { daysSince, formatHora12, formatMoney, statsVisitasCliente, waLink } from "@/lib/mock";
 import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
@@ -28,6 +29,7 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
   const hoy = hoyEnZona(business.timezone);
   const plan = usePlan();
   const [cobrando, setCobrando] = React.useState<Appointment | null>(null);
+  const [ventaRapida, setVentaRapida] = React.useState(false);
   const [ignorados, setIgnorados] = React.useState<Set<string>>(() => avisosIgnoradosHoy(business.id));
 
   function ignorar(id: string) {
@@ -105,6 +107,10 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
     <>
       <PageHeader title={`Hola, ${business.dueno.split(" ")[0]}`} subtitle="Esto necesita tu atención hoy" />
       <div className="grid gap-4 p-4">
+        {/* Arriba de todo: sin señal es la ÚNICA forma de cobrar un walk-in
+            (agendar una cita nueva sigue bloqueado a propósito, para no
+            chocar con una reserva hecha por internet en ese mismo rato). */}
+        <VentaRapidaBoton onClick={() => setVentaRapida(true)} />
         {citasHoy.length > 0 && (
           <ActionCard
             level="red"
@@ -184,6 +190,13 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
       </div>
 
       <CobrarCitaDialog cita={cobrando} onClose={() => setCobrando(null)} onConfirmar={marcarListoConMetodo} />
+      <VentaRapidaSheet
+        open={ventaRapida}
+        onClose={() => setVentaRapida(false)}
+        session={session}
+        update={update}
+        hoy={hoy}
+      />
     </>
   );
 }
