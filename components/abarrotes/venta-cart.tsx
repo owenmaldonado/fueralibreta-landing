@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { ArrowLeft, X, ScanLine, Plus, Minus, Trash2, Zap, ShoppingCart } from "lucide-react";
@@ -216,15 +215,26 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
 
   const total = redondear2(cart.reduce((acc, l) => acc + redondear2(l.cantidad * l.precioUnitario), 0));
   const cantidadTotal = cart.reduce((acc, l) => acc + l.cantidad, 0);
-  const ventasEsteMes = React.useMemo(() => {
-    const ahora = new Date();
-    return data.ventas.filter((v) => {
-      const f = new Date(v.fecha);
-      return f.getFullYear() === ahora.getFullYear() && f.getMonth() === ahora.getMonth();
-    }).length;
-  }, [data.ventas]);
-  const tocoLimiteVentas = plan.limiteAlcanzado("max_ventas_mes", ventasEsteMes);
-  const puedeCobrar = cart.length > 0 && cart.every((l) => l.cantidad > 0) && !tocoLimiteVentas;
+  // Aquí había un tope de ventas por mes (plan.limiteAlcanzado(
+  // "max_ventas_mes", ...), 100 en Básico) que DESHABILITABA el botón de
+  // Cobrar. Se quita porque bloqueaba a clientes que pagan:
+  //
+  // - Una tiendita hace 50-200 ventas AL DÍA. El tope de 100 al mes se
+  //   agota en los primeros dos días y de ahí al día 30 el negocio no
+  //   podía cobrar NADA. No es un límite apretado, es la caja apagada.
+  // - Ese número venía de PLANES (la tabla genérica y plana), no de
+  //   LIMITES_ABARROTES, que es la que manda para este giro desde que los
+  //   límites se separaron por giro — y ahí no existe ningún tope de
+  //   ventas.
+  // - Tampoco estaba anunciado: BENEFICIOS_POR_GIRO.abarrotes.basico dice
+  //   "Hasta 200 productos / 1 cuenta / Gráfica semanal" y nada más. Se le
+  //   cobraba a alguien un plan y luego se le apagaba la caja por un
+  //   límite que nunca se le dijo.
+  //
+  // Barbería (maxCitas) y Fonda (maxPedidos) SÍ conservan su tope mensual:
+  // esos viven en la tabla por giro, están anunciados en los beneficios y
+  // 100 citas o 100 pedidos al mes sí es un volumen razonable para el giro.
+  const puedeCobrar = cart.length > 0 && cart.every((l) => l.cantidad > 0);
 
   function cobrar() {
     if (!puedeCobrar) return;
@@ -446,16 +456,6 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
           </div>
 
           <div className="border-t border-border p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-            {tocoLimiteVentas && (
-              <div className="mb-3 rounded-xl border border-dashed border-border bg-card px-4 py-3 text-center">
-                <p className="text-sm font-medium">
-                  Llegaste al límite de {plan.limites.max_ventas_mes} ventas este mes de tu plan {plan.label}
-                </p>
-                <Link href="/planes" className="mt-0.5 inline-block text-xs text-primary hover:underline">
-                  Sube de plan para vender sin límite
-                </Link>
-              </div>
-            )}
             <div className="mb-3 flex items-center justify-between rounded-lg bg-secondary px-4 py-3">
               <span className="text-sm font-medium text-muted-foreground">Total</span>
               <span className="font-display text-xl font-bold">{formatMoney(total)}</span>
