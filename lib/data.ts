@@ -53,8 +53,12 @@ export function businessFromRow(row: Row): Business {
     whatsapp: (row.whatsapp as string) ?? undefined,
     direccion: (row.direccion as string) ?? undefined,
     is_active: row.is_active as boolean,
-    trial_fin: row.trial_fin as string,
-    created_at: row.created_at as string,
+    // La ficha pública por slug (fetchNegocioBySlug, más abajo) no devuelve
+    // estas dos: son datos de la CUENTA, no de la vitrina, y a quien va a
+    // agendar un corte no le importan. El `?? ""` es para esa fila
+    // recortada — un negocio cargado con sesión propia sí las trae.
+    trial_fin: (row.trial_fin as string) ?? "",
+    created_at: (row.created_at as string) ?? "",
     demo: (row.demo as boolean) ?? false,
     appSlug: (row.app_slug as string) ?? "fuera-libreta",
     plan: normalizarPlan(row.plan as string | null | undefined),
@@ -111,11 +115,27 @@ export async function fetchNegocioByOwner(ownerId: string): Promise<Business | n
   return data && data.length > 0 ? businessFromRow(data[0]) : null;
 }
 
-/** Solo negocios activos (RLS público también lo exige). Usado por /b/[slug]. */
+/**
+ * Ficha pública de UN negocio por slug — la que usa /b/[slug] (página de
+ * reservas), sin sesión.
+ *
+ * Va por RPC y no por `.from("negocios")` a propósito. Leer la tabla directo
+ * exigía una policy de "cualquiera puede ver los negocios activos", y con la
+ * anon key (que viaja en el bundle, es pública por diseño) eso permitía
+ * bajarse la lista COMPLETA de clientes con sus teléfonos, su plan y lo que
+ * paga cada uno en una sola petición. La función recibe el slug y devuelve
+ * solo campos de vitrina, así que no se puede enumerar ni sacar nada de
+ * negocio — ver la migración 20260913000001.
+ *
+ * Los campos que la función no devuelve (plan, trial_fin, etc.) no le hacen
+ * falta a esta pantalla; se rellenan con valores neutros para cumplir el
+ * tipo Business.
+ */
 export async function fetchNegocioBySlug(slug: string): Promise<Business | null> {
-  const { data, error } = await supabase.from("negocios").select("*").eq("slug", slug).eq("is_active", true).maybeSingle();
+  const { data, error } = await supabase.rpc("negocio_publico_por_slug", { p_slug: slug });
   if (error) throw error;
-  return data ? businessFromRow(data) : null;
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? businessFromRow(row as Row) : null;
 }
 
 /**

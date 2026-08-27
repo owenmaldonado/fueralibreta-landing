@@ -50,12 +50,13 @@ export async function POST(req: Request) {
 
   const supabase = createSupabasePublicClient();
 
-  const { data: negocio, error: negocioError } = await supabase
-    .from("negocios")
-    .select("id, tipo, timezone")
-    .eq("slug", input.slug)
-    .eq("is_active", true)
-    .maybeSingle();
+  // RPC en vez de .from("negocios"): la policy de SELECT de esa tabla ya no
+  // es pública (ver migración 20260913000001 — permitía bajarse la lista
+  // completa de clientes con la anon key). La función recibe el slug y solo
+  // devuelve campos de vitrina de negocios activos, incluidos los tres que
+  // hacían falta aquí: id, tipo y timezone.
+  const { data: negocios, error: negocioError } = await supabase.rpc("negocio_publico_por_slug", { p_slug: input.slug });
+  const negocio = Array.isArray(negocios) ? negocios[0] : negocios;
 
   if (negocioError) {
     console.error("[citas] no se pudo resolver el negocio por slug:", input.slug, negocioError);
