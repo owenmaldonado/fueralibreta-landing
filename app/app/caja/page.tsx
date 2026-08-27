@@ -63,8 +63,20 @@ export default function CajaPage() {
   }, []);
 
   const { rows: ventasPendientesRows } = usePendingSalesQueue(session?.business.id);
+  // Los tres tipos de venta de barbería que pueden quedar en la cola. Antes
+  // solo se miraba barberia_caja, así que un cobro de cita o una venta
+  // rápida rechazados por el servidor salían en el badge del header como
+  // "por revisar" pero no tenían NINGUNA pantalla donde reintentarlos o
+  // descartarlos — quedaban ahí para siempre. La cola usa el id de la cita
+  // como id de la fila, que es el mismo id con el que se pinta el corte en
+  // esta lista.
   const movimientosPendientesPorId = React.useMemo(
-    () => new Map(ventasPendientesRows.filter((r) => r.tipo === "barberia_caja").map((r) => [r.id, r] as const)),
+    () =>
+      new Map(
+        ventasPendientesRows
+          .filter((r) => r.tipo === "barberia_caja" || r.tipo === "barberia_cobro_cita" || r.tipo === "barberia_venta_rapida")
+          .map((r) => [r.id, r] as const)
+      ),
     [ventasPendientesRows]
   );
 
@@ -314,7 +326,7 @@ export default function CajaPage() {
                     <CreditCard className="hidden h-3 w-3" />
                     · {m.metodo === "efectivo" ? "Efectivo" : "Transferencia"}
                   </p>
-                  {!esCorte && <PendingSaleStatus negocioId={session.business.id} fila={movimientosPendientesPorId.get(m.id)} />}
+                  <PendingSaleStatus negocioId={session.business.id} fila={movimientosPendientesPorId.get(m.id)} />
                   <div className="mt-1">
                     <EmpleadoBadge nombre={m.empleadoNombreCache} rol={m.empleadoRolCache} />
                   </div>
@@ -411,7 +423,18 @@ function CajaForm({
 
   async function guardar() {
     if (!puedeGuardar) return;
-    const datos = { tipo, concepto: concepto.trim(), monto: Number(monto), metodo, fecha };
+    // El <input type="datetime-local"> entrega "2026-08-27T00:30", una hora
+    // SIN zona. Guardada tal cual en barberia_caja.fecha (timestamptz),
+    // Postgres la interpretaba como UTC: un movimiento de las 00:30 en
+    // México se guardaba como 00:30Z y al releerlo con fechaCalendarioLocal
+    // caía a las 18:30 del DÍA ANTERIOR. new Date() la lee en la zona del
+    // navegador — la misma que usó toDatetimeLocal para pintarla — así que
+    // el viaje de ida y vuelta queda parejo. El otro CajaForm (el del FAB,
+    // components/quick-add/barberia-quick-add.tsx) ya guardaba ISO con Z;
+    // esta pantalla era la única que no.
+    const instante = new Date(fecha);
+    const fechaISO = isNaN(instante.getTime()) ? new Date().toISOString() : instante.toISOString();
+    const datos = { tipo, concepto: concepto.trim(), monto: Number(monto), metodo, fecha: fechaISO };
 
     // Un gasto es dinero real: se espera la confirmación de Supabase antes
     // de tocar el estado local — venta/propina siguen el flujo optimista

@@ -359,6 +359,17 @@ async function subirUna(negocioId: string, fila: VentaPendienteRow): Promise<Res
       return subirBarberiaVentaRapida(negocioId, fila);
     case "fonda_pedido":
       return subirFondaPedido(negocioId, fila);
+    default: {
+      // Una fila con un tipo que esta versión no conoce (cola escrita por
+      // una versión más nueva de la app en el mismo dispositivo, o dato
+      // corrupto). Antes caía aquí devolviendo undefined y el `resultado.
+      // redCaida` de abajo tronaba con TypeError: reventaba el ciclo
+      // ENTERO, así que esa fila dejaba atorada la cola completa y ninguna
+      // otra venta volvía a subir. Se marca para revisión y se sigue.
+      const tipo = (fila as VentaPendienteRow).tipo;
+      await marcarVentaComoError(negocioId, fila.id, `Tipo de venta no reconocido: ${String(tipo)}`);
+      return { ok: false };
+    }
   }
 }
 
@@ -392,7 +403,19 @@ export async function sincronizarColaPendiente(negocioId: string): Promise<void>
   try {
     for (let i = 0; i < cola.length; i++) {
       avisarProgreso({ negocioId, actual: i + 1, total: cola.length });
-      const resultado = await subirUna(negocioId, cola[i]);
+      // Red de seguridad por fila: cualquier excepción inesperada subiendo
+      // UNA venta (un payload corrupto, un campo que no es lo que se
+      // esperaba) antes tumbaba el ciclo completo y dejaba la cola entera
+      // atorada — incluidas las ventas sanas que venían detrás.
+      let resultado: ResultadoItem;
+      try {
+        resultado = await subirUna(negocioId, cola[i]);
+      } catch (err) {
+        console.error("[sync-queue] error inesperado subiendo una venta:", err);
+        await marcarVentaComoError(negocioId, cola[i].id, mensajeDeError(err));
+        errores++;
+        continue;
+      }
       if (resultado.redCaida) break;
       if (resultado.ok) {
         await eliminarVentaPendiente(negocioId, cola[i].id);
