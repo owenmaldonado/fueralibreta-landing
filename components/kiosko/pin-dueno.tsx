@@ -37,7 +37,7 @@ function limpiarIntentos(negocioId: string) {
   localStorage.removeItem(clave(negocioId));
 }
 
-/** Entrada del PIN maestro de dueño — usado por TurnoControl (volver a DUEÑO) y TopBar (entrar a Empleados como encargado/vendedor). */
+/** Entrada del PIN de dueño de dueño — usado por TurnoControl (volver a DUEÑO) y TopBar (entrar a Empleados como encargado/vendedor). */
 export function PinDuenoForm({
   negocioId,
   onExito,

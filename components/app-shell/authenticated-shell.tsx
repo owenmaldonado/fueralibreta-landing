@@ -111,7 +111,7 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
   // al abrir la app): el pill "Dueño"/"Atendiendo: X" y el icono de
   // Empleados en el header (ver TopBar/TurnoControl) son siempre visibles,
   // sin importar si el negocio tiene empleados dados de alta. pinDuenoSet
-  // solo decide si volver a DUEÑO / entrar a Empleados pide el PIN maestro
+  // solo decide si volver a DUEÑO / entrar a Empleados pide el PIN de dueño
   // (ver lib/empleados.ts) — un negocio de 1 persona que nunca lo
   // configura no ve ningún PIN pedido en ningún momento.
   const [pinDuenoSet, setPinDuenoSet] = React.useState<boolean>(false);

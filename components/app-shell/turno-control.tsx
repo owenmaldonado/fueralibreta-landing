@@ -21,7 +21,7 @@ import type { EmpleadoActual } from "@/lib/types";
  * también puede querer ver/confirmar que está en modo DUEÑO.
  *
  * El selector de turno lista una tarjeta "Dueño" siempre disponible arriba
- * de los empleados reales — volver a DUEÑO pide el PIN maestro (ver
+ * de los empleados reales — volver a DUEÑO pide el PIN de dueño (ver
  * lib/empleados.ts, pinDuenoConfigurado) SOLO si el dueño configuró uno;
  * si nunca lo configuró, cambiar a DUEÑO no pide nada (mismo criterio que
  * "si no tiene pin, no pide nada" de Ajustes > Empleados).
@@ -131,7 +131,7 @@ export function TurnoControl({
       <Dialog open={open} onOpenChange={(o) => !o && cerrar()}>
         {pidiendoPinDueno ? (
           <>
-            <DialogHeader title="PIN de dueño" description="Ingresa tu PIN maestro para volver a modo dueño" onClose={cerrar} />
+            <DialogHeader title="PIN de dueño" description="Ingresa tu PIN de dueño para volver a modo dueño" onClose={cerrar} />
             <PinDuenoForm negocioId={negocioId} onExito={handlePinDuenoExito} onCancel={() => setPidiendoPinDueno(false)} />
           </>
         ) : mostrarLista ? (

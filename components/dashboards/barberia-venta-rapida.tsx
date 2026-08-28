@@ -8,7 +8,6 @@ import { Chip, ChipGroup } from "@/components/ui/chip";
 import { Label } from "@/components/ui/label";
 import { EmptyState } from "./empty-state";
 import { BloqueoPlan } from "./bloqueo-plan";
-import { getDaySlots } from "@/lib/agenda";
 import { horaActualEnZona } from "@/lib/fecha";
 import { formatMoney, uid } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
@@ -23,34 +22,25 @@ import type { Appointment, BarberService, TenantData, SessionUpdater } from "@/l
  * sin capturar nombre ni teléfono.
  *
  * Se guarda como una CITA ya cobrada (estado "listo"), no como un CajaEntry
- * suelto, por dos razones:
- *  - Ocupa el horario. Mientras el barbero está atendiendo a este walk-in,
- *    la reserva pública (/b/[slug]) no puede agendar a alguien más en ese
- *    mismo hueco — que es justo el problema de no poder agendar sin señal.
- *  - Aparece sola en todo lo que ya lee citas: Caja (cortes del día),
- *    Agenda, Historial y el corte de Cerrar turno, sin tener que sumarla
- *    aparte en cada pantalla.
+ * suelto, para que aparezca sola en todo lo que ya lee citas: Caja (cortes
+ * del día), Agenda, Historial y el corte de Cerrar turno, sin tener que
+ * sumarla aparte en cada pantalla.
  *
- * La hora NO es la hora exacta del reloj sino el slot de 30 min en curso
- * (ver slotEnCurso): getDaySlots marca "ocupado" comparando contra la
- * rejilla de slots, así que una cita a las 10:17 no bloquearía el hueco de
- * las 10:00 y el horario se vería libre.
+ * LA HORA NO RESERVA HORARIO. Antes esta venta se guardaba pegada al slot
+ * de 30 min en curso (las 6:30, las 7:00...) para "ocupar el hueco"
+ * mientras el barbero atendía. Estaba mal por los dos lados:
+ *
+ *  - Un walk-in ya cobrado no es una cita futura. Que tapara el hueco
+ *    significaba que dos personas que llegan seguidas dentro de la misma
+ *    media hora chocaban entre sí, y que la página pública dejaba de
+ *    ofrecer un horario que en realidad seguía libre.
+ *  - La hora que quedaba escrita no era la hora en que se cobró, sino la
+ *    del bloque — se veía "6:30" para algo cobrado a las 6:47.
+ *
+ * Ahora se guarda la hora REAL del reloj del negocio, como sello de cuándo
+ * se cobró y nada más. Quien reserva horario son las citas pendientes, no
+ * las ventas ya hechas (ver getDaySlots en lib/agenda.ts).
  */
-
-/** Slot de la rejilla del día que contiene la hora actual — null si el negocio está cerrado hoy (no hay rejilla que ocupar). */
-function slotEnCurso(data: NonNullable<TenantData["barberia"]>, hoy: string, timezone: string | undefined): string | null {
-  const slots = getDaySlots(data, hoy, timezone);
-  if (slots.length === 0) return null;
-  const ahora = horaActualEnZona(timezone);
-  let encontrado: string | null = null;
-  for (const s of slots) {
-    if (s.hora <= ahora) encontrado = s.hora;
-    else break;
-  }
-  // Antes de abrir (ej. cobrar a las 8:40 con horario desde las 9:00) el
-  // primer slot es el que corresponde, no "ninguno".
-  return encontrado ?? slots[0].hora;
-}
 
 interface Props {
   open: boolean;
@@ -74,7 +64,9 @@ export function VentaRapidaSheet({ open, onClose, session, update, hoy }: Props)
   function vender(servicio: BarberService) {
     if (bloqueadoPorLimite) return;
     const citaId = uid("cita");
-    const hora = slotEnCurso(data, hoy, negocio.timezone) ?? horaActualEnZona(negocio.timezone);
+    // Hora real del negocio (no un slot de la rejilla) — ver el comentario
+    // de arriba: esta venta ya está cobrada, no aparta horario.
+    const hora = horaActualEnZona(negocio.timezone);
     let citaCreada: Appointment | null = null;
     let negocioId = "";
     update(

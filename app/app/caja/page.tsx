@@ -190,13 +190,25 @@ export default function CajaPage() {
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
   const movsParaGrafica: { fecha: string; a: number; b: number }[] = [
     ...cajaFiltrada.map((m) => (m.tipo === "gasto" ? { fecha: m.fecha, a: 0, b: m.monto } : { fecha: m.fecha, a: m.monto, b: 0 })),
-    ...cortes.map((c) => ({ fecha: `${c.fecha}T${c.hora}`, a: c.precio, b: 0 })),
+    // c.fecha SOLO (sin `T${c.hora}` pegado, como sí lleva la lista de
+    // Movimientos para poder ordenarla por hora): barberia_citas.fecha ya es
+    // el día calendario del negocio. Pegarle la hora lo convertía en algo
+    // que hay que volver a parsear como instante, y eso es justo por donde
+    // se colaba el corrimiento de un día.
+    ...cortes.map((c) => ({ fecha: c.fecha, a: c.precio, b: 0 })),
   ];
+  // El ancla va explícita: esta llamada NO la pasaba y se quedaba con el
+  // `new Date()` que traía por default aggregateTwoByRange — o sea, la
+  // gráfica de Caja se anclaba al reloj del DISPOSITIVO mientras los cortes
+  // y los movimientos vienen con el día del NEGOCIO. Mismo corrimiento de
+  // un día que se reportó en Fondita, solo que aquí nadie lo había notado
+  // todavía. lib/chart-buckets.ts ya no acepta que se omita.
   const serie = aggregateTwoByRange(
     movsParaGrafica,
     rango,
     (m) => m.fecha,
-    (m) => ({ a: m.a, b: m.b })
+    (m) => ({ a: m.a, b: m.b }),
+    { hoy, timezone: session.business.timezone }
   );
 
   async function eliminar() {

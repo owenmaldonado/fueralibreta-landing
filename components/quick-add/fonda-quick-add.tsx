@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { BloqueoPlan } from "@/components/dashboards/bloqueo-plan";
 import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatHora12, formatMoney } from "@/lib/mock";
+import { useHoy } from "@/lib/use-hoy";
+import { horaActualEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
 import { usePlan } from "@/lib/planes";
 import { obtenerOCrearTurno } from "@/lib/turno-fonda";
@@ -54,9 +56,9 @@ export function FondaQuickAdd({ active, onClose, session, update }: Props) {
   );
 }
 
-function nowHHMM() {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+/** Hora del NEGOCIO, no la del dispositivo — igual que la fecha del pedido (ver hoyEnSuZona más abajo). Un celular con otra zona guardaba pedidos con una hora que no era la de la fonda. */
+function nowHHMM(timezone?: string) {
+  return horaActualEnZona(timezone);
 }
 
 function NuevoPedidoForm({
@@ -74,13 +76,22 @@ function NuevoPedidoForm({
 }) {
   const plan = usePlan();
   const maxPedidos = plan.giroFonda.maxPedidos;
-  const hoyEnSuZona = new Date().toLocaleDateString("en-CA", {
-    timeZone: timezone || "America/Bahia_Banderas",
-  });
+  // ESTE era el bug de la gráfica de Fondita. Aquí se calculaba el día con
+  // `timezone || "America/Bahia_Banderas"`: el último lugar del código con
+  // una ciudad hardcodeada. Todo lo demás (el panel, Gastos, la gráfica) ya
+  // usaba useHoy() -> hoyEnZona(), que sin `timezone` cae a la zona del
+  // DISPOSITIVO. Resultado: si el negocio no tenía `timezone` guardado y el
+  // dispositivo no estaba en UTC-6, cada pedido y cada gasto que se
+  // capturaba desde este botón "+" quedaba grabado con un día distinto al
+  // que el resto de la app consideraba hoy — y la gráfica, que lee ese día
+  // guardado, lo pintaba una barra antes. Se veía como "al refrescar todo
+  // se va al día anterior", porque en memoria y en la barra de "Ventas de
+  // hoy" sí aparecía bien (esas cuentan por turno/created_at, no por fecha).
+  const hoyEnSuZona = useHoy(timezone);
   const mesActual = hoyEnSuZona.slice(0, 7);
   const bloqueadoPorLimite = maxPedidos !== null && data.pedidos.filter((p) => p.fecha.startsWith(mesActual)).length >= maxPedidos;
   const [clienteNombre, setClienteNombre] = React.useState("");
-  const [hora] = React.useState(nowHHMM());
+  const [hora] = React.useState(() => nowHHMM(timezone));
   const [modo, setModo] = React.useState<"cobrar" | "programar">("cobrar");
   const [horaEntregaInput, setHoraEntregaInput] = React.useState("");
   const [items, setItems] = React.useState<OrderItem[]>([]);
@@ -416,9 +427,10 @@ function NuevoGastoForm({ onClose, update, timezone }: { onClose: () => void; up
   const [categoria, setCategoria] = React.useState(GASTO_CHIPS[0]);
   const [monto, setMonto] = React.useState("");
 
-  const hoyEnSuZona = new Date().toLocaleDateString("en-CA", {
-    timeZone: timezone || "America/Bahia_Banderas",
-  });
+  // Mismo caso que en NuevoPedidoForm: un gasto capturado desde aquí se
+  // guardaba con el día de una ciudad hardcodeada en vez del día real del
+  // negocio. Ver el comentario largo de arriba.
+  const hoyEnSuZona = useHoy(timezone);
 
   const puedeGuardar = Number(monto) > 0;
 

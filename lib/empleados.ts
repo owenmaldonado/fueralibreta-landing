@@ -243,7 +243,7 @@ export async function verificarPin(negocioId: string, empleadoId: string, pin: s
 }
 
 /**
- * PIN maestro de dueño (OPCIONAL) — vive en negocio_pin_dueno (ver
+ * PIN de dueño (OPCIONAL) — vive en negocio_pin_dueno (ver
  * supabase/migrations/20260815000000_esquema.sql), no en negocio_empleados: es el switch para volver a modo
  * DUEÑO desde el selector de turno sin depender de tener un empleado con
  * rol='dueno' dado de alta. Todo pasa por RPCs security definer que nunca
@@ -287,19 +287,12 @@ export async function borrarPinDueno(negocioId: string): Promise<void> {
 }
 
 /**
- * "Olvidé mi PIN": manda un magic link al correo de la cuenta (la misma
- * que ya está logueada — los empleados no tienen cuenta propia, solo PIN
- * local, así que este correo es siempre el del dueño real). Al volver por
- * /auth/callback (mismo mecanismo que el login con Google, ver
- * app/auth/callback/route.ts) la sesión queda fresca y app/app/empleados
- * detecta ?reset_pin=1 para borrar el PIN maestro — recién ahí, nunca
- * antes, porque hasta ese momento no se reconfirmó la identidad del dueño.
+ * NOTA: aquí vivía solicitarResetPinDueno(), que mandaba un magic link al
+ * correo del dueño para reiniciar su PIN. Se quitó porque no funcionaba en
+ * la vida real: ese correo lleva a la pantalla de login de Supabase y el
+ * dueño se queda atorado ahí, sin PIN. Ahora "Olvidé mi PIN" (ver
+ * app/app/empleados/page.tsx) abre WhatsApp con soporte, y soporte le pone
+ * un PIN nuevo desde /admin (admin_set_pin_dueno, migración 20260914000000).
+ * El PIN está hasheado con bcrypt: no se puede LEER el que tenía, solo
+ * escribirle uno nuevo encima.
  */
-export async function solicitarResetPinDueno(email: string): Promise<void> {
-  const next = encodeURIComponent("/app/empleados?reset_pin=1");
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${next}` },
-  });
-  if (error) throw error;
-}

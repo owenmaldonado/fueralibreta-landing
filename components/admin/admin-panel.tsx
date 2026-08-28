@@ -22,6 +22,7 @@ import { UserDetailDialog } from "./user-detail-dialog";
 import { NegocioDetailDialog } from "./negocio-detail-dialog";
 import { ChangeOwnerDialog } from "./change-owner-dialog";
 import { PrecioCustomDialog } from "./precio-custom-dialog";
+import { PinDuenoDialog } from "./pin-dueno-dialog";
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
 import {
   fetchAdminOverview,
@@ -127,6 +128,8 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
   const [detailNegocio, setDetailNegocio] = React.useState<AdminNegocio | null>(null);
   const [changeOwnerNegocio, setChangeOwnerNegocio] = React.useState<AdminNegocio | null>(null);
   const [precioCustomNegocio, setPrecioCustomNegocio] = React.useState<AdminNegocio | null>(null);
+  // Reiniciar el PIN de dueño de un negocio (ver PinDuenoDialog) — reemplaza al "Olvidé mi PIN" por correo, que dejaba al dueño atorado en el login de Supabase.
+  const [pinDuenoNegocio, setPinDuenoNegocio] = React.useState<AdminNegocio | null>(null);
   const [deleteNegocioTarget, setDeleteNegocioTarget] = React.useState<AdminNegocio | null>(null);
 
   const load = React.useCallback(async () => {
@@ -713,6 +716,10 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
           setDetailNegocio(null);
           setChangeOwnerNegocio(n);
         }}
+        onResetPinDueno={(n) => {
+          setDetailNegocio(null);
+          setPinDuenoNegocio(n);
+        }}
         onToggleFundador={handleToggleFundadorById}
         onSaveFacturacion={handleSaveFacturacion}
         onDeleteRequest={(n) => {
@@ -726,6 +733,7 @@ export function AdminPanel({ currentUserId }: { currentUserId: string }) {
         onClose={() => setPrecioCustomNegocio(null)}
         onSave={handleSavePrecioCustom}
       />
+      <PinDuenoDialog negocio={pinDuenoNegocio} onClose={() => setPinDuenoNegocio(null)} />
 
       <ConfirmDeleteDialog
         open={!!deleteUserTarget}

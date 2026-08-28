@@ -58,19 +58,36 @@ export function getDaySlots(barberia: SlotSource, fecha: string, timezone?: stri
   const [fh, fm] = finStr.split(":").map(Number);
   const tieneComida = Boolean(horarioDia.comidaInicio && horarioDia.comidaFin);
 
-  // Antes solo se marcaba ocupado el slot EXACTO donde empezaba la cita —
-  // un servicio de 45 min a las 9:00 dejaba 9:30 libre como si el barbero
-  // ya estuviera desocupado, cuando en realidad el corte sigue hasta 9:45.
-  // Ahora se bloquean todos los slots de 30 min que la cita realmente cubre
-  // (redondeado hacia arriba: un servicio de 45 min bloquea 9:00 Y 9:30,
-  // porque una cita nueva a las 9:30 sí se traslaparía).
+  // Qué slots quedan tapados por una cita.
+  //
+  // 1) Se bloquea TODO el rango que la cita cubre, no solo el slot donde
+  //    empieza — y redondeando SIEMPRE hacia arriba al bloque de 30 min:
+  //    un servicio de 45 min a las 9:00 tapa 9:00 y 9:30 (una hora entera,
+  //    porque una cita nueva a las 9:30 sí se traslaparía); uno de 115 min
+  //    tapa 9:00, 9:30, 10:00 y 10:30 (dos horas). Es lo que hace el
+  //    `min < inicio + duracion` de abajo: la última vuelta entra aunque
+  //    solo sobren 15 minutos de servicio.
+  //
+  // 2) Solo cuentan las citas PENDIENTES. Una cita ya cobrada ("listo") es
+  //    trabajo terminado: el barbero está libre otra vez, así que no tiene
+  //    por qué seguir tapando un hueco. Esto es lo que deja que la Venta
+  //    rápida (un walk-in que se cobra al momento, se guarda como cita ya
+  //    "listo") no consuma horario: se pueden cobrar dos, tres o los
+  //    walk-ins que lleguen dentro de la misma media hora, y la agenda y la
+  //    página pública de reservas siguen ofreciendo ese hueco tal cual.
+  //    "cancelada" nunca contó y sigue sin contar.
   const duracionPorServicio = new Map(barberia.servicios.map((s) => [s.id, s.duracion_min]));
   const ocupados = new Set<string>();
   for (const c of barberia.citas) {
-    if (c.fecha !== fecha || c.estado === "cancelada") continue;
+    if (c.fecha !== fecha || c.estado !== "pendiente") continue;
     const duracion = duracionPorServicio.get(c.servicioId) ?? 30;
     const inicio = minutosDeHora(c.hora);
-    for (let min = inicio; min < inicio + duracion; min += 30) {
+    // Alinea el arranque al bloque de 30 min que contiene la hora de la
+    // cita: si por lo que sea quedó guardada a las 9:17 (una cita vieja, o
+    // una importada), tapa desde las 9:00 — nunca "9:17", que no existe en
+    // la rejilla y por lo tanto no taparía nada.
+    const arranque = Math.floor(inicio / 30) * 30;
+    for (let min = arranque; min < inicio + duracion; min += 30) {
       ocupados.add(horaDeMinutos(min));
     }
   }

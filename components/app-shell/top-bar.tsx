@@ -34,7 +34,7 @@ export function TopBar({
   isAdmin?: boolean;
   /** Quién está atendiendo en este dispositivo AHORA (login opcional por sesión, ver TurnoControl) — null = dueño, sin nadie elegido. */
   empleadoActual?: EmpleadoActual | null;
-  /** El dueño configuró un PIN maestro (Ajustes > Empleados) — si no, volver a DUEÑO o entrar a Empleados nunca pide PIN. */
+  /** El dueño configuró un PIN de dueño (Ajustes > Empleados) — si no, volver a DUEÑO o entrar a Empleados nunca pide PIN. */
   pinDuenoSet?: boolean;
   onSesionCambiada?: (empleado: EmpleadoActual | null) => void;
 }) {
@@ -79,7 +79,7 @@ export function TopBar({
 
   // Icono de Empleados del header: siempre visible. Si ya está atendiendo
   // el propio dueño (o nadie, que es lo mismo), entra directo. Si hay un
-  // encargado/vendedor logueado, pide el PIN maestro solo si está
+  // encargado/vendedor logueado, pide el PIN de dueño solo si está
   // configurado — si no, entra directo también (el middleware sigue
   // bloqueando /app/empleados por rol de la cookie de todos modos). Este
   // estado (pinDueno) es propio de TopBar, independiente del Dialog de
@@ -217,7 +217,7 @@ export function TopBar({
       )}
 
       <Dialog open={pinDueno} onOpenChange={(o) => !o && setPinDueno(false)}>
-        <DialogHeader title="Acceso a Empleados" description="Ingresa el PIN maestro del dueño" onClose={() => setPinDueno(false)} />
+        <DialogHeader title="Acceso a Empleados" description="Ingresa el PIN de dueño" onClose={() => setPinDueno(false)} />
         <PinDuenoForm negocioId={data.business.id} onExito={handlePinDuenoExito} onCancel={() => setPinDueno(false)} />
       </Dialog>
 
@@ -253,7 +253,7 @@ export function TopBar({
       <Dialog open={pidiendoPinVolver} onOpenChange={(o) => !o && setPidiendoPinVolver(false)}>
         <DialogHeader
           title="PIN de dueño"
-          description="Turno cerrado — ingresa el PIN maestro para volver al panel de dueño"
+          description="Turno cerrado — ingresa el PIN de dueño para volver al panel de dueño"
           onClose={() => setPidiendoPinVolver(false)}
         />
         <PinDuenoForm negocioId={data.business.id} onExito={volverADueno} onCancel={() => setPidiendoPinVolver(false)} />

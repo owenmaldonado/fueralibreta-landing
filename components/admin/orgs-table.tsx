@@ -77,6 +77,7 @@ interface OrgsTableProps {
   onSetTrial: (negocio: AdminNegocio, dias: 7 | 14 | 30) => void;
   onActivarPlan: (negocio: AdminNegocio, plan: PlanId) => void;
   onSetPrecioCustom: (negocio: AdminNegocio) => void;
+  onResetPinDueno: (negocio: AdminNegocio) => void;
   onToggleFundador: (negocio: AdminNegocio) => void;
   onToggleBanned: (profile: AdminProfile) => void;
   onDeleteRequest: (negocio: AdminNegocio) => void;
@@ -92,6 +93,7 @@ export function OrgsTable({
   onSetTrial,
   onActivarPlan,
   onSetPrecioCustom,
+  onResetPinDueno,
   onToggleFundador,
   onToggleBanned,
   onDeleteRequest,
@@ -192,6 +194,7 @@ export function OrgsTable({
                     onSetTrial={(dias) => onSetTrial(n, dias)}
                     onActivarPlan={(plan) => onActivarPlan(n, plan)}
                     onSetPrecioCustom={() => onSetPrecioCustom(n)}
+                    onResetPinDueno={() => onResetPinDueno(n)}
                     onToggleFundador={() => onToggleFundador(n)}
                     onToggleBanned={() => profile && onToggleBanned(profile)}
                     onDelete={() => onDeleteRequest(n)}

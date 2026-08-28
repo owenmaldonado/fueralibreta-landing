@@ -11,8 +11,10 @@ import { EmptyState } from "./empty-state";
 import { BloqueoPlan } from "./bloqueo-plan";
 import { EmpleadoBadge } from "./empleado-badge";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
-import { formatMoney, formatHora12, toISODate, uid } from "@/lib/mock";
+import { formatMoney, formatHora12, uid } from "@/lib/mock";
 import { useHoy } from "@/lib/use-hoy";
+import { horaActualEnZona } from "@/lib/fecha";
+import { diaRelativo, semanaDe, diaDelNegocio } from "@/lib/chart-buckets";
 import { supabase } from "@/lib/supabase";
 import { fetchPedidosPendientes } from "@/lib/data";
 import { camposEmpleado } from "@/lib/empleados";
@@ -30,9 +32,9 @@ const FILTROS: { value: FiltroDia; label: string }[] = [
   { value: "semana", label: "Semana" },
 ];
 
-function nowHHMM() {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+/** Hora del NEGOCIO, no la del dispositivo — misma razón que la fecha (useHoy más abajo): un celular en otra zona guardaba la venta con una hora que no era la de la fonda. */
+function nowHHMM(timezone?: string) {
+  return horaActualEnZona(timezone);
 }
 
 export function FondaDashboard({ session, update }: { session: TenantData; update: SessionUpdater }) {
@@ -98,25 +100,15 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
   // que un pedido nuevo (o un toque en la pantalla) forzaba el re-render, y
   // entonces TODO saltaba de día de golpe. Ver lib/use-hoy.ts.
   const hoyEnSuZona = useHoy(negocio.timezone);
-  // "Ayer" derivado de hoyEnSuZona (ya reactivo) en vez de un Date.now()
-  // nuevo — si no, al cambiar el día quedaban desfasados un rato: hoy ya
-  // sería el día nuevo y "ayer" seguiría siendo antier.
-  const ayerEnSuZona = (() => {
-    const [y, m, d] = hoyEnSuZona.split("-").map(Number);
-    const ayer = new Date(y, m - 1, d - 1);
-    return `${ayer.getFullYear()}-${String(ayer.getMonth() + 1).padStart(2, "0")}-${String(ayer.getDate()).padStart(2, "0")}`;
-  })();
-
-  // Lunes a domingo de la semana de calendario en curso, anclada a hoyEnSuZona (misma definición que "Semanal" en la gráfica de Gastos).
-  const [semanaDesde, semanaHasta] = (() => {
-    const hoy = new Date(`${hoyEnSuZona}T00:00:00`);
-    const diasDesdeLunes = (hoy.getDay() + 6) % 7;
-    const lunes = new Date(hoy);
-    lunes.setDate(lunes.getDate() - diasDesdeLunes);
-    const domingo = new Date(lunes);
-    domingo.setDate(domingo.getDate() + 6);
-    return [toISODate(lunes), toISODate(domingo)];
-  })();
+  // "Ayer" y la semana Lun-Dom salen de aritmética de calendario sobre el
+  // string de hoy (lib/chart-buckets.ts), no de objetos Date construidos con
+  // `new Date(\`${hoy}T00:00:00\`)`. Ese constructor usa la zona del
+  // DISPOSITIVO: en un celular que no está en la zona del negocio, "ayer" y
+  // los límites de la semana podían salir corridos un día respecto de la
+  // gráfica de Gastos, que sí trabaja en día del negocio. Es exactamente la
+  // clase de desfase que se reportó como "todo se va al día anterior".
+  const ayerEnSuZona = diaRelativo(hoyEnSuZona, -1);
+  const { desde: semanaDesde, hasta: semanaHasta } = semanaDe(hoyEnSuZona);
 
   const [desde, hasta] =
     filtro === "hoy" ? [hoyEnSuZona, hoyEnSuZona] : filtro === "ayer" ? [ayerEnSuZona, ayerEnSuZona] : [semanaDesde, semanaHasta];
@@ -134,16 +126,27 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
   // ya tiene (suscribirseANegocioEnVivo) — "el turno actual" es todo lo
   // entregado después del último cierre compartido (o desde el inicio de
   // hoy si nunca se ha cerrado uno todavía).
-  const turnoDesde = negocio.turnoFondaCerradoEn ? new Date(negocio.turnoFondaCerradoEn) : new Date(`${hoyEnSuZona}T00:00:00`);
-
+  //
+  // Antes, cuando todavía no se había cerrado ningún turno, el arranque era
+  // `new Date(\`${hoyEnSuZona}T00:00:00\`)`: la medianoche del DISPOSITIVO,
+  // no la del negocio. En un celular en otra zona esa medianoche cae horas
+  // antes o después de la real, así que "Ventas de hoy" incluía pedidos de
+  // ayer o se dejaba fuera los de la madrugada. Ahora ese caso se resuelve
+  // comparando el DÍA del negocio (string contra string) y solo el caso
+  // "hay un cierre previo" compara instantes — que sí es lo correcto ahí,
+  // porque un turno arranca en un momento exacto, no a medianoche.
+  const cerradoEn = negocio.turnoFondaCerradoEn ? new Date(negocio.turnoFondaCerradoEn) : null;
   // Pedidos sin creadoEn (no debería pasar — created_at es not null desde
-  // que existe la tabla — pero por las dudas) caen a filtrar por fecha,
-  // igual que antes cuando no había turno abierto.
+  // que existe la tabla — pero por las dudas) caen a filtrar por fecha.
+  function enTurnoActual(p: FondaOrder): boolean {
+    if (!p.creadoEn) return p.fecha === hoyEnSuZona;
+    if (cerradoEn) return new Date(p.creadoEn) >= cerradoEn;
+    return diaDelNegocio(p.creadoEn, negocio.timezone) === hoyEnSuZona;
+  }
+
   const ventas =
     filtro === "hoy"
-      ? data.pedidos
-          .filter((p) => p.estado === "entregado" && (p.creadoEn ? new Date(p.creadoEn) >= turnoDesde : p.fecha === hoyEnSuZona))
-          .reduce((acc, p) => acc + p.total, 0)
+      ? data.pedidos.filter((p) => p.estado === "entregado" && enTurnoActual(p)).reduce((acc, p) => acc + p.total, 0)
       : data.pedidos
           .filter((p) => p.estado === "entregado" && p.fecha >= desde && p.fecha <= hasta)
           .reduce((acc, p) => acc + p.total, 0);
@@ -249,7 +252,7 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
           id: pedidoId,
           clienteNombre: "Venta rápida",
           fecha: hoyEnSuZona,
-          hora: nowHHMM(),
+          hora: nowHHMM(negocio.timezone),
           items: [
             {
               id: uid("it"),

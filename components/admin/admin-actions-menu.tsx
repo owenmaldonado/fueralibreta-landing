@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, UserCog, Crown, Clock, Tag, Award, Ban, CheckCircle2, Trash2, MessageCircle, Copy } from "lucide-react";
+import { Eye, UserCog, Crown, Clock, Tag, Award, Ban, CheckCircle2, Trash2, MessageCircle, Copy, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { DropdownMenu, type DropdownItem } from "@/components/ui/dropdown-menu";
@@ -29,6 +29,8 @@ export interface AdminActionsMenuProps {
   /** Cambia el plan Y extiende trial_fin 30 días en un solo PATCH — el flujo real después de que el cliente confirma el pago por WhatsApp (antes eran dos clics separados: "Cambiar plan" + "Activar 30 días"). */
   onActivarPlan: (plan: PlanId) => void;
   onSetPrecioCustom: () => void;
+  /** Reiniciar el PIN de dueño del negocio — el dueño que lo olvida ya no depende del correo de Supabase, te escribe y se lo pones desde aquí. Ver PinDuenoDialog. */
+  onResetPinDueno: () => void;
   onToggleFundador: () => void;
   onToggleBanned: () => void;
   onDelete: () => void;
@@ -45,6 +47,7 @@ export function AdminActionsMenu({
   onSetTrial,
   onActivarPlan,
   onSetPrecioCustom,
+  onResetPinDueno,
   onToggleFundador,
   onToggleBanned,
   onDelete,
@@ -96,6 +99,7 @@ export function AdminActionsMenu({
           { label: "Poner trial 14 días", icon: <Clock className="h-4 w-4" />, onClick: () => onSetTrial(14) },
           { label: "Extender 30 días (mismo plan)", icon: <Clock className="h-4 w-4" />, onClick: () => onSetTrial(30) },
           { label: "Precio custom", icon: <Tag className="h-4 w-4" />, onClick: onSetPrecioCustom },
+          { label: "PIN de dueño", icon: <KeyRound className="h-4 w-4" />, onClick: onResetPinDueno },
           {
             label: negocio.esFundador ? "Quitar Fundador" : "Marcar Fundador",
             icon: <Award className="h-4 w-4" />,

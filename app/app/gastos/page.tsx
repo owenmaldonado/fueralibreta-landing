@@ -255,46 +255,30 @@ export default function GastosPage() {
   ).sort((a, b) => a - b);
 
 
-  // "Anual" con el año en curso sigue siendo el rolling de los últimos 12
-  // meses (el default de siempre). Elegir un año pasado cambia el reloj de
-  // referencia al 31 de diciembre de ese año — el mismo rolling de 12 meses
-  // "terminando ahí" da exactamente Ene-Dic de ese año, sin duplicar la
-  // lógica de buckets.
+  // Ancla de TODA la pantalla: el día de hoy del NEGOCIO, como string.
   //
-  // getBuckets (lib/chart-buckets.ts) construye los buckets con
-  // new Date(year, month, day) — componentes LOCALES del dispositivo, igual
-  // que parseFecha ahí mismo. Antes `now` salía de `new Date()` crudo (el
-  // reloj/zona del DISPOSITIVO), mientras que las fechas de ventas/gastos
-  // vienen de v.fecha ya en la zona del NEGOCIO (fechaCalendarioLocal arriba)
-  // — un dispositivo en otra zona horaria (o solo con la hora del sistema
-  // mal puesta) calculaba "hoy" como un día distinto al real del negocio, y
-  // como la semana es Lunes-Domingo, ese corrimiento podía sacar el día de
-  // hoy COMPLETO fuera de la ventana "Semanal" (sobre todo si hoy es lunes:
-  // un "hoy" corrido un día atrás cae en la semana pasada entera). Se parsea
-  // el string de hoy (ya correcto, en zona del negocio) como componentes
-  // locales — igual que parseFecha — para que "now" y las fechas de los
-  // items queden en el mismo sistema de referencia.
-  const [hoyY, hoyM, hoyD] = hoy.split("-").map(Number);
-  const now =
-    rango === "anual" && anioSeleccionado !== anioActual ? new Date(anioSeleccionado, 11, 31) : new Date(hoyY, hoyM - 1, hoyD);
+  // Antes esto era un objeto Date y ahí estaba el bug que se reportó cinco
+  // días seguidos en Fondita ("la gráfica se lleva todo al día anterior"):
+  // los buckets se construían con constructores locales del dispositivo
+  // mientras las fechas de los movimientos venían en día del negocio, y con
+  // una hora de diferencia entre las dos zonas cada movimiento caía un
+  // bucket antes. lib/chart-buckets.ts ya no acepta Date — solo este string
+  // — así que ese corrimiento no puede volver a existir.
+  //
+  // "Anual" con el año en curso es el rolling de los últimos 12 meses (el
+  // default de siempre). Elegir un año pasado mueve el ancla al 31 de
+  // diciembre de ese año: el mismo rolling "terminando ahí" da exactamente
+  // Ene-Dic de ese año, sin duplicar la lógica de buckets.
+  const anclaRango = rango === "anual" && anioSeleccionado !== anioActual ? `${anioSeleccionado}-12-31` : hoy;
+  const ctxRango = { hoy: anclaRango, timezone: session.business.timezone };
 
-  // "Semanal": mismo cálculo Lunes-Domingo por STRING que ya usa el cuadro
-  // de Ventas del panel principal (fonda-dashboard.tsx) — comparar
-  // "YYYY-MM-DD" >= "YYYY-MM-DD" no pasa por ningún Date/zona horaria, así
-  // que no puede volver a tener el corrimiento de un día que sacaba las
-  // ventas de hoy de la ventana semanal (ver comentario de arriba en `now`).
-  // Se usa solo para la LISTA de abajo (filtrarPorRango) — la gráfica de
-  // barras sigue con aggregateByRange/Date porque necesita bucket por día,
-  // pero ya con `now` corregido eso también queda consistente.
-  const diasDesdeLunes = (new Date(hoyY, hoyM - 1, hoyD).getDay() + 6) % 7;
-  const semanaLunes = new Date(hoyY, hoyM - 1, hoyD - diasDesdeLunes);
-  const semanaDomingo = new Date(hoyY, hoyM - 1, hoyD - diasDesdeLunes + 6);
-  const toISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const semanaDesde = toISO(semanaLunes);
-  const semanaHasta = toISO(semanaDomingo);
+  // La lista de abajo y la gráfica de arriba ahora salen de la MISMA función
+  // (filterByRango / aggregateByRange, mismo ctxRango). Antes la ventana
+  // Lunes-Domingo de la lista se recalculaba aquí a mano con Dates: dos
+  // implementaciones del mismo concepto que podían discrepar entre sí, que
+  // es como la lista mostraba una venta que la gráfica no pintaba.
   function filtrarPorRango<T>(items: T[], fechaDe: (item: T) => string): T[] {
-    if (rango === "semanal") return items.filter((item) => fechaDe(item) >= semanaDesde && fechaDe(item) <= semanaHasta);
-    return filterByRango(items, rango, fechaDe, now);
+    return filterByRango(items, rango, fechaDe, ctxRango);
   }
 
   const ventasHoy = ventas.filter((v) => v.fecha === hoy).reduce((acc, v) => acc + v.monto, 0);
@@ -343,14 +327,14 @@ export default function GastosPage() {
     })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
-  // Tres pasadas independientes de aggregateByRange (mismo rango + now, así
+  // Tres pasadas independientes de aggregateByRange (mismo rango + ancla, así
   // que producen exactamente los mismos buckets en el mismo orden) en vez
   // de una sola con dos series — ganancia ya no es "a - b" del mismo par de
   // datos, así que necesita su propia lista (gananciaPorVenta) agregada
   // aparte.
-  const serieGastos = aggregateByRange(gastos, rango, (g) => g.fecha, (g) => g.monto, now);
-  const serieVentas = aggregateByRange(ventas, rango, (v) => v.fecha, (v) => v.monto, now);
-  const serieGananciaBruta = aggregateByRange(gananciaPorVenta, rango, (g) => g.fecha, (g) => g.monto, now);
+  const serieGastos = aggregateByRange(gastos, rango, (g) => g.fecha, (g) => g.monto, ctxRango);
+  const serieVentas = aggregateByRange(ventas, rango, (v) => v.fecha, (v) => v.monto, ctxRango);
+  const serieGananciaBruta = aggregateByRange(gananciaPorVenta, rango, (g) => g.fecha, (g) => g.monto, ctxRango);
   const serieGananciaNeta = serieGananciaBruta.map((g, i) => ({ label: g.label, value: g.value - (serieGastos[i]?.value ?? 0) }));
 
   function withGastos(prev: TenantData, next: (gastos: Expense[]) => Expense[]): TenantData {

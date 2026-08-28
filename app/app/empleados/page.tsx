@@ -24,11 +24,14 @@ import {
   pinDuenoConfigurado,
   setPinDueno,
   borrarPinDueno,
-  solicitarResetPinDueno,
   normalizarNombreEmpleado,
   ROL_LABEL,
 } from "@/lib/empleados";
+import { waLink } from "@/lib/mock";
 import type { Empleado, RolEmpleado } from "@/lib/types";
+
+/** WhatsApp de soporte — el mismo que usan las tarjetas de Planes. Un dueño que olvida su PIN escribe aquí y se lo reinician desde /admin (PinDuenoDialog). */
+const WHATSAPP_SOPORTE = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "3329098631";
 
 const ROLES: { rol: RolEmpleado; label: string }[] = [
   { rol: "dueno", label: "Dueño" },
@@ -60,11 +63,12 @@ export default function EmpleadosPage() {
     pinDuenoConfigurado(negocioId).then(setPinSet);
   }, [negocioId, esNegocioReal]);
 
-  // "Olvidé mi PIN" (ver PinDuenoBanner) manda por correo de vuelta aquí
-  // mismo con ?reset_pin=1 — la sesión ya está fresca (pasó por
-  // /auth/callback), así que este es el único momento en que se borra el
-  // PIN maestro sin haber tenido que escribirlo. Lee la URL directo en vez
-  // de useSearchParams() para no forzar un Suspense boundary en esta
+  // ?reset_pin=1 — camino heredado del "Olvidé mi PIN" por correo, que ya
+  // no se ofrece (ver olvidePin en PinDuenoBanner: ahora es por WhatsApp
+  // con soporte). Se deja vivo porque puede haber correos de ese flujo ya
+  // enviados dando vueltas en la bandeja de algún dueño: si alguien abre
+  // uno, sigue funcionando en vez de tirar un error. Lee la URL directo en
+  // vez de useSearchParams() para no forzar un Suspense boundary en esta
   // página (que hoy renderiza estática).
   React.useEffect(() => {
     if (!negocioId) return;
@@ -72,7 +76,7 @@ export default function EmpleadosPage() {
     if (params.get("reset_pin") !== "1") return;
     borrarPinDueno(negocioId)
       .then(() => {
-        toast.success("PIN maestro reiniciado. Configura uno nuevo cuando quieras.");
+        toast.success("PIN de dueño reiniciado. Configura uno nuevo cuando quieras.");
         setPinSet(false);
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : "No se pudo reiniciar el PIN."))
@@ -174,7 +178,14 @@ export default function EmpleadosPage() {
         }
       />
       <div className="flex flex-col gap-4 px-4 pb-6">
-        {negocioId && pinSet !== null && <PinDuenoBanner negocioId={negocioId} pinSet={pinSet} onCambio={() => setPinSet(true)} />}
+        {negocioId && pinSet !== null && (
+          <PinDuenoBanner
+            negocioId={negocioId}
+            pinSet={pinSet}
+            onCambio={() => setPinSet(true)}
+            nombreNegocio={session?.business.nombre ?? "mi negocio"}
+          />
+        )}
 
         {limiteAlcanzado && (
           <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm text-foreground">
@@ -232,23 +243,32 @@ export default function EmpleadosPage() {
 }
 
 /**
- * PIN maestro de dueño (OPCIONAL): banner NO bloqueante. Sin PIN, invita a
+ * PIN de dueño (OPCIONAL): banner NO bloqueante. Sin PIN, invita a
  * configurar uno; con PIN, muestra que ya quedó listo y ofrece "Olvidé mi
  * PIN" (reset por correo, ver lib/empleados.ts solicitarResetPinDueno —
  * manda un magic link a la cuenta ya logueada; al volver con sesión fresca
  * esta misma página borra el PIN, ver el efecto de ?reset_pin=1 arriba).
  */
-function PinDuenoBanner({ negocioId, pinSet, onCambio }: { negocioId: string; pinSet: boolean; onCambio: () => void }) {
+function PinDuenoBanner({
+  negocioId,
+  pinSet,
+  onCambio,
+  nombreNegocio,
+}: {
+  negocioId: string;
+  pinSet: boolean;
+  onCambio: () => void;
+  nombreNegocio: string;
+}) {
   const [pin, setPin] = React.useState("");
   const [guardando, setGuardando] = React.useState(false);
-  const [enviandoReset, setEnviandoReset] = React.useState(false);
 
   async function guardar() {
     if (pin.length !== 4) return;
     setGuardando(true);
     try {
       await setPinDueno(negocioId, pin);
-      toast.success("PIN maestro configurado.");
+      toast.success("PIN de dueño configurado.");
       setPin("");
       onCambio();
     } catch (err) {
@@ -258,32 +278,27 @@ function PinDuenoBanner({ negocioId, pinSet, onCambio }: { negocioId: string; pi
     }
   }
 
-  async function olvidePin() {
-    setEnviandoReset(true);
-    try {
-      const { data } = await supabase.auth.getUser();
-      const email = data.user?.email;
-      if (!email) throw new Error("No se encontró el correo de tu cuenta.");
-      await solicitarResetPinDueno(email);
-      toast.success(`Te enviamos un correo a ${email} para reiniciar tu PIN.`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "No se pudo enviar el correo.");
-    } finally {
-      setEnviandoReset(false);
-    }
+  // "Olvidé mi PIN" ya NO manda un magic link al correo. Ese flujo se veía
+  // bien en teoría (correo → sesión fresca → se borra el PIN) pero en la
+  // práctica el correo aterriza en la pantalla de login de Supabase y el
+  // dueño se queda atorado ahí, sin PIN y sin manera de seguir. Ahora abre
+  // WhatsApp con el mensaje ya escrito: soporte le pone un PIN nuevo desde
+  // el panel de admin en 5 segundos (ver PinDuenoDialog) y se lo dicta.
+  function olvidePin() {
+    const mensaje = `Hola, soy ${nombreNegocio}. Olvidé mi PIN de dueño en Fuera Libreta, ¿me lo pueden reiniciar?`;
+    window.open(waLink(WHATSAPP_SOPORTE, mensaje), "_blank");
   }
 
   if (pinSet) {
     return (
       <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 text-sm">
-        <span className="text-muted-foreground">PIN maestro configurado ✓</span>
+        <span className="text-muted-foreground">PIN de dueño configurado ✓</span>
         <button
           type="button"
           onClick={olvidePin}
-          disabled={enviandoReset}
-          className="shrink-0 text-xs text-primary underline underline-offset-2 disabled:opacity-50"
+          className="shrink-0 text-xs text-primary underline underline-offset-2"
         >
-          {enviandoReset ? "Enviando..." : "Olvidé mi PIN"}
+          Olvidé mi PIN
         </button>
       </div>
     );
@@ -292,7 +307,7 @@ function PinDuenoBanner({ negocioId, pinSet, onCambio }: { negocioId: string; pi
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
       <p className="text-sm text-foreground">
-        Configura tu PIN maestro de dueño (opcional) — te deja volver a modo Dueño desde el selector de turno con un solo PIN.
+        Configura tu PIN de dueño (opcional) — te deja volver a modo Dueño desde el selector de turno con un solo PIN.
       </p>
       <div className="flex items-center gap-2">
         <Input

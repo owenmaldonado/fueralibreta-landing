@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Copy, Check, MessageCircle, Mail, LogIn, Ban, CheckCircle2, Trash2, UserCog } from "lucide-react";
+import { Loader2, Copy, Check, MessageCircle, Mail, LogIn, Ban, CheckCircle2, Trash2, UserCog, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { Dialog, DialogHeader } from "@/components/ui/dialog";
@@ -28,6 +28,7 @@ export function NegocioDetailDialog({
   onClose,
   onToggleActive,
   onChangeOwner,
+  onResetPinDueno,
   onToggleFundador,
   onSaveFacturacion,
   onDeleteRequest,
@@ -36,6 +37,8 @@ export function NegocioDetailDialog({
   onClose: () => void;
   onToggleActive: (negocio: AdminNegocio) => void;
   onChangeOwner: (negocio: AdminNegocio) => void;
+  /** Abre PinDuenoDialog — el dueño que olvidó su PIN te escribe y le pones uno nuevo desde aquí, sin depender del correo de Supabase. */
+  onResetPinDueno: (negocio: AdminNegocio) => void;
   onToggleFundador: (negocioId: string, esFundador: boolean) => void;
   onSaveFacturacion: (
     negocioId: string,
@@ -185,6 +188,9 @@ export function NegocioDetailDialog({
               </Button>
               <Button variant="outline" size="sm" onClick={() => onChangeOwner(detail)}>
                 <UserCog className="h-4 w-4" /> Cambiar owner
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => onResetPinDueno(detail)}>
+                <KeyRound className="h-4 w-4" /> PIN de dueño
               </Button>
               <Button
                 variant="outline"
