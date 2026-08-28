@@ -1,4 +1,4 @@
-import { aggregateByRange, filterByRango, semanaDe, diaDelNegocio, aggregateTwoByRange } from "@/lib/chart-buckets";
+import { aggregateByRange, filterByRango, semanaDe, diaDelNegocio, aggregateTwoByRange, diaDeColumnaFecha } from "@/lib/chart-buckets";
 
 let fallos = 0;
 function eq(a: unknown, b: unknown, msg: string) {
@@ -65,6 +65,19 @@ eq(t.find(x=>x.label==="Vie"), {label:"Vie",a:10,b:1}, "aggregateTwoByRange");
 
 // fecha basura no truena
 eq(aggregateByRange([{f:"no-es-fecha",v:5}],"semanal",i=>i.f,i=>i.v,ctx).reduce((s,x)=>s+x.value,0), 0, "fecha invalida se ignora");
+
+// --- EL BUG DE LA GRAFICA DE FONDITA (columna `fecha` que quedo como
+// timestamptz en vez de date en bases viejas). Un pedido del 28 se guarda
+// como "2026-08-28T00:00:00+00:00" = medianoche UTC, que en Mexico es el 27
+// a las 6pm. Leerlo como instante lo mandaba al dia anterior.
+eq(diaDeColumnaFecha("2026-08-28T00:00:00+00:00"), "2026-08-28", "columna date que llego como timestamptz: se queda en SU dia, no el anterior");
+eq(diaDeColumnaFecha("2026-08-28"), "2026-08-28", "columna date normal: intacta");
+eq(diaDeColumnaFecha(null), "", "valor nulo no truena");
+
+// Y el efecto en la grafica: ese pedido cae en Vie 28, no en Jue 27.
+const comoLlegaDeLaBase = [{ fecha: diaDeColumnaFecha("2026-08-28T00:00:00+00:00"), monto: 190 }];
+eq(aggregateByRange(comoLlegaDeLaBase, "semanal", i => i.fecha, i => i.monto, ctx).find(x => x.label === "Vie")!.value,
+   190, "pedido del viernes 28 se pinta en la barra del VIERNES");
 
 console.log(fallos === 0 ? "\nTODO OK" : `\n${fallos} FALLOS`);
 process.exit(fallos ? 1 : 0);

@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { normalizarPlan } from "./planes";
+import { diaDeColumnaFecha } from "./chart-buckets";
 import type {
   Business,
   TenantData,
@@ -302,7 +303,7 @@ const horarioToRow = (h: HorarioDia, negocioId: string): Row => ({
 
 const excepcionFromRow = (r: Row): Excepcion => ({
   id: r.id as string,
-  fecha: r.fecha as string,
+  fecha: diaDeColumnaFecha(r.fecha),
   etiqueta: r.etiqueta as string,
   cerrado: r.cerrado as boolean,
   horaEspecialFin: r.hora_especial_fin ? (r.hora_especial_fin as string).slice(0, 5) : undefined,
@@ -342,7 +343,7 @@ export const citaFromRow = (r: Row): Appointment => ({
   servicioId: (r.servicio_id as string) ?? "",
   servicioNombre: r.servicio_nombre as string,
   precio: Number(r.precio),
-  fecha: r.fecha as string,
+  fecha: diaDeColumnaFecha(r.fecha),
   hora: (r.hora as string).slice(0, 5),
   estado: r.estado as Appointment["estado"],
   metodo: (r.metodo as Appointment["metodo"]) ?? undefined,
@@ -393,6 +394,8 @@ export const cajaFromRow = (r: Row): CajaEntry => ({
   concepto: r.concepto as string,
   monto: Number(r.monto),
   metodo: r.metodo as CajaEntry["metodo"],
+  // timestamptz de verdad (el momento del movimiento), NO un día: se deja
+  // completo y quien lo pinte lo convierte con fechaCalendarioLocal().
   fecha: r.fecha as string,
   costo: r.costo == null ? undefined : Number(r.costo),
   empleadoId: (r.empleado_id as string) ?? undefined,
@@ -576,7 +579,7 @@ const pedidoFromRow = (row: Row, itemsRows: Row[]): FondaOrder => ({
   id: row.id as string,
   clienteNombre: row.cliente_nombre as string,
   clienteTelefono: (row.cliente_telefono as string) ?? undefined,
-  fecha: row.fecha as string,
+  fecha: diaDeColumnaFecha(row.fecha),
   hora: (row.hora as string).slice(0, 5),
   horaEntrega: (row.hora_entrega as string | null)?.slice(0, 5) ?? undefined,
   estado: row.estado as FondaOrder["estado"],
@@ -626,7 +629,7 @@ export const gastoFromRow = (r: Row): Expense => ({
   id: r.id as string,
   categoria: r.categoria as string,
   monto: Number(r.monto),
-  fecha: r.fecha as string,
+  fecha: diaDeColumnaFecha(r.fecha),
   recordatorio: (r.recordatorio as boolean) ?? false,
   empleadoId: (r.empleado_id as string) ?? undefined,
   empleadoNombreCache: (r.empleado_nombre_cache as string) ?? undefined,
@@ -754,7 +757,7 @@ export async function fetchPedidosPendientes(negocioId: string): Promise<FondaOr
     id: row.id as string,
     clienteNombre: row.cliente_nombre as string,
     clienteTelefono: (row.cliente_telefono as string) ?? undefined,
-    fecha: row.fecha as string,
+    fecha: diaDeColumnaFecha(row.fecha),
     hora: (row.hora as string).slice(0, 5),
     horaEntrega: (row.hora_entrega as string | null)?.slice(0, 5) ?? undefined,
     estado: row.estado as FondaOrder["estado"],
@@ -875,6 +878,8 @@ const saleItemFromRow = (it: Row): GrocerySaleItem => ({
 const ventaFromRow = (row: Row, itemsRows: Row[]): GrocerySale => ({
   id: row.id as string,
   total: Number(row.total),
+  // timestamptz de verdad (el momento de la venta), NO un día — igual que
+  // barberia_caja.fecha. Ver diaDeColumnaFecha.
   fecha: row.fecha as string,
   empleadoId: (row.empleado_id as string) ?? undefined,
   empleadoNombreCache: (row.empleado_nombre_cache as string) ?? undefined,
@@ -974,7 +979,7 @@ async function fetchAbarrotesData(negocioId: string): Promise<AbarrotesData> {
     empleadoRolCache: (row.empleado_rol_cache as Fiado["empleadoRolCache"]) ?? undefined,
     historial: movimientosData
       .filter((m) => m.fiado_id === row.id)
-      .map((m) => ({ fecha: m.fecha as string, monto: Number(m.monto), tipo: m.tipo as "cargo" | "abono" })),
+      .map((m) => ({ fecha: diaDeColumnaFecha(m.fecha), monto: Number(m.monto), tipo: m.tipo as "cargo" | "abono" })),
   }));
 
   const ventas: GrocerySale[] = (ventasRes.data ?? []).map((row) => ventaFromRow(row, saleItemsData));
@@ -1207,7 +1212,7 @@ export async function fetchPublicBookingData(negocioId: string): Promise<PublicB
     horario: (horario.data ?? []).map(horarioFromRow),
     excepciones: (excepciones.data ?? []).map(excepcionFromRow),
     citas: (citas.data ?? []).map((r) => ({
-      fecha: r.fecha as string,
+      fecha: diaDeColumnaFecha(r.fecha),
       hora: (r.hora as string).slice(0, 5),
       estado: r.estado as Appointment["estado"],
       servicioId: r.servicio_id as string,
@@ -1272,7 +1277,7 @@ export async function fetchCitasByTelefono(slug: string, telefono: string): Prom
     clienteNombre: r.cliente_nombre as string,
     servicioNombre: r.servicio_nombre as string,
     precio: Number(r.precio),
-    fecha: r.fecha as string,
+    fecha: diaDeColumnaFecha(r.fecha),
     hora: (r.hora as string).slice(0, 5),
   }));
 }

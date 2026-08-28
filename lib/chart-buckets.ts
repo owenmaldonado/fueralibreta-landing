@@ -99,6 +99,43 @@ export function diaDelNegocio(fecha: string, timezone?: string): string {
   return d.toLocaleDateString("en-CA", timezone ? { timeZone: timezone } : undefined);
 }
 
+export /**
+ * Día calendario de una columna que GUARDA UN DÍA, no un instante
+ * (fonda_pedidos.fecha, *_gastos.fecha, barberia_citas.fecha, etc.).
+ *
+ * EL BUG QUE ARREGLA — el de "la gráfica de Fondita se lleva todo al día
+ * anterior", que aguantó cinco días de intentos:
+ *
+ * Esas columnas están declaradas `date` en el esquema, y una columna `date`
+ * llega del servidor como "2026-08-28". Pero en bases que vienen de una
+ * versión vieja de la tabla, `create table if not exists` y
+ * `add column if not exists` NO cambian el tipo de una columna que ya
+ * existía — así que ahí `fecha` se quedó como `timestamptz` y llega como
+ * "2026-08-28T00:00:00+00:00": medianoche UTC.
+ *
+ * Medianoche UTC del 28 es, en México, el 27 a las 6 de la tarde. Así que
+ * cualquier cosa que interprete ese texto como un instante (`new Date(...)`,
+ * que es lo que hacía la gráfica) contesta 27. En memoria, antes de
+ * refrescar, la fecha era el string "2026-08-28" que puso quien capturó el
+ * pedido y todo se veía bien; al refrescar volvía de la base como
+ * timestamptz y se corría un día. De ahí el "al refrescar todo se va al día
+ * anterior".
+ *
+ * Cortar a 10 caracteres es correcto en los dos casos y no depende de
+ * ninguna zona horaria: "2026-08-28" se queda igual, y
+ * "2026-08-28T00:00:00+00:00" entrega el día que se quiso guardar. Se
+ * aplica aquí, en la frontera con la base, para que ninguna pantalla de
+ * arriba tenga que volver a enterarse de esto.
+ *
+ * OJO: NO se usa en barberia_caja.fecha ni abarrotes_ventas.fecha — esas dos
+ * sí son timestamptz a propósito (guardan el momento exacto del movimiento)
+ * y se convierten con fechaCalendarioLocal(), que sí mira la zona del
+ * negocio.
+ */
+function diaDeColumnaFecha(valor: unknown): string {
+  return typeof valor === "string" ? valor.slice(0, 10) : "";
+}
+
 /**
  * Contexto de la gráfica: qué día es "hoy" PARA EL NEGOCIO y en qué zona
  * interpretar los movimientos que guardan un instante.
