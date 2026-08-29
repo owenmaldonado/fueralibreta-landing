@@ -115,3 +115,27 @@ export async function createMisApp(input: NuevaAppInput): Promise<void> {
   });
   if (error) throw error;
 }
+
+/**
+ * Borra el REGISTRO de una app en mis_apps. No toca nada más: los negocios que
+ * tuvieran ese app_slug siguen existiendo tal cual, y si la app tenía código
+ * (una carpeta en app/app/...), ese código sigue ahí y su URL sigue abriendo.
+ * Esto solo la quita de la lista del hub.
+ *
+ * Existe porque el hub podía crear apps y no borrarlas: cada prueba del botón
+ * "+" dejaba una tarjeta permanente. La policy de mis_apps ya permitía DELETE
+ * desde el principio (mis_apps_admin_all es FOR ALL) — lo que faltaba era el
+ * botón, no el permiso.
+ *
+ * 'fuera-libreta' se rechaza aquí y no solo en la UI: es el slug por default de
+ * negocios.app_slug (ver la migración del esquema), así que borrar su registro
+ * dejaría a todos los negocios reales apuntando a una app que el hub ya no
+ * conoce.
+ */
+export async function borrarMisApp(id: string, slug: string): Promise<void> {
+  if (slug === "fuera-libreta") {
+    throw new Error("Fuera Libreta no se puede quitar: es la app a la que pertenecen tus negocios.");
+  }
+  const { error } = await supabase.from("mis_apps").delete().eq("id", id);
+  if (error) throw error;
+}

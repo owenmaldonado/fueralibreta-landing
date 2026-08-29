@@ -1,0 +1,195 @@
+/* ============================================================================
+   Tema de la app personal "Mi Día".
+
+   Cómo NO choca con FueraLibreta:
+   - Todas las reglas cuelgan de html[data-mid-tema], un atributo que solo pone
+     <TemaMiDia> mientras esta app está montada, y que quita al desmontarse.
+     Ninguna pantalla de FueraLibreta puede verlas.
+   - Va en <html> y no en un <div> contenedor a propósito: los modales de
+     components/ui (Dialog, Sheet) se pintan con createPortal en document.body,
+     fuera de cualquier contenedor. Si los tokens vivieran en un div, los
+     modales saldrían con los colores de FueraLibreta y se vería roto.
+   - Solo redefine variables ya existentes (--background, --card, --primary…)
+     más las propias con prefijo --mid-. No agrega ni pisa ninguna clase de
+     Tailwind ni ningún selector global.
+   ========================================================================== */
+
+html[data-mid-tema="oscuro"] {
+  /* Tinta de noche: casi negro pero cálido, no el azul frío del gris puro. */
+  --background: 28 14% 6%;
+  --surface: 28 12% 9%;
+  --foreground: 40 30% 94%;
+
+  --card: 28 12% 10%;
+  --card-foreground: 40 30% 94%;
+
+  --popover: 28 12% 9%;
+  --popover-foreground: 40 30% 94%;
+
+  /* Mismo ámbar de FueraLibreta: es tu marca, no la de una app de calendario. */
+  --primary: 38 92% 56%;
+  --primary-foreground: 28 20% 8%;
+
+  --secondary: 28 10% 15%;
+  --secondary-foreground: 40 30% 94%;
+
+  --muted: 28 10% 15%;
+  --muted-foreground: 34 10% 62%;
+
+  --accent: 28 10% 15%;
+  --accent-foreground: 40 30% 94%;
+
+  --ledger: 160 50% 45%;
+  --ledger-foreground: 28 20% 7%;
+
+  --destructive: 6 74% 57%;
+  --destructive-foreground: 40 30% 95%;
+
+  --border: 30 10% 20%;
+  --input: 30 10% 20%;
+  --ring: 38 92% 56%;
+
+  --radius: 0.75rem;
+
+  /* --- Propias de esta app --- */
+  --mid-cumplido: 158 58% 44%;   /* verde  */
+  --mid-justificado: 32 90% 55%; /* naranja */
+  --mid-fallado: 6 74% 57%;      /* rojo   */
+  --mid-pendiente: 30 8% 26%;    /* gris   */
+  --mid-linea: 30 10% 18%;
+  --mid-realce: 38 92% 56%;
+  --mid-sombra: 0 0% 0%;
+  --mid-sombra-alfa: 0.5;
+  --mid-vidrio: 28 14% 6%;
+}
+
+html[data-mid-tema="papel"] {
+  /* Papel de cuaderno bueno: crema tibio, no blanco de pantalla. */
+  --background: 40 38% 96%;
+  --surface: 40 40% 98%;
+  --foreground: 25 22% 14%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 25 22% 14%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 25 22% 14%;
+
+  --primary: 30 82% 46%;
+  --primary-foreground: 40 45% 98%;
+
+  --secondary: 38 28% 91%;
+  --secondary-foreground: 25 22% 16%;
+
+  --muted: 38 28% 91%;
+  --muted-foreground: 28 10% 42%;
+
+  --accent: 38 28% 91%;
+  --accent-foreground: 25 22% 16%;
+
+  --ledger: 160 45% 34%;
+  --ledger-foreground: 40 45% 98%;
+
+  --destructive: 4 66% 48%;
+  --destructive-foreground: 40 45% 98%;
+
+  --border: 34 20% 84%;
+  --input: 34 20% 84%;
+  --ring: 30 82% 46%;
+
+  --radius: 0.75rem;
+
+  --mid-cumplido: 158 48% 36%;
+  --mid-justificado: 30 82% 48%;
+  --mid-fallado: 4 66% 50%;
+  --mid-pendiente: 34 16% 82%;
+  --mid-linea: 34 22% 87%;
+  --mid-realce: 30 82% 46%;
+  --mid-sombra: 25 30% 30%;
+  --mid-sombra-alfa: 0.1;
+  --mid-vidrio: 40 38% 96%;
+}
+
+/* ---------------------------------------------------------------------------
+   Utilidades. Todas con prefijo .mid- para que ningún nombre pueda colisionar
+   con una clase de FueraLibreta.
+   ------------------------------------------------------------------------ */
+
+.mid-display {
+  font-family: var(--font-mid-display), Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.mid-titulo {
+  font-family: var(--font-mid-display), Georgia, serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+/* Números que no bailan al cambiar de valor (contadores, pesos, montos). */
+.mid-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.mid-etiqueta {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.mid-tarjeta {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  box-shadow: 0 1px 2px hsl(var(--mid-sombra) / calc(var(--mid-sombra-alfa) * 0.5));
+}
+
+/* Renglones de cuaderno, muy sutiles: dan textura sin volverse ruido. */
+.mid-renglones {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 31px,
+    hsl(var(--mid-linea)) 32px
+  );
+}
+
+.mid-barra-superior {
+  background: hsl(var(--mid-vidrio) / 0.86);
+  backdrop-filter: saturate(1.4) blur(14px);
+  -webkit-backdrop-filter: saturate(1.4) blur(14px);
+}
+
+/* El pulso del check de un hábito: confirma el toque sin animar medio segundo. */
+@keyframes mid-pop {
+  0% { transform: scale(1); }
+  38% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+.mid-pop { animation: mid-pop 340ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+@keyframes mid-entrada {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.mid-entrada { animation: mid-entrada 420ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* El anillo de progreso del día se dibuja solo al cargar. */
+@keyframes mid-trazo {
+  from { stroke-dashoffset: var(--mid-trazo-inicio, 999); }
+}
+.mid-trazo { animation: mid-trazo 900ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Oculta la barra de scroll de las tiras horizontales (semana, meses) sin
+   perder el scroll mismo. */
+.mid-sin-barra { scrollbar-width: none; -ms-overflow-style: none; }
+.mid-sin-barra::-webkit-scrollbar { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mid-pop, .mid-entrada, .mid-trazo { animation: none !important; }
+}

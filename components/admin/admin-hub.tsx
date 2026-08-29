@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Plus, Users, TrendingUp, Loader2, LayoutGrid, AlertTriangle, Copy } from "lucide-react";
+import { Plus, Users, TrendingUp, Loader2, LayoutGrid, AlertTriangle, Copy, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogHeader, DialogFooter } from "@/components/ui/dialog";
 import { LoadingBlock } from "@/components/app-shell/loading";
 import { formatMoney } from "@/lib/mock";
-import { fetchAppsConStats, createMisApp, type AppConStats } from "@/lib/admin-apps";
+import { fetchAppsConStats, createMisApp, borrarMisApp, type AppConStats } from "@/lib/admin-apps";
 
 // Ya no hay "Próximamente": cualquier slug registrado tiene un destino real
 // en /app/{slug} — o su módulo construido (rentas, fuera-libreta), o el
@@ -25,6 +25,7 @@ import { fetchAppsConStats, createMisApp, type AppConStats } from "@/lib/admin-a
 const APP_LOOK: Record<string, { icono: string; color: string }> = {
   "fuera-libreta": { icono: "📒", color: "#f97316" },
   rentas: { icono: "🏠", color: "#0ea5e9" },
+  "mi-dia": { icono: "🌤️", color: "#eab308" },
 };
 const PALETA_DEFAULT = [
   { icono: "📦", color: "#6366f1" },
@@ -69,6 +70,10 @@ export function AdminHub() {
   const [misAppsError, setMisAppsError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [nuevaAppOpen, setNuevaAppOpen] = React.useState(false);
+  // Slug pendiente de confirmar borrado. Una app de prueba se borra en dos
+  // toques, no en uno: el primero convierte la tarjeta en la confirmación.
+  const [porBorrar, setPorBorrar] = React.useState<string | null>(null);
+  const [borrando, setBorrando] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -94,6 +99,21 @@ export function AdminHub() {
   React.useEffect(() => {
     load();
   }, [load]);
+
+  async function borrar(app: AppConStats) {
+    setBorrando(true);
+    try {
+      await borrarMisApp(app.id, app.slug);
+      toast.success(`"${app.nombre}" quitada del hub`);
+      setPorBorrar(null);
+      await load();
+    } catch (err) {
+      console.error("No se pudo borrar la app:", err);
+      toast.error(getErrorMessage(err, "No se pudo borrar la app."));
+    } finally {
+      setBorrando(false);
+    }
+  }
 
   async function copiarLink(slug: string) {
     const url = `${window.location.origin}/app/${slug}`;
@@ -157,35 +177,75 @@ export function AdminHub() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-lg border border-border p-2.5 text-center">
-                  <p className="flex items-center justify-center gap-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                    <Users className="h-3 w-3" /> Clientes
-                  </p>
-                  <p className="mt-1 font-display text-lg font-bold">{app.totalClientes}</p>
+              {/* Clientes/Ingresos solo tienen sentido para una app con negocios
+                  detrás. En una app personal (o en una recién registrada, sin
+                  nada todavía) son dos ceros que no dicen nada — mejor el link. */}
+              {app.totalClientes > 0 ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-border p-2.5 text-center">
+                    <p className="flex items-center justify-center gap-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                      <Users className="h-3 w-3" /> Clientes
+                    </p>
+                    <p className="mt-1 font-display text-lg font-bold">{app.totalClientes}</p>
+                  </div>
+                  <div className="rounded-lg border border-border p-2.5 text-center">
+                    <p className="flex items-center justify-center gap-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                      <TrendingUp className="h-3 w-3" /> Ingresos
+                    </p>
+                    <p className="mt-1 font-display text-lg font-bold text-ledger">{formatMoney(app.ingresosMrr)}</p>
+                  </div>
                 </div>
-                <div className="rounded-lg border border-border p-2.5 text-center">
-                  <p className="flex items-center justify-center gap-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                    <TrendingUp className="h-3 w-3" /> Ingresos
-                  </p>
-                  <p className="mt-1 font-display text-lg font-bold text-ledger">{formatMoney(app.ingresosMrr)}</p>
-                </div>
-              </div>
+              ) : (
+                <p className="rounded-lg border border-dashed border-border px-3 py-2 text-center font-mono text-[11px] text-muted-foreground">
+                  /app/{app.slug}
+                </p>
+              )}
 
-              <div className="flex gap-2">
-                <Button asChild size="lg" className="flex-1">
-                  <Link href={`/app/${app.slug}`}>Entrar</Link>
-                </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  onClick={() => copiarLink(app.slug)}
-                  title="Copiar link"
-                  aria-label="Copiar link"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
+              {porBorrar === app.slug ? (
+                <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3">
+                  <p className="text-xs leading-relaxed text-foreground">
+                    Quita <strong>{app.nombre}</strong> de esta lista. No borra ningún dato ni ningún negocio: si la
+                    app tiene pantallas hechas, siguen funcionando en /app/{app.slug}.
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setPorBorrar(null)}>
+                      Cancelar
+                    </Button>
+                    <Button size="sm" variant="destructive" className="flex-1" disabled={borrando} onClick={() => borrar(app)}>
+                      {borrando ? <Loader2 className="h-4 w-4 animate-spin" /> : "Quitar"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Button asChild size="lg" className="flex-1">
+                    <Link href={`/app/${app.slug}`}>Entrar</Link>
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    onClick={() => copiarLink(app.slug)}
+                    title="Copiar link"
+                    aria-label="Copiar link"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                  {/* Fuera Libreta no se puede quitar: es el app_slug por default
+                      de todos los negocios reales (ver borrarMisApp). */}
+                  {app.slug !== "fuera-libreta" && (
+                    <Button
+                      size="lg"
+                      variant="ghost"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => setPorBorrar(app.slug)}
+                      title="Quitar del hub"
+                      aria-label={`Quitar ${app.nombre} del hub`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
