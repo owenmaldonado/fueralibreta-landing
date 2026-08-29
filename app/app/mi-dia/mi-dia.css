@@ -193,3 +193,38 @@ html[data-mid-tema="papel"] {
 @media (prefers-reduced-motion: reduce) {
   .mid-pop, .mid-entrada, .mid-trazo { animation: none !important; }
 }
+
+/* ---------------------------------------------------------------------------
+   Medidores de hábitos (components/personal/medidores.tsx)
+   ------------------------------------------------------------------------ */
+
+/* El halo del hábito cumplido. drop-shadow sobre el SVG y no un box-shadow en
+   el contenedor: sigue la SILUETA del dibujo (la luna brilla redonda, la
+   planta brilla de planta) en vez de iluminar un cuadro. */
+.mid-halo {
+  filter: drop-shadow(0 0 10px currentColor);
+}
+
+/* El trazo de la palomita se dibuja en vez de aparecer. Dura poco a propósito:
+   confirma el toque sin hacerte esperar por una animación. */
+@keyframes mid-trazar {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+.mid-trazar {
+  animation: mid-trazar 420ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+/* La tarjeta del hábito al completarse: un rebote corto, más suave que el
+   .mid-pop de los botones porque aquí se mueve una tarjeta entera. */
+@keyframes mid-logrado {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+.mid-logrado { animation: mid-logrado 420ms cubic-bezier(0.34, 1.4, 0.64, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .mid-trazar, .mid-logrado { animation: none !important; }
+  .mid-trazar { stroke-dashoffset: 0 !important; }
+}

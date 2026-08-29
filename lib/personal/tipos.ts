@@ -11,6 +11,17 @@ import type { ISODate } from "./fechas";
 export type { ISODate };
 
 export type Dificultad = "facil" | "media" | "dificil";
+
+/**
+ * Cómo se dibuja un hábito en la pantalla Hoy. Ver MEDIDORES en
+ * components/personal/medidores.tsx — una clave desconocida cae al anillo, no
+ * rompe nada.
+ */
+export type VisualHabito =
+  | "anillo" | "vasos" | "luna" | "pesas" | "libro" | "planta" | "escudo" | "llama" | "barras" | "check";
+
+/** De dónde sale el avance del hábito. Ver el comentario de la migración. */
+export type FuenteHabito = "manual" | "agua" | "sueno" | "gym";
 export type TipoMovimiento = "gasto" | "ingreso";
 export type CategoriaObjetivo = "cuerpo" | "mente" | "dinero" | "oficio" | "hogar" | "gente" | "alegria";
 
@@ -50,6 +61,11 @@ export interface Habito {
   metaSemanal: number | null;
   activo: boolean;
   orden: number;
+  visual: VisualHabito;
+  /** Meta del día (8 vasos, 30 min). null = hábito binario. */
+  metaValor: number | null;
+  unidad: string | null;
+  fuente: FuenteHabito;
 }
 
 export interface RegistroHabito {
@@ -59,6 +75,8 @@ export interface RegistroHabito {
   cumplido: boolean;
   motivo: string | null;
   puntos: number;
+  /** Cuánto llevas hoy contra metaValor. null en hábitos binarios. */
+  avance: number | null;
 }
 
 export interface Evento {

@@ -17,6 +17,7 @@ import type { EstadoHabito, Habito, RegistroHabito } from "@/lib/personal/tipos"
 import { EncabezadoPantalla } from "./shell";
 import { EditorHabito } from "./habito-editor";
 import { COLOR_ESTADO, ETIQUETA_ESTADO, EstadoVacio, Tarjeta, TituloTarjeta } from "./piezas";
+import { COLOR_NATURAL, Medidor } from "./medidores";
 
 /** Historial extra que se trae antes del mes visible, para que las rachas no empiecen de cero cada primero. */
 const COLCHON_RACHA = 120;
@@ -175,9 +176,7 @@ export function PantallaHabitos() {
           <ul className="flex flex-col divide-y divide-border">
             {archivados.map((h) => (
               <li key={h.id} className="flex items-center gap-3 py-2.5">
-                <span className="min-w-0 flex-1 truncate text-[15px] text-muted-foreground">
-                  {h.emoji} {h.nombre}
-                </span>
+                <span className="min-w-0 flex-1 truncate text-[15px] text-muted-foreground">{h.nombre}</span>
                 <button
                   type="button"
                   onClick={() => desarchivar(h)}
@@ -260,7 +259,12 @@ function Tracker({
                 title="Editar hábito"
                 className="sticky left-0 z-10 flex h-[26px] w-[136px] shrink-0 items-center gap-1.5 bg-card pr-2 text-left"
               >
-                {habito.emoji && <span className="shrink-0 text-[13px] leading-none">{habito.emoji}</span>}
+                {/* El mismo medidor de la pantalla Hoy, en chiquito y lleno:
+                    el renglón del tracker se reconoce por su dibujo, no por
+                    leer el nombre. */}
+                <span className="shrink-0" style={{ color: COLOR_NATURAL[habito.visual] ?? "hsl(var(--primary))" }}>
+                  <Medidor visual={habito.visual} progreso={1} estado="pendiente" tamano={18} />
+                </span>
                 <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{habito.nombre}</span>
                 <span className="mid-num shrink-0 text-[10px] font-semibold text-muted-foreground">
                   {resumen.porcentaje}%
@@ -305,16 +309,35 @@ function Tracker({
 /**
  * Arranque en frío. Un tracker vacío con un botón "Nuevo" es la forma más
  * segura de que nunca se llene: hay que inventar de cero qué hábitos tener,
- * con qué dificultad y qué días. Esto propone cinco que casi todos quieren,
- * ya configurados (el gym en L-M-V, el agua fácil), y los crea de un toque.
- * Se editan o se borran después como cualquier otro.
+ * con qué dificultad, qué días y cómo se ven.
+ *
+ * Estos cinco vienen configurados de punta a punta — y tres de ellos NO se
+ * marcan a mano: el agua se llena con los vasos que registras en el día, la
+ * luna con tus horas de sueño y la barra con tu sesión de gym. Ese es el
+ * momento "wow" del primer día: capturas el día como siempre y el tablero se
+ * enciende solo.
  */
 const PAQUETE: Omit<HabitoNuevo, "orden">[] = [
-  { nombre: "Tomar agua", emoji: "💧", categoria: "bienestar", dificultad: "facil", diasSemana: null, metaSemanal: null },
-  { nombre: "Gym", emoji: "🏋️", categoria: "cuerpo", dificultad: "dificil", diasSemana: [1, 3, 5], metaSemanal: 3 },
-  { nombre: "Leer 20 min", emoji: "📚", categoria: "mente", dificultad: "media", diasSemana: null, metaSemanal: null },
-  { nombre: "Dormir 7 horas", emoji: "🛏️", categoria: "bienestar", dificultad: "media", diasSemana: null, metaSemanal: null },
-  { nombre: "Sin celular en la cama", emoji: "📵", categoria: "mente", dificultad: "media", diasSemana: null, metaSemanal: null },
+  {
+    nombre: "Tomar agua", emoji: null, categoria: "bienestar", dificultad: "facil",
+    diasSemana: null, metaSemanal: null, visual: "vasos", metaValor: 8, unidad: "vasos", fuente: "agua",
+  },
+  {
+    nombre: "Gym", emoji: null, categoria: "cuerpo", dificultad: "dificil",
+    diasSemana: [1, 3, 5], metaSemanal: 3, visual: "pesas", metaValor: null, unidad: null, fuente: "gym",
+  },
+  {
+    nombre: "Dormir 7 horas", emoji: null, categoria: "bienestar", dificultad: "media",
+    diasSemana: null, metaSemanal: null, visual: "luna", metaValor: 7, unidad: "h", fuente: "sueno",
+  },
+  {
+    nombre: "Leer 20 min", emoji: null, categoria: "mente", dificultad: "media",
+    diasSemana: null, metaSemanal: null, visual: "libro", metaValor: 20, unidad: "min", fuente: "manual",
+  },
+  {
+    nombre: "Sin celular en la cama", emoji: null, categoria: "mente", dificultad: "media",
+    diasSemana: null, metaSemanal: null, visual: "escudo", metaValor: null, unidad: null, fuente: "manual",
+  },
 ];
 
 function PaqueteInicial({ onListo }: { onListo: () => void }) {
@@ -339,18 +362,26 @@ function PaqueteInicial({ onListo }: { onListo: () => void }) {
   }
 
   return (
-    <div className="py-4 text-center">
-      <p className="text-sm text-muted-foreground">
-        Todavía no tienes hábitos. Puedes crear el tuyo con el botón de arriba, o empezar con estos cinco:
+    <div className="py-2 text-center">
+      <p className="mx-auto max-w-sm text-sm text-muted-foreground">
+        Todavía no tienes hábitos. Crea el tuyo con el botón de arriba, o empieza con estos cinco — tres se llenan
+        solos con lo que ya registras en el día.
       </p>
-      <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+
+      <div className="mt-4 grid grid-cols-5 gap-2">
         {PAQUETE.map((h) => (
-          <span key={h.nombre} className="rounded-full border border-border px-3 py-1.5 text-[13px]">
-            {h.emoji} {h.nombre}
-          </span>
+          <div key={h.nombre} className="flex flex-col items-center gap-1.5">
+            <span style={{ color: COLOR_NATURAL[h.visual] }}>
+              {/* A la mitad, no lleno: así se ve que el medidor SE LLENA, que
+                  es justo lo que hay que entender antes de decidir. */}
+              <Medidor visual={h.visual} progreso={0.6} estado="pendiente" tamano={44} />
+            </span>
+            <span className="text-[10px] font-medium leading-tight text-muted-foreground">{h.nombre}</span>
+          </div>
         ))}
       </div>
-      <Button className="mt-4" disabled={creando} onClick={crearTodos}>
+
+      <Button className="mt-5" disabled={creando} onClick={crearTodos}>
         {creando ? <Loader2 className="h-4 w-4 animate-spin" /> : "Empezar con estos cinco"}
       </Button>
     </div>

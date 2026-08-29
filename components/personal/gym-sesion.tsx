@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { ChevronLeft, Medal, Plus, Timer, Trash2, X } from "lucide-react";
+import { ChevronLeft, Medal, Plus, RotateCcw, Timer, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -235,6 +235,7 @@ function BloqueEjercicio({
 }) {
   const [borrando, setBorrando] = React.useState(false);
   const recordPrevio = marcaPrevia?.mejorSerie?.unoRM ?? 0;
+  const anteriores = marcaPrevia?.ultimaVez?.series ?? [];
 
   async function agregarSerie() {
     const ultima = ejercicio.series[ejercicio.series.length - 1];
@@ -297,8 +298,20 @@ function BloqueEjercicio({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        {ejercicio.series.map((serie) => (
-          <FilaSerie key={serie.id} serie={serie} recordPrevio={recordPrevio} onCambio={onCambio} />
+        {ejercicio.series.map((serie, i) => (
+          <FilaSerie
+            key={serie.id}
+            serie={serie}
+            recordPrevio={recordPrevio}
+            // El "fantasma": la serie equivalente de la última vez que hiciste
+            // este ejercicio. Se empareja por posición (serie 1 con serie 1); si
+            // aquella vez hiciste menos series, se repite la última, que es lo
+            // que en la práctica seguirías levantando.
+            sugerencia={
+              anteriores.length === 0 ? null : anteriores[Math.min(i, anteriores.length - 1)]
+            }
+            onCambio={onCambio}
+          />
         ))}
       </div>
 
@@ -322,10 +335,13 @@ function formatearPeso(peso: number | null): string {
 function FilaSerie({
   serie,
   recordPrevio,
+  sugerencia,
   onCambio,
 }: {
   serie: Serie;
   recordPrevio: number;
+  /** Lo que levantaste en esta misma serie la vez pasada. Se muestra en gris como fantasma. */
+  sugerencia: Serie | null;
   onCambio: () => void;
 }) {
   const [peso, setPeso] = React.useState(serie.pesoKg == null ? "" : formatearPeso(serie.pesoKg));
@@ -343,6 +359,7 @@ function FilaSerie({
   const repsNum = reps === "" ? null : Number(reps);
   const rm = unoRMEstimado(pesoNum, repsNum);
   const esRecord = rm > 0 && rm > recordPrevio;
+  const vacia = peso === "" && reps === "";
 
   // Se declara con useCallback y se referencia desde el efecto de limpieza:
   // sin esto, salir del ejercicio (o recargar la lista al agregar una serie)
@@ -409,7 +426,7 @@ function FilaSerie({
           setPeso(v);
           programarGuardado(v, reps);
         }}
-        placeholder="0"
+        placeholder={sugerencia?.pesoKg != null ? formatearPeso(sugerencia.pesoKg) : "0"}
         aria-label={`Peso de la serie ${serie.numero}`}
         className="mid-num h-9 w-16 rounded-md border border-input bg-surface px-2 text-center text-[15px] font-semibold outline-none focus:border-primary/70"
       />
@@ -425,11 +442,32 @@ function FilaSerie({
           setReps(v);
           programarGuardado(peso, v);
         }}
-        placeholder="0"
+        placeholder={sugerencia?.repeticiones != null ? String(sugerencia.repeticiones) : "0"}
         aria-label={`Repeticiones de la serie ${serie.numero}`}
         className="mid-num h-9 w-14 rounded-md border border-input bg-surface px-2 text-center text-[15px] font-semibold outline-none focus:border-primary/70"
       />
       <span className="text-[12px] text-muted-foreground">reps</span>
+
+      {/* Fila vacía con fantasma: un toque copia lo de la vez pasada. Escribir
+          encima ignora el fantasma, así que sugerir nunca ensucia el registro:
+          lo que se guarda siempre es lo que tú pusiste. */}
+      {vacia && sugerencia && (
+        <button
+          type="button"
+          onClick={() => {
+            const p = sugerencia.pesoKg != null ? formatearPeso(sugerencia.pesoKg) : "";
+            const r = sugerencia.repeticiones != null ? String(sugerencia.repeticiones) : "";
+            setPeso(p);
+            setReps(r);
+            programarGuardado(p, r);
+          }}
+          title="Usar lo de la vez pasada"
+          className="ml-auto flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-1 text-[10.5px] text-muted-foreground/70 transition-colors hover:border-primary/60 hover:text-foreground"
+        >
+          <RotateCcw className="h-3 w-3" />
+          igual
+        </button>
+      )}
 
       {esRecord && (
         <span className="ml-auto flex items-center gap-1 text-[11px] font-bold text-primary" title="Rompe tu mejor marca en este ejercicio">
@@ -443,7 +481,7 @@ function FilaSerie({
         aria-label={`Borrar serie ${serie.numero}`}
         className={cn(
           "shrink-0 rounded-full p-1 text-muted-foreground/40 transition-colors hover:bg-background hover:text-destructive",
-          !esRecord && "ml-auto"
+          !esRecord && !(vacia && sugerencia) && "ml-auto"
         )}
       >
         <Trash2 className="h-3.5 w-3.5" />

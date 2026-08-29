@@ -5,9 +5,9 @@ import { toast } from "sonner";
 import { BookOpen, CalendarCheck2, Check, Moon, Quote, Scale, Sparkles, Utensils } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { obtenerHabitos, obtenerRegistros } from "@/lib/personal/api";
+import { limpiarRegistro, marcarHabito, obtenerHabitos, obtenerRegistros } from "@/lib/personal/api";
 import { etiquetaRelativa, formatoLargo, hoy, inicioSemana, semanaDe, sumarDias, type ISODate } from "@/lib/personal/fechas";
-import { aplicaEn, calcularRacha, estadoDe, resumirPeriodo } from "@/lib/personal/reglas";
+import { aplicaEn, calcularRacha, derivarAutomatico, estadoDe, resumirPeriodo } from "@/lib/personal/reglas";
 import type { Habito, RegistroHabito } from "@/lib/personal/tipos";
 import { useDia } from "@/lib/personal/use-dia";
 import { AreaTexto, ContadorAgua, Stepper } from "./campos";
@@ -40,6 +40,10 @@ export function PantallaHoy() {
 
   const [habitos, setHabitos] = React.useState<Habito[]>([]);
   const [registros, setRegistros] = React.useState<RegistroHabito[]>([]);
+  // null = todavía no sabemos (BloqueGym no ha respondido). Distinto de 0, que
+  // sí significa "no entrenó": sin esa distinción, el hábito de gym se
+  // desmarcaría solo cada vez que cambias de día, antes de que cargue la data.
+  const [sesionesDelDia, setSesionesDelDia] = React.useState<number | null>(null);
 
   // El historial se recarga por SEMANA, no por día: moverte entre los 7 días
   // de la tira no vuelve a pegarle a la red.
@@ -62,6 +66,10 @@ export function PantallaHoy() {
   React.useEffect(() => {
     void recargarHabitos();
   }, [recargarHabitos]);
+
+  React.useEffect(() => {
+    setSesionesDelDia(null);
+  }, [fecha]);
 
   // ---- Índices derivados ---------------------------------------------------
 
@@ -142,6 +150,72 @@ export function PantallaHoy() {
     });
   }, []);
 
+  // -------------------------------------------------------------------------
+  // Hábitos automáticos: se llenan solos con lo que ya capturaste en el día.
+  //
+  // Sin esto, "tomar 8 vasos" habría que registrarlo dos veces (en la tarjeta
+  // del día y en el hábito), y un dato que se pide dos veces es un dato que se
+  // deja de capturar. Aquí se compara lo que el día DICE contra lo que el
+  // registro del hábito GUARDA, y solo se escribe cuando difieren — así el
+  // efecto converge en una pasada y no se cicla.
+  // -------------------------------------------------------------------------
+  const reconciliando = React.useRef(false);
+
+  React.useEffect(() => {
+    if (cargando || reconciliando.current) return;
+
+    const tareas: (() => Promise<void>)[] = [];
+
+    for (const habito of habitos) {
+      if (habito.fuente === "manual" || !aplicaEn(habito, fecha)) continue;
+      const debeSer = derivarAutomatico(habito, {
+        vasosAgua: dia.vasosAgua,
+        horasSueno: dia.horasSueno,
+        sesionesGym: sesionesDelDia,
+      });
+      if (!debeSer) continue;
+
+      const guardado = registrosDelDia.get(habito.id);
+      const vacio = !debeSer.cumplido && (debeSer.avance ?? 0) === 0;
+
+      if (vacio) {
+        if (guardado) {
+          tareas.push(async () => {
+            await limpiarRegistro(habito.id, fecha);
+            alCambiarHabito(null, habito.id);
+          });
+        }
+        continue;
+      }
+
+      const igual =
+        guardado &&
+        guardado.cumplido === debeSer.cumplido &&
+        (guardado.avance ?? 0) === (debeSer.avance ?? 0);
+      if (igual) continue;
+
+      tareas.push(async () => {
+        const nuevo = await marcarHabito(habito, fecha, debeSer.cumplido, null, debeSer.avance);
+        alCambiarHabito(nuevo, habito.id);
+      });
+    }
+
+    if (tareas.length === 0) return;
+
+    reconciliando.current = true;
+    (async () => {
+      try {
+        for (const tarea of tareas) await tarea();
+      } catch (err) {
+        // Un fallo aquí no debe tirar la pantalla: el hábito automático se
+        // queda como estaba y se vuelve a intentar al siguiente cambio.
+        console.error("No se pudo sincronizar un hábito automático:", err);
+      } finally {
+        reconciliando.current = false;
+      }
+    })();
+  }, [cargando, dia.vasosAgua, dia.horasSueno, sesionesDelDia, habitos, registrosDelDia, fecha, alCambiarHabito]);
+
   const esHoy = fecha === hoy();
 
   return (
@@ -197,7 +271,7 @@ export function PantallaHoy() {
             <p className="mid-etiqueta mb-2">Energía</p>
             <EscalaBarras valor={dia.energia} onChange={(v) => actualizar({ energia: v }, true)} />
           </div>
-          <div>
+          <div id="mid-sueno" className="scroll-mt-20">
             <p className="mid-etiqueta mb-1 flex items-center gap-1">
               <Moon className="h-3 w-3" /> Sueño
             </p>
@@ -211,7 +285,7 @@ export function PantallaHoy() {
           </div>
         </div>
 
-        <div className="mt-4 border-t border-border pt-3">
+        <div id="mid-agua" className="mt-4 scroll-mt-20 border-t border-border pt-3">
           <p className="mid-etiqueta mb-2">Agua</p>
           <ContadorAgua valor={dia.vasosAgua} onChange={(v) => actualizar({ vasosAgua: v }, true)} />
         </div>
@@ -241,7 +315,7 @@ export function PantallaHoy() {
 
       {/* ---------------- Agenda / Gym / Dinero ---------------- */}
       <BloqueAgenda key={`agenda-${fecha}`} fecha={fecha} />
-      <BloqueGym key={`gym-${fecha}`} fecha={fecha} />
+      <BloqueGym key={`gym-${fecha}`} fecha={fecha} onSesiones={setSesionesDelDia} />
       <BloqueDinero key={`dinero-${fecha}`} fecha={fecha} />
 
       {/* ---------------- Comidas ---------------- */}

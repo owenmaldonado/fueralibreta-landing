@@ -16,7 +16,18 @@ import { EstadoVacio, Tarjeta, TituloTarjeta } from "./piezas";
  * pantalla de gym con un día alrededor. Aquí solo se ve si ya entrenaste y
  * cuánto moviste; el detalle está a un toque, en /app/mi-dia/gym.
  */
-export function BloqueGym({ fecha }: { fecha: ISODate }) {
+export function BloqueGym({
+  fecha,
+  onSesiones,
+}: {
+  fecha: ISODate;
+  /**
+   * Cuántas sesiones hay este día. Lo reporta hacia arriba en vez de que la
+   * pantalla Hoy repita la consulta: el hábito de gym con fuente automática
+   * necesita este dato para marcarse solo (ver reconciliar() en hoy.tsx).
+   */
+  onSesiones?: (cuantas: number) => void;
+}) {
   const [sesiones, setSesiones] = React.useState<Sesion[]>([]);
   const [cargando, setCargando] = React.useState(true);
 
@@ -24,7 +35,11 @@ export function BloqueGym({ fecha }: { fecha: ISODate }) {
     let vivo = true;
     setCargando(true);
     obtenerSesiones(fecha, fecha)
-      .then((s) => vivo && setSesiones(s))
+      .then((s) => {
+        if (!vivo) return;
+        setSesiones(s);
+        onSesiones?.(s.length);
+      })
       .catch((err) => {
         console.error("No se pudieron leer las sesiones:", err);
         if (vivo) toast.error("No se pudo cargar el gym");
@@ -33,10 +48,14 @@ export function BloqueGym({ fecha }: { fecha: ISODate }) {
     return () => {
       vivo = false;
     };
+    // onSesiones se deja fuera de las dependencias a propósito: la pantalla
+    // Hoy la pasa como callback estable, y meterla aquí volvería a consultar
+    // la red en cada render del padre.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
 
   return (
-    <Tarjeta>
+    <Tarjeta id="mid-gym">
       <TituloTarjeta icono={<Dumbbell className="h-3.5 w-3.5" />}>Entrenamiento</TituloTarjeta>
 
       {cargando ? (

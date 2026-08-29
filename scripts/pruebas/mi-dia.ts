@@ -9,7 +9,8 @@ import {
   aISO, diaSemana, diasEntre, inicioSemana, rango, semanaDe, sumarDias, sumarMeses,
 } from "@/lib/personal/fechas";
 import {
-  aplicaEn, calcularRacha, estadoDe, nivelDe, puntosDe, resumirPeriodo, unoRMEstimado, volumenSeries,
+  aplicaEn, calcularRacha, derivarAutomatico, estadoDe, nivelDe, puntosDe, resumirPeriodo,
+  unoRMEstimado, volumenSeries,
 } from "@/lib/personal/reglas";
 import { contarRecords, marcasPorEjercicio, normalizarEjercicio, progresionDe } from "@/lib/personal/gym";
 import { armarSerie, comparaciones } from "@/lib/personal/correlaciones";
@@ -60,6 +61,7 @@ eq(aISO(new Date(2026, 7, 29, 23, 30)), "2026-08-29", "23:30 del 29 sigue siendo
 const diario: Habito = {
   id: "h1", nombre: "Agua", emoji: null, categoria: null,
   dificultad: "facil", diasSemana: null, metaSemanal: null, activo: true, orden: 0,
+  visual: "anillo", metaValor: null, unidad: null, fuente: "manual",
 };
 // Lunes, miércoles y viernes.
 const lmv: Habito = { ...diario, id: "h2", nombre: "Gym", dificultad: "dificil", diasSemana: [1, 3, 5] };
@@ -69,7 +71,7 @@ eq(aplicaEn(lmv, "2026-08-31"), true, "lunes 31: el habito L-M-V si toca");
 eq(aplicaEn(lmv, "2026-08-30"), false, "domingo 30: el habito L-M-V no toca");
 
 function reg(fecha: string, cumplido: boolean, motivo: string | null = null): RegistroHabito {
-  return { id: fecha, habitoId: "h1", fecha, cumplido, motivo, puntos: cumplido ? 5 : 0 };
+  return { id: fecha, habitoId: "h1", fecha, cumplido, motivo, puntos: cumplido ? 5 : 0, avance: null };
 }
 
 eq(estadoDe(diario, "2026-08-29", undefined), "pendiente", "sin registro = pendiente");
@@ -150,6 +152,41 @@ eq(estadoDe(lmv, "2026-08-30", undefined), "no-aplica", "domingo del habito L-M-
   const r = resumirPeriodo(lmv, semanaDe("2026-08-24"), new Map());
   eq(r.aplicables, 3, "en una semana, un habito L-M-V solo tiene 3 dias aplicables");
 }
+
+// ===========================================================================
+// HÁBITOS AUTOMÁTICOS — los que se llenan solos con lo del día
+// ===========================================================================
+
+const SIN_DATOS = { vasosAgua: 0, horasSueno: null, sesionesGym: null };
+
+eq(derivarAutomatico({ fuente: "manual", metaValor: null }, SIN_DATOS), null,
+   "un habito manual nunca se deriva solo");
+
+// --- Agua ---
+eq(derivarAutomatico({ fuente: "agua", metaValor: 8 }, { ...SIN_DATOS, vasosAgua: 3 }),
+   { cumplido: false, avance: 3 }, "3 de 8 vasos: avanza pero no cumple");
+eq(derivarAutomatico({ fuente: "agua", metaValor: 8 }, { ...SIN_DATOS, vasosAgua: 8 }),
+   { cumplido: true, avance: 8 }, "llegar a los 8 vasos lo cumple solo");
+eq(derivarAutomatico({ fuente: "agua", metaValor: 8 }, { ...SIN_DATOS, vasosAgua: 11 }),
+   { cumplido: true, avance: 11 }, "pasarse de la meta sigue cumpliendo");
+eq(derivarAutomatico({ fuente: "agua", metaValor: null }, { ...SIN_DATOS, vasosAgua: 8 }),
+   { cumplido: true, avance: 8 }, "sin meta explicita, agua usa 8 por defecto");
+
+// --- Sueño ---
+eq(derivarAutomatico({ fuente: "sueno", metaValor: 7 }, { ...SIN_DATOS, horasSueno: 6.5 }),
+   { cumplido: false, avance: 6.5 }, "6.5 h no llega a la meta de 7");
+eq(derivarAutomatico({ fuente: "sueno", metaValor: 7 }, { ...SIN_DATOS, horasSueno: 7 }),
+   { cumplido: true, avance: 7 }, "7 h exactas si cumplen");
+eq(derivarAutomatico({ fuente: "sueno", metaValor: 7 }, SIN_DATOS),
+   { cumplido: false, avance: 0 }, "sin horas registradas, el sueno no cumple (pero no truena)");
+
+// --- Gym: la distincion entre "no entreno" y "no se todavia" ---
+eq(derivarAutomatico({ fuente: "gym", metaValor: null }, { ...SIN_DATOS, sesionesGym: null }), null,
+   "sesiones null = no se sabe todavia: NO se toca el registro");
+eq(derivarAutomatico({ fuente: "gym", metaValor: null }, { ...SIN_DATOS, sesionesGym: 0 }),
+   { cumplido: false, avance: null }, "cero sesiones si es 'no entreno'");
+eq(derivarAutomatico({ fuente: "gym", metaValor: null }, { ...SIN_DATOS, sesionesGym: 2 }),
+   { cumplido: true, avance: null }, "con sesion registrada, el habito de gym se cumple solo");
 
 // ===========================================================================
 // PUNTOS Y NIVEL

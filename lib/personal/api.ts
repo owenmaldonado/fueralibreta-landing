@@ -11,9 +11,9 @@
 
 import { supabase } from "@/lib/supabase";
 import type {
-  Anio, CategoriaObjetivo, Dia, DiaEditable, EjercicioSesion, Evento, Habito,
+  Anio, CategoriaObjetivo, Dia, DiaEditable, EjercicioSesion, Evento, FuenteHabito, Habito,
   ISODate, LogroDesbloqueado, Movimiento, Nota, Objetivo, RegistroHabito,
-  Rutina, RutinaEjercicio, Serie, Sesion, TipoMovimiento,
+  Rutina, RutinaEjercicio, Serie, Sesion, TipoMovimiento, VisualHabito,
 } from "./tipos";
 import { puntosDe } from "./reglas";
 
@@ -126,6 +126,10 @@ function aHabito(r: Row): Habito {
     metaSemanal: r.meta_semanal,
     activo: Boolean(r.activo),
     orden: r.orden ?? 0,
+    visual: (r.visual ?? "anillo") as VisualHabito,
+    metaValor: r.meta_valor == null ? null : Number(r.meta_valor),
+    unidad: r.unidad,
+    fuente: (r.fuente ?? "manual") as FuenteHabito,
   };
 }
 
@@ -149,6 +153,10 @@ export async function crearHabito(h: HabitoNuevo): Promise<Habito> {
       meta_semanal: h.metaSemanal,
       orden: h.orden,
       activo: h.activo ?? true,
+      visual: h.visual,
+      meta_valor: h.metaValor,
+      unidad: h.unidad,
+      fuente: h.fuente,
     })
     .select()
     .single();
@@ -166,6 +174,10 @@ export async function actualizarHabito(id: string, cambios: Partial<HabitoNuevo>
   if (cambios.metaSemanal !== undefined) payload.meta_semanal = cambios.metaSemanal;
   if (cambios.orden !== undefined) payload.orden = cambios.orden;
   if (cambios.activo !== undefined) payload.activo = cambios.activo;
+  if (cambios.visual !== undefined) payload.visual = cambios.visual;
+  if (cambios.metaValor !== undefined) payload.meta_valor = cambios.metaValor;
+  if (cambios.unidad !== undefined) payload.unidad = cambios.unidad;
+  if (cambios.fuente !== undefined) payload.fuente = cambios.fuente;
   const res = await supabase.from("personal_habitos").update(payload).eq("id", id);
   if (res.error) lanzar(res.error, "No se pudo actualizar el hábito");
 }
@@ -196,6 +208,7 @@ function aRegistro(r: Row): RegistroHabito {
     cumplido: Boolean(r.cumplido),
     motivo: r.motivo,
     puntos: r.puntos ?? 0,
+    avance: r.avance == null ? null : Number(r.avance),
   };
 }
 
@@ -218,7 +231,8 @@ export async function marcarHabito(
   habito: Pick<Habito, "id" | "dificultad">,
   fecha: ISODate,
   cumplido: boolean,
-  motivo?: string | null
+  motivo?: string | null,
+  avance?: number | null
 ): Promise<RegistroHabito> {
   const res = await supabase
     .from("personal_habito_registro")
@@ -229,6 +243,7 @@ export async function marcarHabito(
         cumplido,
         motivo: cumplido ? null : (motivo?.trim() || null),
         puntos: cumplido ? puntosDe(habito.dificultad) : 0,
+        avance: avance ?? null,
       },
       { onConflict: "owner_id,habito_id,fecha" }
     )

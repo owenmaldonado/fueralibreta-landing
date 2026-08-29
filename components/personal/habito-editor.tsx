@@ -11,18 +11,33 @@ import { actualizarHabito, archivarHabito, borrarHabito, crearHabito } from "@/l
 import { CATEGORIAS_HABITO } from "@/lib/personal/categorias";
 import { DIAS_CORTOS } from "@/lib/personal/fechas";
 import { ETIQUETA_DIFICULTAD, PUNTOS_POR_DIFICULTAD } from "@/lib/personal/reglas";
-import type { Dificultad, Habito } from "@/lib/personal/tipos";
+import type { Dificultad, FuenteHabito, Habito, VisualHabito } from "@/lib/personal/tipos";
 import { CampoCaja } from "./campos";
-
-const EMOJIS_SUGERIDOS = [
-  "💪", "🏃", "💧", "📚", "🧘", "🛏️", "🥗", "🚭", "💊", "✍️",
-  "🎸", "🧹", "☀️", "🙏", "💻", "📵", "🦷", "🎯",
-];
+import { CATALOGO_MEDIDORES, COLOR_NATURAL, Medidor } from "./medidores";
 
 const DIFICULTADES: Dificultad[] = ["facil", "media", "dificil"];
 
 /** Orden de la semana en pantalla: lunes primero, como la tira de Hoy. 0=domingo en la base. */
 const ORDEN_SEMANA = [1, 2, 3, 4, 5, 6, 0];
+
+/**
+ * De dónde sale el avance. Elegir una fuente automática también propone el
+ * medidor y la unidad que le quedan: nadie quiere configurar "agua" y luego
+ * escoger a mano que se dibuje con vasos.
+ */
+const FUENTES: {
+  clave: FuenteHabito;
+  etiqueta: string;
+  detalle: string;
+  visual?: VisualHabito;
+  meta?: number;
+  unidad?: string;
+}[] = [
+  { clave: "manual", etiqueta: "Lo marco yo", detalle: "Un toque en la tarjeta" },
+  { clave: "agua", etiqueta: "El agua del día", detalle: "Se llena con los vasos que registras", visual: "vasos", meta: 8, unidad: "vasos" },
+  { clave: "sueno", etiqueta: "Las horas de sueño", detalle: "Se cumple al llegar a la meta", visual: "luna", meta: 7, unidad: "h" },
+  { clave: "gym", etiqueta: "Mi sesión de gym", detalle: "Se cumple si registraste entrenamiento", visual: "pesas" },
+];
 
 export function EditorHabito({
   abierto,
@@ -39,22 +54,40 @@ export function EditorHabito({
   onGuardado: () => void;
 }) {
   const [nombre, setNombre] = React.useState("");
-  const [emoji, setEmoji] = React.useState("");
   const [categoria, setCategoria] = React.useState<string | null>(null);
   const [dificultad, setDificultad] = React.useState<Dificultad>("media");
   const [dias, setDias] = React.useState<number[] | null>(null);
+  const [visual, setVisual] = React.useState<VisualHabito>("anillo");
+  const [fuente, setFuente] = React.useState<FuenteHabito>("manual");
+  const [meta, setMeta] = React.useState("");
+  const [unidad, setUnidad] = React.useState("");
   const [guardando, setGuardando] = React.useState(false);
   const [confirmandoBorrado, setConfirmandoBorrado] = React.useState(false);
 
   React.useEffect(() => {
     if (!abierto) return;
     setNombre(habito?.nombre ?? "");
-    setEmoji(habito?.emoji ?? "");
     setCategoria(habito?.categoria ?? null);
     setDificultad(habito?.dificultad ?? "media");
     setDias(habito?.diasSemana ?? null);
+    setVisual(habito?.visual ?? "anillo");
+    setFuente(habito?.fuente ?? "manual");
+    setMeta(habito?.metaValor != null ? String(habito.metaValor) : "");
+    setUnidad(habito?.unidad ?? "");
     setConfirmandoBorrado(false);
   }, [abierto, habito]);
+
+  function elegirFuente(f: (typeof FUENTES)[number]) {
+    setFuente(f.clave);
+    if (f.visual) setVisual(f.visual);
+    if (f.meta != null) setMeta(String(f.meta));
+    if (f.unidad != null) setUnidad(f.unidad);
+    // El gym es sí/no: no hay meta que llenar.
+    if (f.clave === "gym") {
+      setMeta("");
+      setUnidad("");
+    }
+  }
 
   function alternarDia(d: number) {
     setDias((actual) => {
@@ -71,6 +104,11 @@ export function EditorHabito({
 
   const diasActivos = dias ?? [0, 1, 2, 3, 4, 5, 6];
   const puedeGuardar = nombre.trim().length > 0 && diasActivos.length > 0 && !guardando;
+  const metaNumero = meta.trim() === "" ? null : Number(meta.replace(",", "."));
+  const aceptaMeta = fuente !== "gym";
+  // Vista previa: se dibuja a la mitad para que se vea CÓMO se llena, no solo
+  // cómo se ve vacío o lleno.
+  const progresoPreview = metaNumero && metaNumero > 0 ? 0.5 : 1;
 
   async function guardar() {
     if (!puedeGuardar) return;
@@ -78,12 +116,16 @@ export function EditorHabito({
     try {
       const datos = {
         nombre: nombre.trim(),
-        emoji: emoji.trim() || null,
+        emoji: null,
         categoria,
         dificultad,
         diasSemana: dias,
         metaSemanal: null,
         orden: habito?.orden ?? ordenSiguiente,
+        visual,
+        metaValor: aceptaMeta && metaNumero && metaNumero > 0 ? metaNumero : null,
+        unidad: aceptaMeta ? (unidad.trim() || null) : null,
+        fuente,
       };
       if (habito) await actualizarHabito(habito.id, datos);
       else await crearHabito(datos);
@@ -130,42 +172,95 @@ export function EditorHabito({
     <Sheet open={abierto} onOpenChange={(o) => !o && onCerrar()}>
       <SheetHeader
         title={habito ? "Editar hábito" : "Nuevo hábito"}
-        description={habito ? undefined : "Los que marques todos los días son los que construyen racha."}
         onClose={onCerrar}
       />
 
-      <div className="flex flex-col gap-4">
-        <div className="flex gap-2">
-          <input
-            value={emoji}
-            onChange={(e) => setEmoji([...e.target.value].slice(-1).join(""))}
-            placeholder="🎯"
-            aria-label="Emoji del hábito"
-            className="h-11 w-12 shrink-0 rounded-lg border border-input bg-surface text-center text-xl outline-none focus:border-primary/70"
-          />
-          <CampoCaja
-            autoFocus
-            value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
-            placeholder="Nombre del hábito"
-          />
+      <div className="flex flex-col gap-5">
+        {/* Vista previa grande: lo primero que se ve es CÓMO va a quedar. */}
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-secondary/40 py-4">
+          <span style={{ color: COLOR_NATURAL[visual] }}>
+            <Medidor visual={visual} progreso={progresoPreview} estado="pendiente" tamano={76} />
+          </span>
+          <p className="text-[13px] font-semibold">{nombre.trim() || "Tu hábito"}</p>
         </div>
 
-        <div className="mid-sin-barra -mx-1 flex gap-1.5 overflow-x-auto px-1">
-          {EMOJIS_SUGERIDOS.map((e) => (
-            <button
-              key={e}
-              type="button"
-              onClick={() => setEmoji(e)}
-              className={cn(
-                "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg transition-colors",
-                emoji === e ? "bg-primary/20 ring-1 ring-primary" : "hover:bg-secondary"
-              )}
-            >
-              {e}
-            </button>
-          ))}
+        <CampoCaja
+          autoFocus
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          placeholder="Nombre del hábito"
+        />
+
+        <div>
+          <p className="mid-etiqueta mb-2">Cómo se ve</p>
+          <div className="grid grid-cols-5 gap-1.5">
+            {CATALOGO_MEDIDORES.map((m) => (
+              <button
+                key={m.clave}
+                type="button"
+                title={m.pista}
+                aria-label={`${m.etiqueta}: ${m.pista}`}
+                aria-pressed={visual === m.clave}
+                onClick={() => setVisual(m.clave)}
+                className={cn(
+                  "flex flex-col items-center gap-1 rounded-xl border py-2 transition-colors",
+                  visual === m.clave ? "border-primary bg-primary/10" : "border-border hover:border-primary/40"
+                )}
+              >
+                <span style={{ color: COLOR_NATURAL[m.clave] }}>
+                  <Medidor visual={m.clave} progreso={0.65} estado="pendiente" tamano={30} />
+                </span>
+                <span className="text-[9px] leading-none text-muted-foreground">{m.etiqueta}</span>
+              </button>
+            ))}
+          </div>
         </div>
+
+        <div>
+          <p className="mid-etiqueta mb-2">Cómo se llena</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {FUENTES.map((f) => (
+              <button
+                key={f.clave}
+                type="button"
+                onClick={() => elegirFuente(f)}
+                className={cn(
+                  "rounded-lg border px-3 py-2 text-left transition-colors",
+                  fuente === f.clave ? "border-primary bg-primary/10" : "border-border hover:border-primary/40"
+                )}
+              >
+                <span className="block text-[13px] font-medium">{f.etiqueta}</span>
+                <span className="block text-[10.5px] leading-tight text-muted-foreground">{f.detalle}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {aceptaMeta && (
+          <div>
+            <p className="mid-etiqueta mb-2">Meta del día (opcional)</p>
+            <div className="flex gap-2">
+              <input
+                value={meta}
+                inputMode="decimal"
+                onChange={(e) => setMeta(e.target.value.replace(/[^\d.,]/g, ""))}
+                placeholder="8"
+                aria-label="Meta del día"
+                className="mid-num h-11 w-20 rounded-lg border border-input bg-surface text-center text-[15px] font-semibold outline-none focus:border-primary/70"
+              />
+              <CampoCaja
+                value={unidad}
+                onChange={(e) => setUnidad(e.target.value)}
+                placeholder="vasos, min, km, páginas…"
+              />
+            </div>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              {metaNumero && metaNumero > 0
+                ? "El medidor se llena poco a poco y se marca cumplido solo al llegar a la meta."
+                : "Sin meta es un hábito de sí o no: un toque lo cumple."}
+            </p>
+          </div>
+        )}
 
         <div>
           <p className="mid-etiqueta mb-2">Qué tan difícil es</p>

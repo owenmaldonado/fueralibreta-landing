@@ -400,3 +400,45 @@ values ('Mi Día', 'mi-dia', 'Agenda, hábitos, gym, dinero y ánimo — uso per
 on conflict (slug) do nothing;
 
 notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- HÁBITOS VISUALES (segunda pasada).
+--
+-- Un hábito ya no es solo un check: sabe cómo dibujarse (vasos que se llenan,
+-- una luna que crece, discos que se apilan en una barra…) y puede tener meta
+-- cuantitativa. Ver components/personal/medidores.tsx.
+-- ============================================================================
+
+-- Cómo se DIBUJA. Texto libre a propósito (no un check): agregar un medidor
+-- nuevo al front no debe requerir una migración, y un valor que el front no
+-- conozca cae a un medidor por default en vez de romper la pantalla.
+alter table personal_habitos add column if not exists visual text not null default 'anillo';
+
+-- Meta cuantitativa. NULL = hábito binario (lo hice / no lo hice).
+alter table personal_habitos add column if not exists meta_valor numeric;
+alter table personal_habitos add column if not exists unidad text;
+
+-- De dónde sale el avance:
+--   manual → lo marcas tú
+--   agua   → se llena solo con personal_dias.vasos_agua
+--   sueno  → se llena solo con personal_dias.horas_sueno
+--   gym    → se cumple solo si ese día hay una sesión registrada
+-- Sin esto, "tomar 8 vasos" habría que capturarlo dos veces: en la tarjeta del
+-- día y en el hábito. Un dato que se pide dos veces es un dato que se deja de
+-- capturar.
+alter table personal_habitos add column if not exists fuente text not null default 'manual';
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'personal_habitos_fuente_valida'
+  ) then
+    alter table personal_habitos add constraint personal_habitos_fuente_valida
+      check (fuente in ('manual', 'agua', 'sueno', 'gym'));
+  end if;
+end $$;
+
+-- Cuánto llevas hoy contra la meta (3 de 8 vasos). NULL en hábitos binarios.
+alter table personal_habito_registro add column if not exists avance numeric;
+
+notify pgrst, 'reload schema';

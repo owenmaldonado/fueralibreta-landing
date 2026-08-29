@@ -199,3 +199,50 @@ export function unoRMEstimado(pesoKg: number | null, reps: number | null): numbe
   if (!pesoKg || !reps) return 0;
   return pesoKg * (1 + reps / 30);
 }
+
+// ---------------------------------------------------------------------------
+// Hábitos automáticos
+// ---------------------------------------------------------------------------
+
+/** Lo mínimo del día que hace falta para resolver un hábito automático. */
+export interface DatosDelDia {
+  vasosAgua: number;
+  horasSueno: number | null;
+  /** null = todavía no se sabe (la consulta de gym no ha respondido). */
+  sesionesGym: number | null;
+}
+
+export const META_AGUA_POR_DEFECTO = 8;
+export const META_SUENO_POR_DEFECTO = 7;
+
+/**
+ * Qué debería decir el registro de un hábito automático, según lo que ya
+ * capturaste en el día. `null` = todavía no se puede saber (falta un dato que
+ * sigue cargando) y no hay que escribir nada.
+ *
+ * Vive aquí, puro y sin React, para poder probarlo: la pantalla Hoy solo
+ * compara este resultado contra lo guardado y escribe la diferencia.
+ */
+export function derivarAutomatico(
+  habito: Pick<Habito, "fuente" | "metaValor">,
+  dia: DatosDelDia
+): { cumplido: boolean; avance: number | null } | null {
+  if (habito.fuente === "agua") {
+    const meta = habito.metaValor ?? META_AGUA_POR_DEFECTO;
+    const avance = dia.vasosAgua ?? 0;
+    return { cumplido: avance >= meta, avance };
+  }
+  if (habito.fuente === "sueno") {
+    const meta = habito.metaValor ?? META_SUENO_POR_DEFECTO;
+    const avance = dia.horasSueno ?? 0;
+    return { cumplido: avance >= meta, avance };
+  }
+  if (habito.fuente === "gym") {
+    // 0 significa "no entrenó"; null significa "no sé todavía". Tratarlos
+    // igual desmarcaría el hábito cada vez que cambias de día, antes de que
+    // cargue la data.
+    if (dia.sesionesGym === null) return null;
+    return { cumplido: dia.sesionesGym > 0, avance: null };
+  }
+  return null;
+}
