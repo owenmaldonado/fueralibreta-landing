@@ -5,8 +5,7 @@
 --
 -- Es seguro correrlo aunque ya hayas corrido parte antes: todo está escrito
 -- para poder repetirse (add column if not exists, create or replace, y las
--- conversiones se saltan lo que ya está bien). Si ya corriste el archivo
--- anterior, córrelo otra vez: le agregué el candado de PIN repetido.
+-- conversiones se saltan lo que ya está bien).
 --
 -- Lo que trae:
 --   1. Columnas que le faltan a tu base + el 403 al crear empleados
@@ -16,7 +15,6 @@
 --      (lo que llevaba la gráfica al día anterior)
 --   3. Lo que necesita el reporte de Cierres del dueño
 -- ============================================================================
-
 
 
 -- ============================================================================
@@ -35,6 +33,29 @@
 --      llave al panel de dueño (ver el punto 5, que es el detalle).
 --
 -- Es idempotente: se puede correr las veces que haga falta sin romper nada.
+
+-- ============================================================================
+-- NOTA SOBRE `set search_path` (por qué dice "public, extensions, pg_temp")
+-- ============================================================================
+-- Primera versión de este archivo tronaba en Supabase con:
+--
+--     ERROR: 42883: function crypt(text, text) does not exist
+--
+-- Causa: estas funciones llevan `set search_path` fijo (buena práctica en una
+-- función security definer: sin eso, alguien podría anteponer un esquema con
+-- una tabla falsa y hacer que la función lea de ahí). Pero se había puesto
+-- `= public` a secas, y en Supabase pgcrypto NO vive en public — vive en el
+-- esquema `extensions`. Al fijar el search_path a public, `crypt` y
+-- `gen_salt` quedaban fuera de alcance y Postgres decía, con razón, que no
+-- existen.
+--
+-- Las funciones viejas del repo no tenían el problema porque no fijan
+-- search_path: heredan el del que llama, que en Supabase ya incluye
+-- extensions. O sea, esto lo rompí al endurecerlas.
+--
+-- `public, extensions, pg_temp` cubre las dos formas de instalar pgcrypto
+-- (en public o en extensions) sin perder el candado.
+-- ============================================================================
 
 -- ============================================================================
 -- 1. Columnas de `negocios` que la app escribe
@@ -117,7 +138,7 @@ create or replace function admin_set_pin_dueno(p_negocio_id uuid, p_pin text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions, pg_temp
 as $$
 begin
   if not is_admin() then
@@ -142,7 +163,7 @@ create or replace function admin_borrar_pin_dueno(p_negocio_id uuid)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions, pg_temp
 as $$
 begin
   if not is_admin() then
@@ -160,7 +181,7 @@ create or replace function admin_pin_dueno_configurado(p_negocio_id uuid)
 returns boolean
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions, pg_temp
 as $$
 begin
   if not is_admin() then
@@ -214,7 +235,7 @@ create or replace function pin_en_uso(p_negocio_id uuid, p_pin text, p_excluir_e
 returns text
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions, pg_temp
 stable
 as $$
   select case
@@ -243,7 +264,7 @@ create or replace function pin_disponible(p_negocio_id uuid, p_pin text)
 returns boolean
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions, pg_temp
 stable
 as $$
   select pin_en_uso(p_negocio_id, p_pin) is null;
@@ -331,7 +352,7 @@ create or replace function set_pin_dueno(p_negocio_id uuid, p_pin text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions, pg_temp
 as $$
 begin
   if not is_negocio_owner(p_negocio_id) then
@@ -359,7 +380,7 @@ create or replace function admin_set_pin_dueno(p_negocio_id uuid, p_pin text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions, pg_temp
 as $$
 begin
   if not is_admin() then
@@ -488,7 +509,7 @@ notify pgrst, 'reload schema';
 
 
 -- ============================================================================
--- ARCHIVO: 20260916000000_cortes_reporte_dueno.sql
+-- ARCHIVO: 20260917000000_cortes_reporte_dueno.sql
 -- ============================================================================
 -- Reporte de cierres para el dueño (/app/cortes).
 --

@@ -13,6 +13,29 @@
 -- Es idempotente: se puede correr las veces que haga falta sin romper nada.
 
 -- ============================================================================
+-- NOTA SOBRE `set search_path` (por qué dice "public, extensions, pg_temp")
+-- ============================================================================
+-- Primera versión de este archivo tronaba en Supabase con:
+--
+--     ERROR: 42883: function crypt(text, text) does not exist
+--
+-- Causa: estas funciones llevan `set search_path` fijo (buena práctica en una
+-- función security definer: sin eso, alguien podría anteponer un esquema con
+-- una tabla falsa y hacer que la función lea de ahí). Pero se había puesto
+-- `= public` a secas, y en Supabase pgcrypto NO vive en public — vive en el
+-- esquema `extensions`. Al fijar el search_path a public, `crypt` y
+-- `gen_salt` quedaban fuera de alcance y Postgres decía, con razón, que no
+-- existen.
+--
+-- Las funciones viejas del repo no tenían el problema porque no fijan
+-- search_path: heredan el del que llama, que en Supabase ya incluye
+-- extensions. O sea, esto lo rompí al endurecerlas.
+--
+-- `public, extensions, pg_temp` cubre las dos formas de instalar pgcrypto
+-- (en public o en extensions) sin perder el candado.
+-- ============================================================================
+
+-- ============================================================================
 -- 1. Columnas de `negocios` que la app escribe
 -- ============================================================================
 -- El PGRST204 de arriba dice literalmente "no encuentro esa columna". Puede
@@ -93,7 +116,7 @@ create or replace function admin_set_pin_dueno(p_negocio_id uuid, p_pin text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions, pg_temp
 as $$
 begin
   if not is_admin() then
@@ -118,7 +141,7 @@ create or replace function admin_borrar_pin_dueno(p_negocio_id uuid)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions, pg_temp
 as $$
 begin
   if not is_admin() then
@@ -136,7 +159,7 @@ create or replace function admin_pin_dueno_configurado(p_negocio_id uuid)
 returns boolean
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions, pg_temp
 as $$
 begin
   if not is_admin() then
@@ -190,7 +213,7 @@ create or replace function pin_en_uso(p_negocio_id uuid, p_pin text, p_excluir_e
 returns text
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions, pg_temp
 stable
 as $$
   select case
@@ -219,7 +242,7 @@ create or replace function pin_disponible(p_negocio_id uuid, p_pin text)
 returns boolean
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions, pg_temp
 stable
 as $$
   select pin_en_uso(p_negocio_id, p_pin) is null;
@@ -307,7 +330,7 @@ create or replace function set_pin_dueno(p_negocio_id uuid, p_pin text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions, pg_temp
 as $$
 begin
   if not is_negocio_owner(p_negocio_id) then
@@ -335,7 +358,7 @@ create or replace function admin_set_pin_dueno(p_negocio_id uuid, p_pin text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions, pg_temp
 as $$
 begin
   if not is_admin() then
