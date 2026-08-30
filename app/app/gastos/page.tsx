@@ -173,7 +173,24 @@ export default function GastosPage() {
     return empleadoId === personaFiltro;
   }
 
-  const gastos = gastosSinFiltroPersona.filter((g) => coincidePersona(g.empleadoId));
+  // GASTOS PROGRAMADOS (fecha futura): NO son dinero gastado todavía.
+  //
+  // Antes un gasto con fecha futura entraba en el total y en la gráfica en
+  // cuanto su fecha caía dentro de la ventana del rango — o sea, "Pagar
+  // renta el viernes" capturado el miércoles ya bajaba la ganancia de la
+  // semana aunque nadie hubiera pagado nada. Owen lo describió así: "pone
+  // el gasto desde ese momento pero le recuerda hasta la fecha que puse".
+  //
+  // Ahora: mientras la fecha no llegue, el gasto existe (se ve, no se
+  // pierde) pero cuenta CERO. El día que toca aparece arriba con un botón
+  // para confirmar que ya se pagó; al confirmar se le pone la fecha real
+  // del pago y recién ahí entra en las cuentas. Es la propuesta de Owen —
+  // "que le aparezca en el panel y ya que lo haga, de a confirmar y ya se
+  // cargue" — y además deja el número del día cuadrado con la realidad:
+  // el dinero salió el día que salió, no el día que se anotó.
+  const todosLosGastos = gastosSinFiltroPersona.filter((g) => coincidePersona(g.empleadoId));
+  const gastosProgramados = todosLosGastos.filter((g) => g.fecha > hoy);
+  const gastos = todosLosGastos.filter((g) => g.fecha <= hoy);
   const pedidosEntregados = pedidosEntregadosSinFiltroPersona.filter((p) => coincidePersona(p.empleadoId));
   const ventasAbarrotesActivas = ventasAbarrotesActivasSinFiltroPersona.filter((v) => coincidePersona(v.empleadoId));
   const ventas: Movimiento[] =
@@ -295,18 +312,10 @@ export default function GastosPage() {
   const algunPlatilloConCosto = modulo === "fonda" && (session.fonda?.platillos ?? []).some((p) => p.costo != null && p.costo > 0);
   const faltaCostoEnFonda = modulo === "fonda" && !algunPlatilloConCosto;
 
-  // Un gasto con fecha futura (ej. "Pagar renta" programado para dentro de
-  // unos días) caía FUERA de la ventana de filterByRango en "Semanal" —
-  // esa ventana nunca se extiende más allá de "hoy", así que el gasto
-  // desaparecía por completo de la lista y de la gráfica hasta que llegara
-  // su fecha, sin ningún aviso de que sí se había guardado bien. Se agrega
-  // aparte (sin duplicar si "mensual"/"anual" ya lo incluían) para que
-  // siempre sea visible con el badge "Programado" — no cuenta en
-  // totalGastos/la gráfica todavía, porque ese dinero no se ha gastado.
+  // `gastos` ya excluye los programados (ver arriba), así que esta lista y
+  // el total son solo dinero que de verdad salió.
   const gastosEnRango = filtrarPorRango(gastos, (g) => g.fecha);
-  const idsEnRango = new Set(gastosEnRango.map((g) => g.id));
-  const gastosFuturosFueraDeRango = gastos.filter((g) => g.fecha > hoy && !idsEnRango.has(g.id));
-  const gastosFiltrados = gastosEnRango.concat(gastosFuturosFueraDeRango).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const gastosFiltrados = [...gastosEnRango].sort((a, b) => b.fecha.localeCompare(a.fecha));
   const ventasFiltradas = filtrarPorRango(ventas, (v) => v.fecha).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const gananciaPorVentaFiltrada = filtrarPorRango(gananciaPorVenta, (g) => g.fecha).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const totalGastos = gastosEnRango.reduce((acc, g) => acc + g.monto, 0);
@@ -341,6 +350,26 @@ export default function GastosPage() {
     if (prev.fonda) return { ...prev, fonda: { ...prev.fonda, gastos: next(prev.fonda.gastos) } };
     if (prev.abarrotes) return { ...prev, abarrotes: { ...prev.abarrotes, gastos: next(prev.abarrotes.gastos) } };
     return prev;
+  }
+
+  /**
+   * "Ya lo pagué" de un gasto programado: le pone la fecha REAL del pago
+   * (hoy) y recién ahí empieza a contar en totales y gráficas.
+   *
+   * Se guarda la fecha de hoy en vez de la que estaba agendada a propósito:
+   * si la renta se agendó para el día 1 y se pagó el 3, el dinero salió el
+   * 3 — poner el 1 metería el gasto en una semana en la que la caja todavía
+   * estaba completa y descuadraría ese corte.
+   */
+  async function confirmarGastoProgramado(gasto: Expense) {
+    const pagado: Expense = { ...gasto, fecha: hoy, recordatorio: false };
+    try {
+      await updateGastoDirecto(session!.business.id, modulo, pagado);
+      update((prev) => withGastos(prev, (gs) => gs.map((g) => (g.id === gasto.id ? pagado : g))), { yaSincronizado: true });
+      toast.success(`${gasto.categoria} registrado como pagado hoy.`);
+    } catch {
+      toast.error("No se pudo confirmar el gasto — revisa tu conexión e intenta de nuevo.");
+    }
   }
 
   async function eliminar() {
@@ -468,6 +497,36 @@ export default function GastosPage() {
               <p className={cn("font-display text-lg font-bold", gananciaRealHoy >= 0 ? "text-ledger" : "text-destructive")}>
                 {formatMoney(gananciaRealHoy)}
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {gastosProgramados.length > 0 && (
+        <div className="px-4 pt-3">
+          <div className="rounded-2xl border border-primary/30 bg-primary/5 p-3">
+            <p className="font-mono text-[10px] uppercase tracking-widest text-primary">
+              Programados · {gastosProgramados.length}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Todavía no cuentan en tus gastos ni en la ganancia. Cuando lo pagues, confírmalo aquí y se registra con la fecha de ese día.
+            </p>
+            <div className="mt-2 flex flex-col gap-2">
+              {gastosProgramados
+                .slice()
+                .sort((a, b) => a.fecha.localeCompare(b.fecha))
+                .map((g) => (
+                  <div key={g.id} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card p-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{g.categoria}</p>
+                      <p className="text-xs text-muted-foreground">Para el {formatFechaCorta(g.fecha)}</p>
+                    </div>
+                    <span className="shrink-0 font-mono text-sm text-muted-foreground">{formatMoney(g.monto)}</span>
+                    <Button size="sm" variant="outline" className="shrink-0" onClick={() => confirmarGastoProgramado(g)}>
+                      Ya lo pagué
+                    </Button>
+                  </div>
+                ))}
             </div>
           </div>
         </div>

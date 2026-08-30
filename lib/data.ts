@@ -1276,6 +1276,54 @@ export async function fetchCitasByTelefono(slug: string, telefono: string): Prom
   }));
 }
 
+/**
+ * UPDATE a `negocios` que no se cae entero por UNA columna que esta base no
+ * tenga todavía.
+ *
+ * EL BUG QUE ARREGLA
+ * Guardar en Ajustes > Configuración escribe whatsapp, teléfono, teléfono de
+ * contacto y días de recordatorio en UN SOLO update. En la base de Owen
+ * faltaba `dias_recordatorio` (una migración vieja que nunca se corrió ahí),
+ * así que PostgREST rechazaba la petición COMPLETA:
+ *
+ *     400  PGRST204  Could not find the 'dias_recordatorio' column
+ *
+ * y con ella se caían también el teléfono y el WhatsApp — que sí existían y
+ * sí se podían guardar. De ahí el "no se guarda el número que pide en los
+ * datos": el número estaba bien, lo tumbaba un campo vecino.
+ *
+ * La migración 20260914000000 agrega la columna que faltaba, pero eso
+ * arregla ESTE caso, no la forma. Cualquier columna nueva que se agregue al
+ * código antes de correr su migración vuelve a tumbar todo el guardado.
+ * Aquí se corta esa clase: si el servidor dice que no conoce una columna, se
+ * quita esa sola y se reintenta con el resto, avisando fuerte en consola.
+ * Es mejor guardar 3 de 4 campos y dejar rastro que perder los 4 en
+ * silencio.
+ */
+async function actualizarNegocioTolerante(negocioId: string, cambios: Row): Promise<void> {
+  let pendientes = { ...cambios };
+
+  // Como mucho, una vuelta por columna: PostgREST solo se queja de una a la
+  // vez, así que N columnas desconocidas necesitan N reintentos.
+  for (let intento = 0; intento <= Object.keys(cambios).length; intento++) {
+    const { error } = await supabase.from("negocios").update(pendientes).eq("id", negocioId);
+    if (!error) return;
+
+    // PGRST204 = "no encuentro esa columna en el esquema". El nombre viene
+    // entre comillas simples dentro del mensaje.
+    const columna = error.code === "PGRST204" ? /'([^']+)' column/.exec(error.message)?.[1] : undefined;
+    if (!columna || !(columna in pendientes)) throw error;
+
+    console.error(
+      `[negocios] tu base no tiene la columna "${columna}" — se guarda el resto sin ella. ` +
+        "Corre las migraciones pendientes de supabase/migrations para que ese campo también se guarde."
+    );
+    const { [columna]: _descartado, ...resto } = pendientes;
+    pendientes = resto;
+    if (Object.keys(pendientes).length === 0) return;
+  }
+}
+
 /** Compara el estado anterior y el nuevo de la sesión y aplica los cambios en Supabase. */
 export async function syncTenantDiff(prev: TenantData, next: TenantData): Promise<void> {
   const negocioId = next.business.id;
@@ -1298,8 +1346,7 @@ export async function syncTenantDiff(prev: TenantData, next: TenantData): Promis
     businessChanges.turno_fonda_cerrado_en = next.business.turnoFondaCerradoEn ?? null;
   }
   if (Object.keys(businessChanges).length > 0) {
-    const { error } = await supabase.from("negocios").update(businessChanges).eq("id", negocioId);
-    if (error) throw error;
+    await actualizarNegocioTolerante(negocioId, businessChanges);
   }
 
   if (prev.barberia && next.barberia) {

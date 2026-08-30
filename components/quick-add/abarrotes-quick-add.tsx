@@ -14,6 +14,7 @@ import { BarcodeScanner } from "@/components/barcode-scanner";
 import type { FabAction } from "@/components/app-shell/fab";
 import { uid, formatMoney, todayISO } from "@/lib/mock";
 import { camposEmpleado } from "@/lib/empleados";
+import { useHoy } from "@/lib/use-hoy";
 import type { TenantData, Expense, GroceryProduct } from "@/lib/types";
 
 // "Nuevo apartado" ya no vive aquí — Frutas y Verdura (tab propio en
@@ -50,7 +51,7 @@ export function AbarrotesQuickAdd({ active, onClose, session, update }: Props) {
         <NuevoFiadoForm onClose={onClose} update={update} />
       </Sheet>
       <Sheet open={active === "gasto"} onOpenChange={(o) => !o && onClose()}>
-        <NuevoGastoForm onClose={onClose} update={update} />
+        <NuevoGastoForm onClose={onClose} update={update} timezone={session.business.timezone} />
       </Sheet>
     </>
   );
@@ -255,11 +256,27 @@ function NuevoFiadoForm({ onClose, update }: { onClose: () => void; update: Prop
   );
 }
 
-function NuevoGastoForm({ onClose, update }: { onClose: () => void; update: Props["update"] }) {
+function NuevoGastoForm({ onClose, update, timezone }: { onClose: () => void; update: Props["update"]; timezone?: string }) {
   const [categoria, setCategoria] = React.useState(GASTO_CHIPS[0]);
   const [monto, setMonto] = React.useState("");
-  const [fechaPago, setFechaPago] = React.useState(todayISO(0));
-  const [recordatorio, setRecordatorio] = React.useState(true);
+  // El día del NEGOCIO, no el del dispositivo (todayISO(0) usaba el reloj
+  // del celular) — mismo criterio que el resto de la app.
+  const hoy = useHoy(timezone);
+  const [fechaPago, setFechaPago] = React.useState(hoy);
+  // Apagado por default. Antes arrancaba en `true`: cada gasto del botón
+  // rápido quedaba con recordatorio activo sin que nadie lo pidiera, y el
+  // dueño terminaba con avisos de todo. El recordatorio es para el gasto
+  // que se AGENDA a futuro (la renta del día 1), no para el que se acaba
+  // de pagar — que es el 95% de lo que entra por aquí.
+  const [recordatorio, setRecordatorio] = React.useState(false);
+
+  // Si el negocio cambia de día con la hoja abierta (o el estado inicial se
+  // resolvió antes de saber la zona), la fecha sugerida se pone al día.
+  React.useEffect(() => {
+    setFechaPago((prev) => (prev === "" ? hoy : prev));
+  }, [hoy]);
+
+  const esProgramado = fechaPago > hoy;
 
   const puedeGuardar = Number(monto) > 0;
 
@@ -267,7 +284,7 @@ function NuevoGastoForm({ onClose, update }: { onClose: () => void; update: Prop
     if (!puedeGuardar) return;
     update((prev) => {
       const a = prev.abarrotes!;
-      const gasto: Expense = { id: uid("exp"), categoria, monto: Number(monto), fecha: fechaPago, recordatorio, ...camposEmpleado() };
+      const gasto: Expense = { id: uid("exp"), categoria, monto: Number(monto), fecha: fechaPago, recordatorio: esProgramado && recordatorio, ...camposEmpleado() };
       return { ...prev, abarrotes: { ...a, gastos: [gasto, ...a.gastos] } };
     });
     onClose();
@@ -294,11 +311,21 @@ function NuevoGastoForm({ onClose, update }: { onClose: () => void; update: Prop
         <div className="space-y-1.5">
           <Label>Fecha de pago</Label>
           <Input type="date" value={fechaPago} onChange={(e) => setFechaPago(e.target.value)} />
+          <p className="text-xs text-muted-foreground">
+            {esProgramado
+              ? "Como es a futuro, queda PROGRAMADO: no baja tu ganancia todavía. El día que lo pagues lo confirmas en Gastos y ahí se registra."
+              : "Se registra como pagado hoy."}
+          </p>
         </div>
-        <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-          <p className="text-sm font-medium">Recordarme</p>
-          <Switch checked={recordatorio} onCheckedChange={setRecordatorio} />
-        </div>
+        {esProgramado && (
+          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Recordarme</p>
+              <p className="text-xs text-muted-foreground">Te lo aviso cuando llegue la fecha.</p>
+            </div>
+            <Switch checked={recordatorio} onCheckedChange={setRecordatorio} />
+          </div>
+        )}
       </div>
       <SheetFooter>
         <Button size="lg" disabled={!puedeGuardar} onClick={guardar}>

@@ -188,8 +188,31 @@ export default function CajaPage() {
       empleadoRolCache: c.empleadoRolCache,
     })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  // La barra de "Ingreso" de una VENTA DE PRODUCTO lleva el margen
+  // (monto - costo), no lo cobrado.
+  //
+  // Owen: "al vender productos, en vez de sumarse solo lo que gano se suma
+  // lo que cobro; está bien, pero que en la gráfica del dueño salga solo lo
+  // que gano". Tiene razón y es el mismo criterio que ya usaba el número de
+  // Ganancia de arriba (que sí resta costoMercancia): vender un gel de $200
+  // que costó $180 pintaba una barra de $200, como si el día hubiera ido
+  // buenísimo, cuando de eso solo $20 son del negocio.
+  //
+  // Un corte (servicio) y una propina no tienen costo de mercancía, así que
+  // siguen aportando completo — igual que antes. Y las ventas de antes de
+  // que existiera CajaEntry.costo tampoco lo traen, así que el histórico no
+  // se mueve.
+  //
+  // Lo que NO cambia, a propósito: Efectivo/Transferencia y el corte de
+  // Cerrar turno siguen contando el monto COBRADO. Ahí la pregunta es "¿cuánto
+  // dinero debería haber en la caja?", y en la caja está el billete completo
+  // de $200 — no el margen.
   const movsParaGrafica: { fecha: string; a: number; b: number }[] = [
-    ...cajaFiltrada.map((m) => (m.tipo === "gasto" ? { fecha: m.fecha, a: 0, b: m.monto } : { fecha: m.fecha, a: m.monto, b: 0 })),
+    ...cajaFiltrada.map((m) =>
+      m.tipo === "gasto"
+        ? { fecha: m.fecha, a: 0, b: m.monto }
+        : { fecha: m.fecha, a: m.tipo === "venta" ? m.monto - (m.costo ?? 0) : m.monto, b: 0 }
+    ),
     // c.fecha SOLO (sin `T${c.hora}` pegado, como sí lleva la lista de
     // Movimientos para poder ordenarla por hora): barberia_citas.fecha ya es
     // el día calendario del negocio. Pegarle la hora lo convertía en algo
@@ -308,7 +331,12 @@ export default function CajaPage() {
               // (Semanal vs Mensual/Anual, ver disabledValues arriba), nunca
               // qué series se pintan.
               bars={[
-                { key: "ingreso", name: "Ingresos", color: "hsl(168 55% 45%)" },
+                // "Ganado", no "Ingresos": desde que la barra de una venta de
+                // producto lleva el margen y no lo cobrado (ver
+                // movsParaGrafica), llamarla "Ingresos" sería mentir — no
+                // cuadraría con el stat tile de Ingresos de arriba, que sí
+                // es el cobrado completo.
+                { key: "ingreso", name: "Ganado", color: "hsl(168 55% 45%)" },
                 { key: "gasto", name: "Gastos", color: "hsl(4 78% 58%)" },
               ]}
               emptyText="Sin movimientos en este periodo"
