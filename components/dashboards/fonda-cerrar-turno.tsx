@@ -204,6 +204,11 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
             diferencia: Math.round(efectivoNum - esperado),
             empleado_id: camposEmpleado().empleadoId ?? null,
             empleado_nombre_cache: camposEmpleado().empleadoNombreCache ?? null,
+            // El ROL, no solo el nombre: sin él, el reporte de cierres del
+            // dueño (/app/cortes) pinta "Dueño" en el cierre que hizo su
+            // vendedor — EmpleadoBadge trata "sin rol" como dueño. Sería
+            // justo lo contrario de para lo que sirve ese reporte.
+            empleado_rol_cache: camposEmpleado().empleadoRolCache ?? null,
           },
         ]);
       } catch (error) {

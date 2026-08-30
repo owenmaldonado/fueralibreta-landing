@@ -24,11 +24,15 @@ const NAV_BARBERIA: NavItem[] = [
   { href: "/app/mi-plan", label: "Mi Plan", icon: CreditCard },
 ];
 
+// "Más" también aquí: sin esa entrada, el dueño de una fonda no tenía
+// NINGUNA forma de llegar a Configuración, Empleados ni al reporte de
+// Cierres desde la navegación — solo escribiendo la URL a mano.
 const NAV_FONDA: NavItem[] = [
   { href: "/app/inicio", label: "Hoy", icon: Home },
   { href: "/app/pedidos", label: "Pedidos", icon: ClipboardList },
   { href: "/app/menu", label: "Menú", icon: UtensilsCrossed },
   { href: "/app/gastos", label: "Gastos", icon: Receipt },
+  { href: "/app/mas", label: "Más", icon: Settings },
   { href: "/app/mi-plan", label: "Mi Plan", icon: CreditCard },
 ];
 
@@ -38,6 +42,7 @@ const NAV_ABARROTES: NavItem[] = [
   { href: "/app/fiados", label: "Fiados", icon: HandCoins },
   { href: "/app/frutas-verdura", label: "Frutas y Verdura", emoji: "🥑" },
   { href: "/app/gastos", label: "Gastos", icon: Receipt },
+  { href: "/app/mas", label: "Más", icon: Settings },
   { href: "/app/mi-plan", label: "Mi Plan", icon: CreditCard },
 ];
 

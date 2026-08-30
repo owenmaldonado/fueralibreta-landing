@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Boxes, Settings, ChevronRight, ArrowRight, Copy, Check, MessageCircle, History, Users, Scissors } from "lucide-react";
+import { Boxes, Settings, ChevronRight, ArrowRight, Copy, Check, MessageCircle, History, Users, Scissors, ClipboardCheck } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -15,6 +15,7 @@ import { ADMIN_EMAIL } from "@/lib/admin-data";
 import { getEmpleadoActual } from "@/lib/empleados";
 
 const LINKS = [
+  { href: "/app/cortes", label: "Cierres", desc: "Cada corte y si el efectivo cuadró", icon: ClipboardCheck },
   { href: "/app/productos", label: "Productos", desc: "Inventario de insumos", icon: Boxes },
   { href: "/app/configuracion", label: "Configuración", desc: "Horarios, excepciones y servicios", icon: Settings },
   { href: "/app/empleados", label: "Empleados", desc: "Multiusuario con PIN", icon: Users },
@@ -24,6 +25,7 @@ const LINKS = [
 // (duplicado del tab de Configuración, ver app/app/configuracion/page.tsx)
 // queda primero porque hoy solo se llega a él entrando a Configuración.
 const LINKS_BARBERIA = [
+  { href: "/app/cortes", label: "Cierres", desc: "Cada corte y si el efectivo cuadró", icon: ClipboardCheck },
   { href: "/app/configuracion?tab=servicios", label: "Servicios", desc: "Cortes, precios y duración", icon: Scissors },
   { href: "/app/productos", label: "Productos", desc: "Inventario de insumos", icon: Boxes },
   { href: "/app/configuracion", label: "Configuración", desc: "Horarios, excepciones y servicios", icon: Settings },
@@ -36,7 +38,8 @@ function linkVisible(href: string, rol: "dueno" | "encargado" | "vendedor"): boo
   // Mismas rutas que RUTAS_SOLO_DUENO en middleware.ts. Gastos/Caja
   // (reportes) entraron ahí, pero desde /app/mas no se llega a ellas, así
   // que no hace falta filtrarlas aquí — quien las esconde es BottomNav.
-  const soloDueno = href.startsWith("/app/configuracion") || href.startsWith("/app/empleados");
+  const soloDueno =
+    href.startsWith("/app/configuracion") || href.startsWith("/app/empleados") || href.startsWith("/app/cortes");
   if (soloDueno) return rol === "dueno";
   // /app/productos ya NO se le esconde al vendedor: ajustar inventario es
   // parte de su trabajo cuando le dejan la tienda sola (ver

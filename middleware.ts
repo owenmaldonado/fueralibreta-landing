@@ -24,7 +24,9 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 // Registrar un gasto o una venta NO se pierde: eso vive en el botón + del
 // FAB, que sigue disponible para todos los roles. Lo que se cierra es el
 // reporte, no la captura.
-const RUTAS_SOLO_DUENO = ["/app/empleados", "/app/configuracion", "/app/gastos", "/app/caja"];
+// /app/cortes (reporte de cierres) va aquí por lo obvio: es la pantalla
+// donde el dueño revisa si el efectivo que entregó su vendedor cuadró.
+const RUTAS_SOLO_DUENO = ["/app/empleados", "/app/configuracion", "/app/gastos", "/app/caja", "/app/cortes"];
 
 // Igual que RUTAS_SOLO_DUENO pero solo bloquea "vendedor" — un "encargado"
 // SÍ puede ajustar inventario (PERMISOS.encargado.ajustarInventario=true en
