@@ -753,31 +753,25 @@ export async function fetchPedidosPendientes(negocioId: string): Promise<FondaOr
     itemsData = data ?? [];
   }
 
-  return (pedidosData ?? []).map((row) => ({
-    id: row.id as string,
-    clienteNombre: row.cliente_nombre as string,
-    clienteTelefono: (row.cliente_telefono as string) ?? undefined,
-    fecha: diaDeColumnaFecha(row.fecha),
-    hora: (row.hora as string).slice(0, 5),
-    horaEntrega: (row.hora_entrega as string | null)?.slice(0, 5) ?? undefined,
-    estado: row.estado as FondaOrder["estado"],
-    total: Number(row.total),
-    empleadoId: (row.empleado_id as string) ?? undefined,
-    empleadoNombreCache: (row.empleado_nombre_cache as string) ?? undefined,
-    turnoId: (row.turno_id as string) ?? undefined,
-    items: itemsData
-      .filter((it) => it.pedido_id === row.id)
-      .map((it) => ({
-        id: it.id as string,
-        platilloId: (it.platillo_id as string) ?? "",
-        platilloNombre: it.platillo_nombre as string,
-        cantidad: it.cantidad as number,
-        nota: (it.nota as string) ?? undefined,
-        varianteNombre: (it.variante_nombre as string) ?? undefined,
-        extraConcepto: (it.extra_concepto as string) ?? undefined,
-        extraMonto: it.extra_monto != null ? Number(it.extra_monto) : undefined,
-      })),
-  }));
+  // pedidoFromRow, NO un mapeo escrito otra vez a mano aqui.
+  //
+  // Aqui vivia una SEGUNDA copia del mapeo de un pedido, y esa copia se
+  // habia quedado corta: mapeaba empleado_id y empleado_nombre_cache pero
+  // NO empleado_rol_cache (ni creadoEn, ni el precio/costo unitario de los
+  // items). Y EmpleadoBadge decide asi:
+  //
+  //     const esDueno = !rol || rol === "dueno";
+  //
+  // O sea: sin rol, pinta "Dueno". Ese es exactamente el bug que se
+  // reporto — el vendedor levanta un pedido programado, el dueno refresca
+  // y el pedido aparece como si lo hubiera subido el. El dato en Supabase
+  // siempre estuvo bien; se perdia al LEERLO, y solo por esta pantalla.
+  //
+  // Tener dos mapeos del mismo registro es lo que lo causo: se le agrego
+  // el rol a uno y nadie se acordo del otro. Con uno solo no puede
+  // repetirse.
+  return (pedidosData ?? []).map((row) => pedidoFromRow(row, itemsData));
+
 }
 
 // ---------- abarrotes: mapeos ----------

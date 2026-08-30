@@ -320,7 +320,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
       {sinConexion ? (
         <CierreBloqueado motivo="sin-conexion" titulo="Sin conexión" queEs="turno" onClose={resetYCerrar} />
       ) : yaFueCerrado ? (
-        <CierreBloqueado motivo="ya-cerrado" titulo="Turno cerrado" queEs="turno" onClose={resetYCerrar} />
+        <CierreBloqueado motivo="ya-cerrado" titulo="Turno cerrado" queEs="turno" onClose={resetYCerrar} onContinuar={() => setYaFueCerrado(false)} />
       ) : paso === 1 ? (
         <>
           <SheetHeader title="Cerrar turno" description="Paso 1 de 2 · Corte" onClose={resetYCerrar} />

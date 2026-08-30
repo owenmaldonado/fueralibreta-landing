@@ -11,6 +11,7 @@ import { Chip, ChipGroup } from "@/components/ui/chip";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { insertGastoDirecto, cleanInsert } from "@/lib/data";
 import { useOnlineStatus } from "@/lib/use-online-status";
+import { diaDelNegocio } from "@/lib/chart-buckets";
 import { CierreBloqueado } from "./cierre-bloqueado";
 import { formatMoney, formatMoneyExacto, redondear2, uid } from "@/lib/mock";
 import { MensajeCorte } from "./mensaje-corte";
@@ -84,10 +85,24 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
   // en otra tablet sí entra al corte del dueño, y un cierre pasada la
   // medianoche tampoco se corta a la mitad.
   const pedidosDelTurno = React.useMemo(() => {
-    const turnoDesde = negocio.turnoFondaCerradoEn ? new Date(negocio.turnoFondaCerradoEn) : new Date(`${hoyEnSuZona}T00:00:00`);
-    return data.pedidos.filter(
-      (p) => p.estado === "entregado" && (p.creadoEn ? new Date(p.creadoEn) >= turnoDesde : p.fecha === hoyEnSuZona)
-    );
+    // Mismo cálculo que enTurnoActual() en fonda-dashboard.tsx, y por la
+    // misma razón: cuando todavía no hay ningún cierre previo, el arranque
+    // NO puede ser `new Date(`${hoy}T00:00:00`)` — esa es la medianoche del
+    // DISPOSITIVO, no la del negocio, así que en un celular en otra zona el
+    // corte incluía pedidos de ayer o se dejaba fuera los de la madrugada.
+    // Ese caso se resuelve comparando el DÍA del negocio; solo el caso "sí
+    // hay cierre previo" compara instantes, que ahí sí es lo correcto
+    // (un turno arranca en un momento exacto, no a medianoche).
+    //
+    // Si esto no coincidiera con el dashboard, el corte y el cuadro de
+    // "Ventas" mostrarían números distintos para el mismo turno.
+    const cerradoEn = negocio.turnoFondaCerradoEn ? new Date(negocio.turnoFondaCerradoEn) : null;
+    return data.pedidos.filter((p) => {
+      if (p.estado !== "entregado") return false;
+      if (!p.creadoEn) return p.fecha === hoyEnSuZona;
+      if (cerradoEn) return new Date(p.creadoEn) >= cerradoEn;
+      return diaDelNegocio(p.creadoEn, negocio.timezone) === hoyEnSuZona;
+    });
   }, [data.pedidos, negocio.turnoFondaCerradoEn, hoyEnSuZona]);
 
   const ventasHoy = pedidosDelTurno.reduce((acc, p) => acc + p.total, 0);

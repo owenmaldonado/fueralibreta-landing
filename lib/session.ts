@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { supabase, isSupabaseConfigured } from "./supabase";
+import { iniciarRefrescoDeRespaldo } from "./refresco-respaldo";
 import {
   fetchNegocioByOwner,
   fetchTenantData,
@@ -301,7 +302,15 @@ function suscribirseAVentasEnVivo(negocioId: string, onEvento: (venta: GrocerySa
             .catch((err) => console.error("[session] no se pudo cargar la venta nueva del realtime:", err));
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        // Antes esto era `.subscribe()` a secas: un CHANNEL_ERROR o un
+        // TIMED_OUT dejaba el canal muerto EN SILENCIO — esa pantalla se
+        // quedaba congelada hasta un F5 y no había nada en consola que lo
+        // delatara. Quien de verdad garantiza que los cambios lleguen es
+        // el refresco de respaldo (lib/refresco-respaldo.ts); esto es para
+        // poder VER cuándo se cae el canal.
+        console.log("[session] canal de ventas de abarrotes:", status, err ?? "");
+      });
     ventasChannel = nuevoCanal;
     ventasChannelNegocioId = negocioId;
   }
@@ -368,7 +377,15 @@ function suscribirseAPedidosEnVivo(negocioId: string, onEvento: (pedido: FondaOr
         { event: "UPDATE", schema: "public", table: "fonda_pedidos", filter: `negocio_id=eq.${negocioId}` },
         avisarCambio("UPDATE")
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        // Antes esto era `.subscribe()` a secas: un CHANNEL_ERROR o un
+        // TIMED_OUT dejaba el canal muerto EN SILENCIO — esa pantalla se
+        // quedaba congelada hasta un F5 y no había nada en consola que lo
+        // delatara. Quien de verdad garantiza que los cambios lleguen es
+        // el refresco de respaldo (lib/refresco-respaldo.ts); esto es para
+        // poder VER cuándo se cae el canal.
+        console.log("[session] canal de pedidos de fonda:", status, err ?? "");
+      });
     pedidosChannel = nuevoCanal;
     pedidosChannelNegocioId = negocioId;
   }
@@ -410,7 +427,15 @@ function suscribirseANegocioEnVivo(negocioId: string, onEvento: (business: Busin
           negocioListeners.forEach((l) => l(business));
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        // Antes esto era `.subscribe()` a secas: un CHANNEL_ERROR o un
+        // TIMED_OUT dejaba el canal muerto EN SILENCIO — esa pantalla se
+        // quedaba congelada hasta un F5 y no había nada en consola que lo
+        // delatara. Quien de verdad garantiza que los cambios lleguen es
+        // el refresco de respaldo (lib/refresco-respaldo.ts); esto es para
+        // poder VER cuándo se cae el canal.
+        console.log("[session] canal de cambios del negocio:", status, err ?? "");
+      });
     negocioChannel = nuevoCanal;
     negocioChannelId = negocioId;
   }
@@ -695,6 +720,11 @@ export function useSession() {
   const clientesUnsubRef = useRef<(() => void) | null>(null);
   const catalogoUnsubRef = useRef<(() => void) | null>(null);
   const catalogoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Red de seguridad del realtime — ver lib/refresco-respaldo.ts. Cubre
+  // los 3 giros y TODAS sus tablas de una sola vez, así que ya no hace
+  // falta escribirle un polling aparte a cada canal (el de citas, el
+  // único que lo tenía, se queda: es más frecuente y con toast propio).
+  const respaldoRef = useRef<(() => void) | null>(null);
   sessionRef.current = session;
 
   const loadFromDemoPreview = useCallback(() => {
@@ -1165,6 +1195,17 @@ export function useSession() {
           } catch (err) {
             console.error("[session] no se pudo suscribir a cambios del negocio en vivo (la sesión sigue cargada bien):", err);
           }
+          // Y por encima de TODOS los canales: el refresco de respaldo.
+          // Los canales son el camino rápido (se ve al instante); esto es
+          // el piso que garantiza que un cambio hecho en otro dispositivo
+          // aparezca aunque el canal se haya caído sin avisar. Es lo que
+          // arregla "le muevo como empleado y al dueño no le sale hasta
+          // que refresca".
+          respaldoRef.current?.();
+          respaldoRef.current = iniciarRefrescoDeRespaldo(
+            () => sessionRef.current,
+            (mezclar) => setSessionState((prev) => (prev ? mezclar(prev) : prev))
+          );
         } else {
           // Logueado pero sin negocio todavía: se deja session en null y es
           // /onboarding quien lo crea de forma EXPLÍCITA (un solo botón, un
@@ -1287,6 +1328,8 @@ export function useSession() {
       detenerCajaEnVivo();
       detenerClientesEnVivo();
       detenerCatalogoEnVivo();
+      respaldoRef.current?.();
+      respaldoRef.current = null;
     };
   }, [loadFromDemoPreview]);
 

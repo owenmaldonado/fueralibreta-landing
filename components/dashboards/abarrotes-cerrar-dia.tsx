@@ -299,7 +299,7 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
       {sinConexion ? (
         <CierreBloqueado motivo="sin-conexion" titulo="Sin conexión" queEs="día" onClose={resetYCerrar} />
       ) : yaFueCerrado ? (
-        <CierreBloqueado motivo="ya-cerrado" titulo="Día cerrado" queEs="día" onClose={resetYCerrar} />
+        <CierreBloqueado motivo="ya-cerrado" titulo="Día cerrado" queEs="día" onClose={resetYCerrar} onContinuar={() => setYaFueCerrado(false)} />
       ) : paso === 1 ? (
         <>
           <SheetHeader title="Cerrar día" description="Paso 1 de 2 · Corte" onClose={resetYCerrar} />

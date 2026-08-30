@@ -99,7 +99,7 @@ export function diaDelNegocio(fecha: string, timezone?: string): string {
   return d.toLocaleDateString("en-CA", timezone ? { timeZone: timezone } : undefined);
 }
 
-export /**
+/**
  * Día calendario de una columna que GUARDA UN DÍA, no un instante
  * (fonda_pedidos.fecha, *_gastos.fecha, barberia_citas.fecha, etc.).
  *
@@ -132,7 +132,7 @@ export /**
  * y se convierten con fechaCalendarioLocal(), que sí mira la zona del
  * negocio.
  */
-function diaDeColumnaFecha(valor: unknown): string {
+export function diaDeColumnaFecha(valor: unknown): string {
   return typeof valor === "string" ? valor.slice(0, 10) : "";
 }
 
