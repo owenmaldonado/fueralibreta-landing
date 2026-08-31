@@ -312,6 +312,29 @@ export default function GastosPage() {
   const algunPlatilloConCosto = modulo === "fonda" && (session.fonda?.platillos ?? []).some((p) => p.costo != null && p.costo > 0);
   const faltaCostoEnFonda = modulo === "fonda" && !algunPlatilloConCosto;
 
+  // ¿ESTE negocio tiene costos puestos?
+  //
+  // Poner el costo de cada producto/platillo es OPCIONAL, y muchos no lo van
+  // a hacer nunca. Owen: "hice un gasto de 49 y como no había costo lo
+  // compara con 0 y sale ganancia real -49... siempre será menos ahí".
+  //
+  // Tiene razón: sin costos, "Ganancia real" es margen (0 o incompleto)
+  // menos gastos, así que solo puede bajar. Ese número no le dice nada a
+  // quien no capturó costos — y es el caso más común al empezar.
+  //
+  // La solución no es cambiar la fórmula (para quien SÍ tiene costos,
+  // margen − gastos es exactamente la cuenta correcta y no hay que
+  // arruinársela). Es enseñar la cuenta que sí le sirve a cada quien:
+  // - Sin costos  → "Ventas − gastos", que siempre tiene sentido.
+  // - Con costos  → "Ganancia real", como hasta ahora.
+  // El día que capture su primer costo, la pantalla cambia sola.
+  const hayCostosCapturados =
+    modulo === "fonda"
+      ? algunPlatilloConCosto
+      : (session.abarrotes?.productos ?? []).some((p) => p.costo != null && p.costo > 0);
+
+  const ventasMenosGastosHoy = ventasHoy - gastosHoy;
+
   // `gastos` ya excluye los programados (ver arriba), así que esta lista y
   // el total son solo dinero que de verdad salió.
   const gastosEnRango = filtrarPorRango(gastos, (g) => g.fecha);
@@ -322,6 +345,9 @@ export default function GastosPage() {
   const totalVentas = ventasFiltradas.reduce((acc, v) => acc + v.monto, 0);
   const totalGananciaBruta = gananciaPorVentaFiltrada.reduce((acc, g) => acc + g.monto, 0);
   const totalGananciaNeta = totalGananciaBruta - totalGastos;
+  // Va aquí y no arriba porque necesita totalVentas/totalGastos, que se
+  // calculan unas líneas antes. Ver hayCostosCapturados.
+  const ventasMenosGastosPeriodo = totalVentas - totalGastos;
 
   const combinados = [
     ...ventasFiltradas.map((v) => ({ ...v, tipo: "venta" as const })),
@@ -493,9 +519,16 @@ export default function GastosPage() {
               <p className="font-display text-lg font-bold text-destructive">{formatMoney(gastosHoy)}</p>
             </div>
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Ganancia real hoy</p>
-              <p className={cn("font-display text-lg font-bold", gananciaRealHoy >= 0 ? "text-ledger" : "text-destructive")}>
-                {formatMoney(gananciaRealHoy)}
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                {hayCostosCapturados ? "Ganancia real hoy" : "Ventas − gastos hoy"}
+              </p>
+              <p
+                className={cn(
+                  "font-display text-lg font-bold",
+                  (hayCostosCapturados ? gananciaRealHoy : ventasMenosGastosHoy) >= 0 ? "text-ledger" : "text-destructive"
+                )}
+              >
+                {formatMoney(hayCostosCapturados ? gananciaRealHoy : ventasMenosGastosHoy)}
               </p>
             </div>
           </div>
@@ -538,9 +571,28 @@ export default function GastosPage() {
         </div>
       ) : chartTab === "ganancias" ? (
         <div className="px-4 pt-3">
-          <StatTile label="Total ganancia" value={formatMoney(totalGananciaBruta)} />
-          {faltaCostoEnFonda && (
-            <p className="mt-2 px-1 text-xs text-muted-foreground">Agrega costo a tus platillos para ver ganancia real (con mermas incluidas).</p>
+          {hayCostosCapturados ? (
+            <StatTile label="Total ganancia" value={formatMoney(totalGananciaBruta)} />
+          ) : (
+            <>
+              {/*
+                Sin costos capturados, "ganancia" sería margen desconocido
+                menos gastos: un número que solo puede bajar y que no le dice
+                nada a quien nunca puso costos. Se enseña la cuenta que sí le
+                sirve, y se le dice qué gana si captura los costos.
+              */}
+              <StatTile
+                label="Ventas − gastos en el periodo"
+                value={formatMoney(ventasMenosGastosPeriodo)}
+                valueClassName={ventasMenosGastosPeriodo >= 0 ? "text-ledger" : "text-destructive"}
+              />
+              <p className="mt-2 px-1 text-xs text-muted-foreground">
+                Esta es la cuenta simple: lo que entró menos lo que salió.{" "}
+                {modulo === "fonda"
+                  ? "Si le pones costo a tus platillos, aquí verás tu ganancia real — lo que de verdad te queda después de los insumos."
+                  : "Si le pones costo a tus productos, aquí verás tu ganancia real — lo que de verdad te queda después de la mercancía."}
+              </p>
+            </>
           )}
         </div>
       ) : chartTab === "ventas" ? (
@@ -563,9 +615,11 @@ export default function GastosPage() {
             <StatTile label="Total ventas" value={formatMoney(totalVentas)} />
             <StatTile label="Total gastos" value={formatMoney(totalGastos)} />
             <StatTile
-              label="Ganancia real"
-              value={formatMoney(totalGananciaNeta)}
-              valueClassName={totalGananciaNeta >= 0 ? "text-ledger" : "text-destructive"}
+              label={hayCostosCapturados ? "Ganancia real" : "Ventas − gastos"}
+              value={formatMoney(hayCostosCapturados ? totalGananciaNeta : ventasMenosGastosPeriodo)}
+              valueClassName={
+                (hayCostosCapturados ? totalGananciaNeta : ventasMenosGastosPeriodo) >= 0 ? "text-ledger" : "text-destructive"
+              }
             />
           </div>
           {faltaCostoEnFonda && (
@@ -606,10 +660,22 @@ export default function GastosPage() {
               <TrendBarChart data={serieVentas} bars={[{ key: "value", name: "Ventas", color: COLOR_VENTAS }]} emptyText="Sin ventas en este periodo" />
             )}
             {chartTab === "ganancias" && (
+              // La barra tiene que ser la MISMA cuenta que el número de
+              // arriba. Sin costos capturados, la ganancia bruta por día es
+              // idéntica a las ventas (costo 0), así que esta gráfica sería
+              // una copia de la pestaña "Ventas" debajo de un total que dice
+              // "Ventas − gastos": dos cuentas distintas en la misma
+              // pantalla. Se grafica la neta, que sí es lo que el total dice.
               <TrendBarChart
-                data={serieGananciaBruta}
-                bars={[{ key: "value", name: "Ganancia", color: COLOR_GANANCIA }]}
-                emptyText="Sin ganancia en este periodo"
+                data={hayCostosCapturados ? serieGananciaBruta : serieGananciaNeta}
+                bars={[
+                  {
+                    key: "value",
+                    name: hayCostosCapturados ? "Ganancia" : "Ventas − gastos",
+                    color: COLOR_GANANCIA,
+                  },
+                ]}
+                emptyText={hayCostosCapturados ? "Sin ganancia en este periodo" : "Sin movimientos en este periodo"}
               />
             )}
             {chartTab === "todos" && (
