@@ -745,11 +745,14 @@ export default function GastosPage() {
             )}
             {chartTab === "ganancias" && (
               // La barra tiene que ser la MISMA cuenta que el número de
-              // arriba. Sin costos capturados, la ganancia bruta por día es
-              // idéntica a las ventas (costo 0), así que esta gráfica sería
-              // una copia de la pestaña "Ventas" debajo de un total que dice
-              // "Ventas − gastos": dos cuentas distintas en la misma
-              // pantalla. Se grafica la neta, que sí es lo que el total dice.
+              // arriba, siempre. Con costos capturados, arriba dice "Total
+              // ganancia" y aquí van los márgenes; sin costos, arriba dice
+              // "Ventas − gastos" y aquí va exactamente eso.
+              //
+              // Antes esta rama graficaba serieGananciaNeta, que sin costos
+              // capturados vale −gastos y nada más (el margen de cada venta es
+              // cero porque no hay costo que restar). O sea: el número decía
+              // "$4,700" y la gráfica pintaba "−$300". Ver serieVentasMenosGastos.
               <TrendBarChart
                 data={hayCostosCapturados ? serieGananciaBruta : serieVentasMenosGastos}
                 bars={[
@@ -770,19 +773,16 @@ export default function GastosPage() {
                   gastos: serieGastos[i]?.value ?? 0,
                   ganancia: serieResultado[i]?.value ?? 0,
                 }))}
-                // Antes Fondita no tenía costo por platillo, así que su
-                // "ganancia real" era idéntica a ventas - gastos (línea sin
-                // información nueva) y se omitía. Ahora que Dish.costo existe
-                // (opcional), gananciaPorVenta ya resta el costo de los
-                // platillos que sí lo tienen — se muestra igual que en
-                // Abarrotes, pero solo en cuanto al menos un platillo tiene
-                // costo puesto (si no, sería solo -gastos disfrazado de
-                // "ganancia", el mismo número engañoso que ya evitamos arriba).
-                // La tercera línea siempre dice qué cuenta es, y siempre trae
-                // esa cuenta (serieResultado). Antes la etiqueta era fija
-                // ("Ganancia real") mientras el dato podía ser otra cosa: en
-                // una abarrotera sin costos capturados esa línea era −gastos
-                // presentada como ganancia real, que es peor que no mostrarla.
+                // La tercera línea dice qué cuenta es Y trae esa cuenta
+                // (serieResultado, la misma variable del total de arriba).
+                //
+                // Antes la etiqueta era fija ("Ganancia real") mientras el
+                // dato podía ser otra cosa: en una abarrotera sin costos
+                // capturados esa línea era −gastos presentada como ganancia
+                // real. Y en Fondita sin costos la línea simplemente no se
+                // dibujaba, así que la gráfica "Todos" no tenía forma de
+                // enseñar el resultado del periodo — que es lo único que
+                // alguien quiere ver ahí.
                 gananciaLabel={hayCostosCapturados ? "Ganancia real" : "Ventas − gastos"}
                 emptyText="Sin ventas ni gastos en este periodo"
               />

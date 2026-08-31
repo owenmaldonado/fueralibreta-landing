@@ -173,12 +173,15 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
   const enTurnoActual = (p: FondaOrder) =>
     enTurnoActualCompartido({ creadoEn: p.creadoEn, fecha: p.fecha }, negocio, hoyEnSuZona);
 
-  const ventas =
+  // Los pedidos que de verdad son dinero cobrado en el periodo que se está
+  // viendo. Una sola lista para el StatTile de "Ventas" Y para "Equipo hoy",
+  // porque son la misma pregunta con distinto corte — si salen de listas
+  // distintas se pueden contradecir, y se contradecían (ver equipoHoy abajo).
+  const pedidosCobrados =
     filtro === "hoy"
-      ? data.pedidos.filter((p) => p.estado === "entregado" && enTurnoActual(p)).reduce((acc, p) => acc + p.total, 0)
-      : data.pedidos
-          .filter((p) => p.estado === "entregado" && p.fecha >= desde && p.fecha <= hasta)
-          .reduce((acc, p) => acc + p.total, 0);
+      ? data.pedidos.filter((p) => p.estado === "entregado" && enTurnoActual(p))
+      : data.pedidos.filter((p) => p.estado === "entregado" && p.fecha >= desde && p.fecha <= hasta);
+  const ventas = pedidosCobrados.reduce((acc, p) => acc + p.total, 0);
 
   // "Hoy" en un negocio real muestra pendientesVivo (lectura directa,
   // siempre al día). En demo (sin ownerId, nunca persistida) cae a
@@ -194,16 +197,26 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
   const pendientesPeriodo = pedidosPeriodo.filter((p) => p.estado === "pendiente");
 
   // "Equipo hoy" (PR #121, trazabilidad vendedor/encargado): quién vendió
-  // qué hoy — solo pedidos ya entregados (dinero de verdad cobrado), y solo
-  // vale la pena mostrarlo si hay 2+ personas distintas (VentasPorEmpleado
-  // se auto-oculta si no). "Sin dato" (negocio sin multiusuario activo, o
-  // pedidos de antes de empleado_nombre_cache) cae a "Dueño" — mismo
-  // criterio que fonda-cerrar-turno.tsx.
+  // qué en el turno — solo pedidos ya entregados (dinero de verdad cobrado),
+  // y solo vale la pena mostrarlo si hay 2+ personas distintas
+  // (VentasPorEmpleado se auto-oculta si no). "Sin dato" (negocio sin
+  // multiusuario activo, o pedidos de antes de empleado_nombre_cache) cae a
+  // "Dueño" — mismo criterio que fonda-cerrar-turno.tsx.
+  //
+  // ESTA TARJETA NUNCA SE VEÍA EN FONDITA. Salía de `pedidosPeriodo`, que en
+  // el filtro "Hoy" son los pedidos PENDIENTES (viene de
+  // fetchPedidosPendientes, que filtra estado = "pendiente", y el efecto de
+  // arriba se encarga de sacar los que ya se entregaron). Pedirle a esa lista
+  // los "entregado" da siempre cero filas, así que la tarjeta se auto-ocultaba
+  // en el 100% de los casos y "quién vendió hoy" simplemente no existía en
+  // Fondita, aunque Abarrotera y Barbería sí lo mostraran.
+  //
+  // Ahora sale de `pedidosCobrados`, la MISMA lista que alimenta el StatTile
+  // de "Ventas" — así los nombres de aquí siempre suman el número de arriba.
   const equipoHoy =
     filtro === "hoy"
       ? Array.from(
-          pedidosPeriodo
-            .filter((p) => p.estado === "entregado")
+          pedidosCobrados
             .reduce((mapa, p) => {
               const nombre = p.empleadoNombreCache ?? "Dueño";
               const actual = mapa.get(nombre) ?? { nombre, monto: 0, cantidad: 0 };
