@@ -14,10 +14,18 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { ADMIN_EMAIL } from "@/lib/admin-data";
 import { getEmpleadoActual } from "@/lib/empleados";
 
+// Fonda y Abarrotera. Aquí SOLO va lo que de verdad aplica a esos dos giros.
+//
+// Antes esta lista traía también Productos y Configuración, y los dos
+// llevaban a pantallas pensadas para barbería: "Productos" es el inventario
+// de insumos del barbero (una fonda tiene Menú y una abarrotera tiene
+// Inventario), y "Configuración" son horarios, excepciones y servicios de
+// corte. Owen: "hay 2 opciones que se repiten y de una dan error... no
+// sirve de nada". Un botón que lleva a un error es peor que no tenerlo.
+//
+// Cierres se movió a Mi Plan (ver app/app/mi-plan/page.tsx): esa sección ya
+// es solo del dueño, así que no hace falta esconderla por rol dos veces.
 const LINKS = [
-  { href: "/app/cortes", label: "Cierres", desc: "Cada corte y si el efectivo cuadró", icon: ClipboardCheck },
-  { href: "/app/productos", label: "Productos", desc: "Inventario de insumos", icon: Boxes },
-  { href: "/app/configuracion", label: "Configuración", desc: "Horarios, excepciones y servicios", icon: Settings },
   { href: "/app/empleados", label: "Empleados", desc: "Multiusuario con PIN", icon: Users },
 ];
 
@@ -25,7 +33,6 @@ const LINKS = [
 // (duplicado del tab de Configuración, ver app/app/configuracion/page.tsx)
 // queda primero porque hoy solo se llega a él entrando a Configuración.
 const LINKS_BARBERIA = [
-  { href: "/app/cortes", label: "Cierres", desc: "Cada corte y si el efectivo cuadró", icon: ClipboardCheck },
   { href: "/app/configuracion?tab=servicios", label: "Servicios", desc: "Cortes, precios y duración", icon: Scissors },
   { href: "/app/productos", label: "Productos", desc: "Inventario de insumos", icon: Boxes },
   { href: "/app/configuracion", label: "Configuración", desc: "Horarios, excepciones y servicios", icon: Settings },

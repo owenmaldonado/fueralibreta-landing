@@ -9,7 +9,8 @@ import { EmptyState } from "@/components/dashboards/empty-state";
 import { StatTile } from "@/components/dashboards/stat-tile";
 import { EmpleadoBadge } from "@/components/dashboards/empleado-badge";
 import { useSession } from "@/lib/session";
-import { fetchCortes, type Corte } from "@/lib/cortes";
+import { fetchCortes, TABLA_CORTES, type Corte } from "@/lib/cortes";
+import { supabase } from "@/lib/supabase";
 import { formatMoney, formatMoneyExacto } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 
@@ -72,15 +73,49 @@ export default function CortesPage() {
   React.useEffect(() => {
     if (!negocioId || !tipo) return;
     let cancelado = false;
-    fetchCortes(negocioId, tipo)
-      .then((filas) => {
-        if (!cancelado) setCortes(filas);
-      })
-      .catch((err) => {
-        if (!cancelado) setError(err instanceof Error ? err.message : "No se pudieron cargar los cierres.");
+
+    function traer() {
+      fetchCortes(negocioId!, tipo!)
+        .then((filas) => {
+          if (!cancelado) setCortes(filas);
+        })
+        .catch((err) => {
+          if (!cancelado) setError(err instanceof Error ? err.message : "No se pudieron cargar los cierres.");
+        });
+    }
+    traer();
+
+    // EN VIVO. Owen: "cuando un vendedor cierra turno no sale en la app hasta
+    // que no reseteas". Es el momento en que se entrega el dinero, así que es
+    // de lo que más urge ver al instante.
+    //
+    // Las tres tablas de cortes ya están en la publicación de realtime
+    // (migración 20260917000000). Al llegar un INSERT se vuelve a pedir la
+    // lista completa en vez de insertar la fila del payload: son pocas filas,
+    // y así el orden y el formato salen del MISMO lugar que la carga inicial
+    // (fetchCortes) en vez de tener dos caminos que se pueden desincronizar.
+    const canal = supabase
+      .channel(`cortes-${negocioId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: TABLA_CORTES[tipo], filter: `negocio_id=eq.${negocioId}` },
+        () => traer()
+      )
+      .subscribe((status, err) => {
+        console.log("[cortes] canal de cierres:", status, err ?? "");
       });
+
+    // Red de seguridad por si el canal no entrega — mismo criterio que
+    // lib/refresco-respaldo.ts: el canal es el camino rápido, esto es el piso.
+    const timer = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      traer();
+    }, 15_000);
+
     return () => {
       cancelado = true;
+      clearInterval(timer);
+      supabase.removeChannel(canal);
     };
   }, [negocioId, tipo]);
 

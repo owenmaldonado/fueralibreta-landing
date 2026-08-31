@@ -184,6 +184,7 @@ export default function EmpleadosPage() {
             pinSet={pinSet}
             onCambio={() => setPinSet(true)}
             nombreNegocio={session?.business.nombre ?? "mi negocio"}
+            telefonoNegocio={session?.business.telefonoContacto || session?.business.telefono}
           />
         )}
 
@@ -254,11 +255,13 @@ function PinDuenoBanner({
   pinSet,
   onCambio,
   nombreNegocio,
+  telefonoNegocio,
 }: {
   negocioId: string;
   pinSet: boolean;
   onCambio: () => void;
   nombreNegocio: string;
+  telefonoNegocio?: string;
 }) {
   const [pin, setPin] = React.useState("");
   const [guardando, setGuardando] = React.useState(false);
@@ -284,9 +287,38 @@ function PinDuenoBanner({
   // dueño se queda atorado ahí, sin PIN y sin manera de seguir. Ahora abre
   // WhatsApp con el mensaje ya escrito: soporte le pone un PIN nuevo desde
   // el panel de admin en 5 segundos (ver PinDuenoDialog) y se lo dicta.
-  function olvidePin() {
-    const mensaje = `Hola, soy ${nombreNegocio}. Olvidé mi PIN de dueño en Fuera Libreta, ¿me lo pueden reiniciar?`;
-    window.open(waLink(WHATSAPP_SOPORTE, mensaje), "_blank");
+  /**
+   * Abre WhatsApp con soporte, ya con los datos para identificar el negocio.
+   *
+   * Owen: "ocupo más información, que a él solo le cargue el correo donde
+   * está asociado, su número y su id, para yo buscarlo más fácil en mi cel o
+   * en la compu". Con el correo puedes buscarlo directo en /admin y
+   * cambiarle el PIN sin pedirle nada más.
+   *
+   * El correo se saca de la sesión de Supabase, no de lo que el dueño
+   * escriba: es el que de verdad está asociado a la cuenta, que es el que te
+   * sirve para encontrarlo. Si por lo que sea no se puede leer, el mensaje
+   * se manda igual con lo demás — más vale un mensaje incompleto que un
+   * botón que no hace nada.
+   */
+  async function olvidePin() {
+    let correo = "";
+    try {
+      const { data } = await supabase.auth.getUser();
+      correo = data.user?.email ?? "";
+    } catch {
+      // se manda sin correo; abajo se nota en el mensaje
+    }
+    const lineas = [
+      `Hola, soy ${nombreNegocio}.`,
+      "Olvidé mi PIN de dueño en Fuera Libreta, ¿me lo pueden reiniciar?",
+      "",
+      "Mis datos:",
+      correo ? `Correo: ${correo}` : "Correo: (no se pudo leer, te lo paso aparte)",
+      telefonoNegocio ? `Teléfono: ${telefonoNegocio}` : null,
+      `ID del negocio: ${negocioId ?? "(no disponible)"}`,
+    ].filter(Boolean);
+    window.open(waLink(WHATSAPP_SOPORTE, lineas.join("\n")), "_blank");
   }
 
   if (pinSet) {

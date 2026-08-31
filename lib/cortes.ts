@@ -19,7 +19,7 @@ import type { BusinessType, RolEmpleado } from "./types";
  * revisar.
  */
 
-const TABLA: Record<BusinessType, string> = {
+export const TABLA_CORTES: Record<BusinessType, string> = {
   barberia: "barberia_cortes",
   fonda: "fondita_cortes",
   abarrotes: "abarrotera_cortes",
@@ -49,7 +49,7 @@ function aNumero(v: unknown): number | null {
 
 export async function fetchCortes(negocioId: string, tipo: BusinessType, limite = 60): Promise<Corte[]> {
   const { data, error } = await supabase
-    .from(TABLA[tipo])
+    .from(TABLA_CORTES[tipo])
     .select("*")
     .eq("negocio_id", negocioId)
     // created_at y no `fecha`: con dos turnos el mismo día, ordenar por

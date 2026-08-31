@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, MessageCircle, Lock } from "lucide-react";
+import { ArrowRight, MessageCircle, Lock, ClipboardCheck } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -145,6 +145,21 @@ export default function MiPlanPage() {
             <Button size="lg" variant="outline" onClick={() => setCerrando(true)}>
               <Lock className="h-4 w-4" /> {labelCierre}
             </Button>
+            {/*
+              Cierres vive AQUÍ y no en "Más" a propósito. Owen: "lo mejor es
+              ponerlo directo en mi plan... y así solo le aparece al dueño
+              porque la sección planes solo es del dueño".
+              Tiene razón: esta pantalla ya se esconde al vendedor
+              (`!esVendedor`), así que no hay que volver a filtrar por rol en
+              otro lado y arriesgarse a que las dos reglas se desincronicen.
+            */}
+            {!esVendedor && (
+              <Button size="lg" variant="outline" asChild>
+                <Link href="/app/cortes">
+                  <ClipboardCheck className="h-4 w-4" /> Ver cierres anteriores
+                </Link>
+              </Button>
+            )}
           </div>
         </div>
       </div>

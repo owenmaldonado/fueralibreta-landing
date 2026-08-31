@@ -45,8 +45,25 @@ import type { TenantData } from "./types";
  * conoce.
  */
 
-/** Cada cuánto se vuelve a pedir todo. 20s: lo bastante seguido para que se sienta vivo, lo bastante espaciado para no castigar datos móviles. */
-const INTERVALO_MS = 20_000;
+/**
+ * Cada cuánto se vuelve a pedir todo.
+ *
+ * Bajó de 20s a 8s. Owen: "en general la app de fonda la siento muy lenta si
+ * no refresco, me encantaría que fuera más fluida" y "me causa algo que en
+ * fonda no se pueda hacer realtime súper rápido, ¿no hay alguna forma?".
+ *
+ * La respuesta honesta a esa pregunta: cuando el canal de realtime SÍ
+ * entrega, ya es instantáneo — no hay nada más rápido que eso. Lo que se
+ * sentía lento era el respaldo, que solo entra cuando el canal falla. Bajarlo
+ * a 8s reduce esa espera a menos de la mitad.
+ *
+ * No se baja más porque cada vuelta es una consulta completa del negocio: a
+ * 2s serían 1,800 consultas por hora por dispositivo, con su costo en datos
+ * móviles y en la cuota de Supabase, para ganar 6 segundos en el caso en que
+ * algo ya falló. 8s es el punto donde se siente vivo sin castigar el plan de
+ * datos de nadie.
+ */
+const INTERVALO_MS = 8_000;
 
 interface ConId {
   id: string;
