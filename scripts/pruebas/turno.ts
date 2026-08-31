@@ -1,4 +1,4 @@
-import { enTurnoActual, enTurnoActualPorDiaYHora, inicioDelTurno } from "@/lib/turno";
+import { desdeCuandoCuenta, enTurnoActual, enTurnoActualPorDiaYHora, gastoEnTurnoActual, huboCierreHoy, inicioDelTurno } from "@/lib/turno";
 
 let fallos = 0;
 function eq(a: unknown, b: unknown, msg: string) {
@@ -114,6 +114,72 @@ eq(enTurnoActual({ creadoEn: "2026-08-31T06:00:00Z" }, nuncaCerro, HOY), true,
 // 2026-08-31T05:00:00Z = 30 de agosto 11pm en México -> todavía es AYER.
 eq(enTurnoActual({ creadoEn: "2026-08-31T05:00:00Z" }, nuncaCerro, HOY), false,
   "las 11pm de ayer en el negocio no cuentan hoy, aunque en UTC ya sea día 31");
+
+// ---------------------------------------------------------------------------
+// GASTOS POR TURNO (Owen: "los gastos no se van a 0, se cuenta lo de todo el
+// día en vez de iniciar en cero... lo mismo con abarrotera")
+// ---------------------------------------------------------------------------
+const AYER = "2026-08-30";
+const MANANA = "2026-09-01";
+
+// El caso exacto reportado: cerré el turno de la mañana a las 2pm, y el de la
+// tarde seguía arrastrando el gasto que ya se había entregado en el corte
+// anterior.
+const gastoDeLaManana = { fecha: HOY, creadoEn: "2026-08-31T15:00:00Z" }; // 9am MX
+const gastoDeLaTarde = { fecha: HOY, creadoEn: "2026-08-31T22:00:00Z" }; // 4pm MX
+eq(gastoEnTurnoActual(gastoDeLaManana, cerroHoy, HOY), false,
+  "el gasto del turno de la mañana NO se vuelve a contar en el de la tarde");
+eq(gastoEnTurnoActual(gastoDeLaTarde, cerroHoy, HOY), true,
+  "el gasto hecho después del cierre sí cuenta en el turno nuevo");
+
+// Sin ningún cierre, el turno es el día entero.
+eq(gastoEnTurnoActual(gastoDeLaManana, nuncaCerro, HOY), true,
+  "sin cierres previos, el gasto de hoy cuenta");
+
+// Nada de ayer se cuela, haya o no cierre de por medio.
+eq(gastoEnTurnoActual({ fecha: AYER, creadoEn: "2026-08-31T02:30:00Z" }, cerroAyer, HOY), false,
+  "un gasto de AYER posterior al cierre de ayer no cuenta hoy");
+eq(gastoEnTurnoActual({ fecha: AYER, creadoEn: "2026-08-31T02:30:00Z" }, nuncaCerro, HOY), false,
+  "un gasto de ayer no cuenta hoy ni sin cierres previos");
+
+// Gasto PROGRAMADO a futuro: se captura hoy pero el dinero sale otro día, así
+// que no toca la caja de hoy. Manda `fecha`, no el instante de captura.
+eq(gastoEnTurnoActual({ fecha: MANANA, creadoEn: "2026-08-31T22:00:00Z" }, cerroHoy, HOY), false,
+  "un gasto programado para mañana no cuenta en el turno de hoy");
+
+// Compatibilidad: gastos de antes de la migración 20260925000000 no tienen
+// instante. Se siguen contando, como antes, en vez de desaparecer del corte.
+eq(gastoEnTurnoActual({ fecha: HOY }, cerroHoy, HOY), true,
+  "un gasto viejo sin instante se sigue contando (no desaparece del corte)");
+eq(gastoEnTurnoActual({ fecha: HOY, creadoEn: null }, cerroHoy, HOY), true,
+  "created_at en null se trata igual que ausente");
+eq(gastoEnTurnoActual({ fecha: HOY, creadoEn: "no-es-una-fecha" }, cerroHoy, HOY), true,
+  "un instante corrupto no hace desaparecer el gasto");
+
+// Un gasto capturado en el mismo milisegundo del cierre pertenece al turno que
+// se cerró, no al nuevo — si no, contaría en los dos.
+eq(gastoEnTurnoActual({ fecha: HOY, creadoEn: "2026-08-31T20:00:00Z" }, cerroHoy, HOY), false,
+  "el gasto justo en el instante del cierre queda del lado del turno cerrado");
+
+// La marca vieja de fonda funciona igual que la genérica.
+eq(gastoEnTurnoActual(gastoDeLaManana, soloMarcaVieja, HOY), false,
+  "con solo la marca vieja de fonda, el gasto de la mañana tampoco se repite");
+
+// ---------------------------------------------------------------------------
+// La etiqueta "desde cuándo cuenta este turno" tiene que decir la verdad
+// ---------------------------------------------------------------------------
+// Con el último cierre AYER, hoy el turno arranca cuando abrieron — no en la
+// hora de ese cierre. Antes la etiqueta anunciaba una ventana que incluía toda
+// la noche de ayer, mientras el cálculo real no la incluía.
+eq(desdeCuandoCuenta(cerroAyer, TZ, HOY), "Desde que abrieron hoy",
+  "con el cierre de ayer, hoy la etiqueta dice 'desde que abrieron'");
+eq(desdeCuandoCuenta(nuncaCerro, TZ, HOY), "Desde que abrieron hoy",
+  "sin cierres, la etiqueta dice 'desde que abrieron'");
+eq(desdeCuandoCuenta(cerroHoy, TZ, HOY).startsWith("Desde el último cierre"), true,
+  "con un cierre de hoy sí se nombra la hora del cierre");
+eq(huboCierreHoy(cerroHoy, HOY), true, "huboCierreHoy detecta el cierre de hoy");
+eq(huboCierreHoy(cerroAyer, HOY), false, "huboCierreHoy no confunde el cierre de ayer");
+eq(huboCierreHoy(nuncaCerro, HOY), false, "huboCierreHoy sin cierres es false");
 
 console.log(fallos === 0 ? "\nTODO OK" : `\n${fallos} FALLOS`);
 if (fallos > 0) process.exit(1);

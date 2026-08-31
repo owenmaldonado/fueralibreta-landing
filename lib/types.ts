@@ -267,6 +267,21 @@ export interface Expense {
   monto: number;
   fecha: string; // ISO date
   recordatorio?: boolean;
+  /**
+   * Instante real en que se capturó el gasto (`created_at` de
+   * fonda_gastos/abarrotes_gastos, migración 20260925000000).
+   *
+   * `fecha` es el DÍA en que sale el dinero — puede ser futuro (un gasto
+   * programado, "pagar la renta el día 1"). Con solo ese día no se puede
+   * saber de qué lado de un cierre de turno cayó un gasto, y por eso el
+   * corte de la tarde volvía a contar los gastos de la mañana (Owen: "los
+   * gastos no se van a 0, se cuenta lo de todo el día"). Este instante es
+   * lo que deja partirlos por turno — ver gastoEnTurnoActual en lib/turno.ts.
+   *
+   * Opcional: los gastos anteriores a esa migración no lo tienen y caen al
+   * criterio de siempre (todo el día), para que ninguno desaparezca.
+   */
+  creadoEn?: string;
   /** Quién registró el gasto (ver Multiusuario > modo PIN, lib/empleados.ts) — a diferencia de ventas/citas, gastos nunca tuvo esto hasta trazabilidad vendedor/encargado (PR #121). Ausente en gastos de antes de este campo o registrados por el dueño directo sin multiusuario activo. */
   empleadoId?: string;
   empleadoNombreCache?: string;

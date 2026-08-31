@@ -20,7 +20,7 @@ import { fetchPedidosPendientes } from "@/lib/data";
 import { camposEmpleado } from "@/lib/empleados";
 import { usePlan } from "@/lib/planes";
 import { obtenerOCrearTurno } from "@/lib/turno-fonda";
-import { enTurnoActual as enTurnoActualCompartido } from "@/lib/turno";
+import { enTurnoActual as enTurnoActualCompartido, gastoEnTurnoActual, huboCierreHoy, desdeCuandoCuenta } from "@/lib/turno";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import { cn } from "@/lib/utils";
 import type { TenantData, SessionUpdater, FondaOrder, Dish, DishVariant } from "@/lib/types";
@@ -114,7 +114,24 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
   const [desde, hasta] =
     filtro === "hoy" ? [hoyEnSuZona, hoyEnSuZona] : filtro === "ayer" ? [ayerEnSuZona, ayerEnSuZona] : [semanaDesde, semanaHasta];
 
-  const gastosPeriodo = data.gastos.filter((g) => g.fecha >= desde && g.fecha <= hasta);
+  // GASTOS DEL TURNO, no "todos los del día" (Owen: "en la misma fonda los
+  // gastos no se van a 0, se cuenta lo de todo el día en vez de iniciar en
+  // cero").
+  //
+  // "Ventas" ya arrancaba en cero en cada turno (enTurnoActual, abajo) pero
+  // "Gastos" seguía sumando el día completo: al cerrar el turno de la mañana,
+  // el de la tarde abría con Ventas $0 y Gastos con lo de la mañana todavía
+  // adentro. Las dos tarjetas están una junto a la otra y decían cosas de
+  // periodos distintos, así que la resta que hace el vendedor de cabeza nunca
+  // le cuadraba.
+  //
+  // Solo aplica al filtro "Hoy" — ese es el que significa "el turno en curso".
+  // "Ayer" y "Semana" son histórico: ahí sí se muestran todos los gastos del
+  // periodo, igual que las ventas de esos mismos filtros.
+  const gastosPeriodo =
+    filtro === "hoy"
+      ? data.gastos.filter((g) => gastoEnTurnoActual(g, negocio, hoyEnSuZona))
+      : data.gastos.filter((g) => g.fecha >= desde && g.fecha <= hasta);
   const gastos = gastosPeriodo.reduce((acc, g) => acc + g.monto, 0);
 
   // Turno en curso del negocio — YA NO se basa en turnoId de localStorage
@@ -316,6 +333,18 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
         <Tabs value={filtro} onValueChange={(v) => setFiltro(v as FiltroDia)} tabs={FILTROS} />
         <StatTile label="Ventas" value={formatMoney(ventas)} />
         <StatTile label="Gastos" value={formatMoney(gastos)} />
+        {/*
+          Ventas y Gastos de "Hoy" son del TURNO EN CURSO, no del día
+          completo. Cuando ya hubo un cierre hoy, los dos arrancan en cero y
+          sin esta línea parece que la app "perdió" lo de la mañana. Solo se
+          muestra si de verdad hubo un cierre antes (desdeCuandoCuenta devuelve
+          "Desde que abrieron hoy" cuando no lo hubo, que no aporta nada).
+        */}
+        {filtro === "hoy" && huboCierreHoy(negocio, hoyEnSuZona) && (
+          <p className="-mt-2 px-1 text-xs text-muted-foreground">
+            {desdeCuandoCuenta(negocio, negocio.timezone, hoyEnSuZona)}. Lo del turno anterior se ve en el corte.
+          </p>
+        )}
         <VentasPorEmpleado datos={equipoHoy} titulo="Equipo hoy" />
         {filtro === "hoy" && activos.length > 0 && (
           <div>

@@ -11,8 +11,7 @@ import { Chip, ChipGroup } from "@/components/ui/chip";
 import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { insertGastoDirecto, cleanInsert } from "@/lib/data";
 import { useOnlineStatus } from "@/lib/use-online-status";
-import { diaDelNegocio } from "@/lib/chart-buckets";
-import { desdeCuandoCuenta } from "@/lib/turno";
+import { desdeCuandoCuenta, enTurnoActual, gastoEnTurnoActual } from "@/lib/turno";
 import { CierreBloqueado } from "./cierre-bloqueado";
 import { formatMoney, formatMoneyExacto, redondear2, uid } from "@/lib/mock";
 import { MensajeCorte } from "./mensaje-corte";
@@ -86,26 +85,28 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
   // no del turnoId local de este dispositivo — así un vendedor que cobró
   // en otra tablet sí entra al corte del dueño, y un cierre pasada la
   // medianoche tampoco se corta a la mitad.
-  const pedidosDelTurno = React.useMemo(() => {
-    // Mismo cálculo que enTurnoActual() en fonda-dashboard.tsx, y por la
-    // misma razón: cuando todavía no hay ningún cierre previo, el arranque
-    // NO puede ser `new Date(`${hoy}T00:00:00`)` — esa es la medianoche del
-    // DISPOSITIVO, no la del negocio, así que en un celular en otra zona el
-    // corte incluía pedidos de ayer o se dejaba fuera los de la madrugada.
-    // Ese caso se resuelve comparando el DÍA del negocio; solo el caso "sí
-    // hay cierre previo" compara instantes, que ahí sí es lo correcto
-    // (un turno arranca en un momento exacto, no a medianoche).
+  const pedidosDelTurno = React.useMemo(
+    // enTurnoActual() de lib/turno.ts — la MISMA función que usa el StatTile
+    // "Ventas" del dashboard (fonda-dashboard.tsx). Aquí vivía una tercera
+    // copia escrita a mano de la misma regla, y se había separado en dos
+    // puntos que hacían que el corte y el dashboard mostraran números
+    // distintos para el mismo turno:
     //
-    // Si esto no coincidiera con el dashboard, el corte y el cuadro de
-    // "Ventas" mostrarían números distintos para el mismo turno.
-    const cerradoEn = negocio.turnoFondaCerradoEn ? new Date(negocio.turnoFondaCerradoEn) : null;
-    return data.pedidos.filter((p) => {
-      if (p.estado !== "entregado") return false;
-      if (!p.creadoEn) return p.fecha === hoyEnSuZona;
-      if (cerradoEn) return new Date(p.creadoEn) >= cerradoEn;
-      return diaDelNegocio(p.creadoEn, negocio.timezone) === hoyEnSuZona;
-    });
-  }, [data.pedidos, negocio.turnoFondaCerradoEn, hoyEnSuZona]);
+    //   1. Solo miraba `turnoFondaCerradoEn`, no la marca genérica
+    //      `turnoCerradoEn` que los tres giros escriben desde la migración
+    //      20260918000000. Un cierre hecho con la marca nueva no reiniciaba
+    //      este corte.
+    //   2. Con un cierre previo comparaba `creadoEn >= cerradoEn` y ya, sin
+    //      mirar el día: un cierre de ayer a las 8pm dejaba pasar los pedidos
+    //      de ayer a las 8:30pm hoy y todos los días siguientes. Es el mismo
+    //      "aparece la cuenta de ayer" que ya se había arreglado en el
+    //      dashboard, pero esta copia se había quedado atrás.
+    //
+    // Además `>=` contra `>`: con `>=`, un pedido cobrado en el mismo
+    // milisegundo del cierre contaba en los DOS turnos.
+    () => data.pedidos.filter((p) => p.estado === "entregado" && enTurnoActual({ creadoEn: p.creadoEn, fecha: p.fecha }, negocio, hoyEnSuZona)),
+    [data.pedidos, negocio, hoyEnSuZona]
+  );
 
   const ventasHoy = pedidosDelTurno.reduce((acc, p) => acc + p.total, 0);
   const ventasPorEmpleado = React.useMemo(() => {
@@ -136,7 +137,14 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
   // mismo paso — un gasto registrado hoy desde Gastos/Ventas (por
   // cualquier empleado) no se restaba, así que el corte podía decir que
   // sobraba dinero que en realidad ya se había gastado en otro lado.
-  const gastosHoyDelDia = data.gastos.filter((g) => g.fecha === hoyEnSuZona);
+  // GASTOS DEL TURNO, no de todo el día (Owen: "los gastos no se van a 0").
+  //
+  // Aquí estaba el descuadre más caro: el corte de la tarde restaba otra vez
+  // los gastos que el turno de la mañana ya había entregado, así que al de la
+  // tarde le "faltaba" dinero que nunca tuvo. Ahora los gastos se parten por
+  // turno igual que los pedidos, gracias al instante de captura que guarda la
+  // migración 20260925000000 — ver gastoEnTurnoActual en lib/turno.ts.
+  const gastosHoyDelDia = data.gastos.filter((g) => gastoEnTurnoActual(g, negocio, hoyEnSuZona));
   const fondoInicialNum = fondoInicial.trim() === "" ? 0 : Number(fondoInicial) || 0;
   const gastoNum = gastoMonto.trim() === "" ? 0 : Number(gastoMonto) || 0;
   const gastosHoyDelDiaTotal = gastosHoyDelDia.reduce((acc, g) => acc + g.monto, 0);
@@ -147,7 +155,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
   const renglonesCorte: RenglonCorte[] = [
     { concepto: "Pedidos entregados", monto: ventasHoy, tipo: "suma" },
     { concepto: "Fondo inicial", monto: fondoInicialNum, tipo: "suma" },
-    { concepto: "Gastos ya registrados hoy", monto: gastosHoyDelDiaTotal, tipo: "resta" },
+    { concepto: "Gastos ya registrados en el turno", monto: gastosHoyDelDiaTotal, tipo: "resta" },
     { concepto: "Gasto que estás capturando", monto: gastoNum, tipo: "resta" },
   ];
   const efectivoValido = efectivoReal.trim() !== "" && !isNaN(Number(efectivoReal)) && Number(efectivoReal) >= 0;
@@ -177,6 +185,10 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
         categoria: gastoConcepto.trim() || "Gasto del día",
         monto: gastoNum,
         fecha: hoyEnSuZona,
+        // Se captura ANTES de que se escriba la marca del cierre (más abajo,
+        // en terminarCierre), así que este gasto queda del lado del turno
+        // que se está cerrando — no del siguiente. Ver gastoEnTurnoActual.
+        creadoEn: new Date().toISOString(),
         ...camposEmpleado(),
       };
 
@@ -258,7 +270,16 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
       });
 
       if (decision.tipo === "tirado" && montoTirado && montoTirado > 0) {
-        nuevosGastos.push({ id: uid("exp"), categoria: `Merma: ${p.nombre}`, monto: montoTirado, fecha: hoyEnSuZona, ...camposEmpleado() });
+        nuevosGastos.push({
+          id: uid("exp"),
+          categoria: `Merma: ${p.nombre}`,
+          monto: montoTirado,
+          fecha: hoyEnSuZona,
+          // Igual que el gasto del paso 1: se registra antes de la marca de
+          // cierre, así que pertenece al turno que se está cerrando.
+          creadoEn: new Date().toISOString(),
+          ...camposEmpleado(),
+        });
       }
     }
 
@@ -362,7 +383,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
             <div className="space-y-1.5">
               <Label>¿Efectivo real en mano?</Label>
               <Input type="number" inputMode="decimal" autoFocus value={efectivoReal} onChange={(e) => setEfectivoReal(e.target.value)} placeholder="$0" />
-              <DesgloseCorte renglones={renglonesCorte} esperado={esperado} desdeCuando={desdeCuandoCuenta(negocio, negocio.timezone)} />
+              <DesgloseCorte renglones={renglonesCorte} esperado={esperado} desdeCuando={desdeCuandoCuenta(negocio, negocio.timezone, hoyEnSuZona)} />
               <MensajeCorte diferencia={diferencia} esperado={esperado} />
             </div>
             <div className="space-y-1.5">

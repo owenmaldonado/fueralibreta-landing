@@ -444,7 +444,27 @@ function NuevoGastoForm({ onClose, update, timezone }: { onClose: () => void; up
     if (!puedeGuardar) return;
     update((prev) => {
       const f = prev.fonda!;
-      const gasto: Expense = { id: uid("exp"), categoria, monto: Number(monto), fecha: hoyEnSuZona };
+      // camposEmpleado() FALTABA aqui, y solo aqui.
+      //
+      // Owen: "hice gasto con vendedor y sale que lo hizo el dueno". Este era
+      // el unico camino de alta de gasto en toda la app que no adjuntaba
+      // quien lo hizo: el de Abarrotera (abarrotes-quick-add.tsx), el de
+      // /app/gastos y los dos wizards de cierre si lo hacian. Sin
+      // empleado_nombre_cache/empleado_rol_cache, EmpleadoBadge trata la fila
+      // como "sin dato" y la pinta como del Dueno — el gasto del vendedor
+      // terminaba firmado por el dueno, y el filtro por persona de
+      // Gastos/Ventas tampoco lo podia separar.
+      const gasto: Expense = {
+        id: uid("exp"),
+        categoria,
+        monto: Number(monto),
+        fecha: hoyEnSuZona,
+        // Instante real de captura: es lo que deja que el corte del turno
+        // empiece en cero sin arrastrar los gastos del turno anterior (ver
+        // gastoEnTurnoActual en lib/turno.ts).
+        creadoEn: new Date().toISOString(),
+        ...camposEmpleado(),
+      };
       return { ...prev, fonda: { ...f, gastos: [gasto, ...f.gastos] } };
     });
     onClose();

@@ -284,7 +284,18 @@ function NuevoGastoForm({ onClose, update, timezone }: { onClose: () => void; up
     if (!puedeGuardar) return;
     update((prev) => {
       const a = prev.abarrotes!;
-      const gasto: Expense = { id: uid("exp"), categoria, monto: Number(monto), fecha: fechaPago, recordatorio: esProgramado && recordatorio, ...camposEmpleado() };
+      const gasto: Expense = {
+        id: uid("exp"),
+        categoria,
+        monto: Number(monto),
+        fecha: fechaPago,
+        recordatorio: esProgramado && recordatorio,
+        // Instante real de captura: es lo que deja que el corte del turno
+        // empiece en cero sin arrastrar los gastos del turno anterior (ver
+        // gastoEnTurnoActual en lib/turno.ts).
+        creadoEn: new Date().toISOString(),
+        ...camposEmpleado(),
+      };
       return { ...prev, abarrotes: { ...a, gastos: [gasto, ...a.gastos] } };
     });
     onClose();

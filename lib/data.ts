@@ -269,7 +269,7 @@ export async function cleanInsert(table: string, rows: Row[]): Promise<void> {
 }
 
 /** Mismo blindaje que cleanInsert, para el lado update() de diffAndSync. */
-async function cleanUpdate(table: string, row: Row): Promise<void> {
+export async function cleanUpdate(table: string, row: Row): Promise<void> {
   const { error } = await supabase
     .from(table)
     .update(row)
@@ -671,21 +671,36 @@ export const gastoFromRow = (r: Row): Expense => ({
   monto: Number(r.monto),
   fecha: diaDeColumnaFecha(r.fecha),
   recordatorio: (r.recordatorio as boolean) ?? false,
+  // Instante de captura (migración 20260925000000). Los gastos de antes de
+  // esa migración lo traen en null y se quedan en undefined — es lo que
+  // gastoEnTurnoActual() (lib/turno.ts) trata como "dato viejo, cuéntalo
+  // igual que siempre".
+  creadoEn: (r.created_at as string) ?? undefined,
   empleadoId: (r.empleado_id as string) ?? undefined,
   empleadoNombreCache: (r.empleado_nombre_cache as string) ?? undefined,
   empleadoRolCache: (r.empleado_rol_cache as Expense["empleadoRolCache"]) ?? undefined,
 });
-const gastoToRow = (g: Expense, negocioId: string): Row => ({
-  id: g.id,
-  negocio_id: negocioId,
-  categoria: g.categoria,
-  monto: g.monto,
-  fecha: g.fecha,
-  recordatorio: g.recordatorio ?? false,
-  empleado_id: g.empleadoId ?? null,
-  empleado_nombre_cache: g.empleadoNombreCache ?? null,
-  empleado_rol_cache: g.empleadoRolCache ?? null,
-});
+const gastoToRow = (g: Expense, negocioId: string): Row => {
+  const row: Row = {
+    id: g.id,
+    negocio_id: negocioId,
+    categoria: g.categoria,
+    monto: g.monto,
+    fecha: g.fecha,
+    recordatorio: g.recordatorio ?? false,
+    empleado_id: g.empleadoId ?? null,
+    empleado_nombre_cache: g.empleadoNombreCache ?? null,
+    empleado_rol_cache: g.empleadoRolCache ?? null,
+  };
+  // created_at solo se manda si de verdad hay uno. Esta misma función arma
+  // la fila del INSERT y la del UPDATE: si mandara `created_at: null` a
+  // secas, editarle el monto a un gasto viejo (que no tiene instante) le
+  // BORRARÍA el instante a uno nuevo, y un gasto editado se saldría del
+  // turno en el que se capturó. En el INSERT, no mandarlo deja que el
+  // default de la base (now()) haga su trabajo.
+  if (g.creadoEn) row.created_at = g.creadoEn;
+  return row;
+};
 
 /**
  * Gastos NUNCA pasan por el camino optimista genérico (update() +
@@ -703,20 +718,21 @@ const gastoToRow = (g: Expense, negocioId: string): Row => ({
  */
 export async function insertGastoDirecto(negocioId: string, modulo: "fonda" | "abarrotes", gastos: Expense[]): Promise<void> {
   const tabla = modulo === "fonda" ? "fonda_gastos" : "abarrotes_gastos";
-  const { error } = await supabase.from(tabla).insert(gastos.map((g) => gastoToRow(g, negocioId)));
-  if (error) {
-    console.error(`[gastos] INSERT a ${tabla} falló — el gasto NO se guardó:`, error);
-    throw error;
-  }
+  // cleanInsert y no un insert pelado: la fila ahora lleva `created_at`
+  // (migración 20260925000000) y una base que todavía no la corrió
+  // rechazaría el insert COMPLETO con PGRST204 — el gasto se perdería por
+  // una columna nueva, que es exactamente lo que este archivo existe para
+  // evitar. cleanInsert reintenta sin la columna que falte (con aviso
+  // visible de que hay una migración pendiente) y sigue propagando
+  // cualquier otro error real, así que la pantalla se sigue enterando si de
+  // verdad no se guardó.
+  await cleanInsert(tabla, gastos.map((g) => gastoToRow(g, negocioId)));
 }
 
 export async function updateGastoDirecto(negocioId: string, modulo: "fonda" | "abarrotes", gasto: Expense): Promise<void> {
   const tabla = modulo === "fonda" ? "fonda_gastos" : "abarrotes_gastos";
-  const { error } = await supabase.from(tabla).update(gastoToRow(gasto, negocioId)).eq("id", gasto.id);
-  if (error) {
-    console.error(`[gastos] UPDATE a ${tabla} falló — el cambio NO se guardó:`, error);
-    throw error;
-  }
+  // Mismo blindaje que insertGastoDirecto, ver ahí.
+  await cleanUpdate(tabla, gastoToRow(gasto, negocioId));
 }
 
 export async function deleteGastoDirecto(modulo: "fonda" | "abarrotes", gastoId: string): Promise<void> {

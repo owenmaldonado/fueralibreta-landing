@@ -75,6 +75,22 @@ const escriturasPendientes = new Set<Promise<unknown>>();
  * hay nada que cancelar. Timeout corto: si algo se queda pegado (red muy
  * mala) no debe dejar al dueño atorado sin poder volver a su propio modo.
  */
+/**
+ * ¿Hay algo guardándose en Supabase AHORA MISMO?
+ *
+ * Lo usa el refresco de respaldo (lib/refresco-respaldo.ts) para no pisar la
+ * pantalla mientras una escritura optimista todavía viaja. Sin esto:
+ * update() pinta el cambio al instante y dispara el INSERT/UPDATE en segundo
+ * plano; si el temporizador del respaldo cae en ese hueco, trae del servidor
+ * un estado que TODAVÍA no incluye ese cambio y lo mezcla encima — el pedido
+ * que se acababa de marcar entregado volvía a "pendiente" solo, el gasto
+ * recién capturado parpadeaba. Es justo la clase de "se borró solo" que no
+ * deja confiar en la app aunque al final el dato sí termine guardado.
+ */
+export function haySincronizacionPendiente(): boolean {
+  return escriturasPendientes.size > 0;
+}
+
 export async function esperarSincronizacionPendiente(timeoutMs = 4000): Promise<void> {
   if (escriturasPendientes.size === 0) return;
   const todas = Promise.allSettled(Array.from(escriturasPendientes));
@@ -1218,7 +1234,8 @@ export function useSession() {
           respaldoRef.current?.();
           respaldoRef.current = iniciarRefrescoDeRespaldo(
             () => sessionRef.current,
-            (mezclar) => setSessionState((prev) => (prev ? mezclar(prev) : prev))
+            (mezclar) => setSessionState((prev) => (prev ? mezclar(prev) : prev)),
+            haySincronizacionPendiente
           );
         } else {
           // Logueado pero sin negocio todavía: se deja session en null y es

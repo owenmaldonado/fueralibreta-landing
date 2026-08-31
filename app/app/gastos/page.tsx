@@ -1002,7 +1002,11 @@ function GastoForm({
           { yaSincronizado: true }
         );
       } else {
-        const nuevo: Expense = { id: uid("exp"), ...datos, ...camposEmpleado() };
+        // creadoEn: instante real de captura, lo que deja que el corte del
+        // turno arranque en cero (ver gastoEnTurnoActual en lib/turno.ts).
+        // Va ANTES de ...datos a propósito, para que si algún día el
+        // formulario deja editar la fecha de captura, gane la del formulario.
+        const nuevo: Expense = { id: uid("exp"), creadoEn: new Date().toISOString(), ...datos, ...camposEmpleado() };
         await insertGastoDirecto(negocioId, modulo, [nuevo]);
         update(
           (prev) => {
