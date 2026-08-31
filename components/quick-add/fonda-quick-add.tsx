@@ -197,6 +197,12 @@ function NuevoPedidoForm({
           estado,
           total,
           turnoId,
+          // Ver el comentario de venderRapido en fonda-dashboard.tsx: sin
+          // esto, un pedido recién creado no tiene creadoEn hasta recargar, y
+          // en demo NUNCA lo tiene (ahí no hay base). Como el corte y "Ventas
+          // de hoy" deciden por creadoEn, demo y producción no seguían el
+          // mismo camino.
+          creadoEn: new Date().toISOString(),
           ...camposEmpleado(),
         };
         pedidoCreado = pedido;

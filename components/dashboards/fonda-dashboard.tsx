@@ -267,6 +267,16 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
           estado: "entregado",
           total: precio,
           turnoId: turno.turnoId,
+          // creadoEn se pone AQUÍ, no solo en la base.
+          //
+          // Antes este campo lo llenaba únicamente created_at de Supabase,
+          // así que un pedido recién creado no lo tenía hasta recargar — y
+          // en DEMO nunca lo tiene, porque ahí no hay base. Como el corte y
+          // "Ventas de hoy" ahora deciden por creadoEn (ver lib/turno.ts),
+          // demo y producción se comportaban distinto y un pedido de demo
+          // caía siempre en la rama de respaldo. Poniéndolo desde el
+          // principio, los dos siguen exactamente el mismo camino.
+          creadoEn: new Date().toISOString(),
           ...camposEmpleado(),
         };
         pedidoCreado = pedido;
