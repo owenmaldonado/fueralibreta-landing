@@ -370,6 +370,40 @@ export default function CajaPage() {
           <StatTile label="Ganancia neta" value={formatMoney(gananciaNeta)} />
         </div>
       )}
+      {/*
+        LA CUENTA, ESCRITA COMO CUENTA.
+
+        Owen, ya con los números correctos en pantalla: "eso que sí está
+        bien? porque lo vendió a 180 pero la ganancia es 90... pero como hay
+        más columnas de información ya no sé a qué se refiere".
+
+        Tenía razón otra vez, y es un problema distinto al anterior. Antes
+        faltaba el dato del costo; ahora el dato está, pero son seis tarjetas
+        sueltas y ninguna dice cómo se relaciona con las demás. Enseñar los
+        números no es lo mismo que enseñar la cuenta.
+
+        Con la operación escrita se lee de un vistazo y no hay nada que
+        adivinar:
+            Cobraste $180 − gastos $0 − costo $90 = te quedaron $90
+      */}
+      <p className="px-4 pt-2 text-xs text-muted-foreground">
+        Cobraste <span className="font-medium text-foreground">{formatMoney(ingresos)}</span>
+        {gastos > 0 && (
+          <>
+            {" "}− gastos <span className="font-medium text-foreground">{formatMoney(gastos)}</span>
+          </>
+        )}
+        {costoMercancia > 0 && (
+          <>
+            {" "}− lo que te costó la mercancía{" "}
+            <span className="font-medium text-foreground">{formatMoney(costoMercancia)}</span>
+          </>
+        )}{" "}
+        = te quedaron{" "}
+        <span className={cn("font-semibold", gananciaNeta >= 0 ? "text-ledger" : "text-destructive")}>
+          {formatMoney(gananciaNeta)}
+        </span>
+      </p>
       {ventasSinCosto > 0 && (
         <p className="px-4 pt-2 text-xs text-muted-foreground">
           {ventasSinCosto === 1 ? "Hay 1 venta de producto" : `Hay ${ventasSinCosto} ventas de producto`} sin costo
