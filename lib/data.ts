@@ -1386,3 +1386,59 @@ export async function syncTenantDiff(prev: TenantData, next: TenantData): Promis
     await diffAndSync("abarrotes_gastos", p.gastos, n.gastos, (g) => gastoToRow(g, negocioId));
   }
 }
+
+/**
+ * Descuenta el stock de una venta EN POSTGRES, no en el cliente.
+ *
+ * EL BUG QUE CIERRA
+ * `descontar_stock_atomico` existía desde la Parte 4 de PWA, pero solo la
+ * usaba la subida de la cola offline (lib/sync-queue.ts). La venta normal
+ * iba por update() -> syncTenantDiff, que manda `stock = <valor final
+ * calculado en el cliente>`. Con dos cajas vendiendo el mismo producto a la
+ * vez, cada una calcula sobre SU copia (10-2=8 y 10-1=9) y la última en
+ * escribir gana: se pierde un descuento. Owen: "solo se cuenta en 1 lado y
+ * solo se descuenta 1".
+ *
+ * La función de Postgres resta la CANTIDAD contra el stock real con
+ * `select ... for update`, así que la segunda llamada ve el stock ya
+ * descontado por la primera. Devuelve el stock REAL que quedó, para que la
+ * pantalla se quede con el número del servidor y no con su propio cálculo.
+ *
+ * Las líneas sin `productoId` (venta rápida de algo que no está en el
+ * inventario) se saltan: no hay stock que descontar.
+ *
+ * POR QUÉ DEVUELVE TAMBIÉN LAS QUE FALLARON
+ * Si una línea no se pudo descontar en el servidor (la función todavía no
+ * existe porque falta correr la migración, se cayó la red a media venta, lo
+ * que sea), su stock quedó SIN tocar allá. Quien llama necesita saber
+ * exactamente cuáles fueron para descontarlas por el camino de siempre; si
+ * se tragara el error en silencio, la venta quedaría guardada y el stock
+ * intacto — un faltante de inventario que nadie ve hasta que se acaba el
+ * producto en el estante y la app dice que todavía hay.
+ */
+export async function descontarStockEnServidor(
+  lineas: { productoId?: string | null; cantidad: number }[]
+): Promise<{ stockPorProducto: Map<string, number>; fallaron: string[] }> {
+  const stockPorProducto = new Map<string, number>();
+  const fallaron: string[] = [];
+  for (const linea of lineas) {
+    if (!linea.productoId || linea.cantidad <= 0) continue;
+    try {
+      const { data, error } = await supabase.rpc("descontar_stock_atomico", {
+        p_producto_id: linea.productoId,
+        p_cantidad: linea.cantidad,
+      });
+      if (error) throw error;
+      const fila = Array.isArray(data) ? data[0] : data;
+      if (fila && fila.stock_final != null) {
+        stockPorProducto.set(linea.productoId, Number(fila.stock_final));
+      } else {
+        fallaron.push(linea.productoId);
+      }
+    } catch (err) {
+      console.error(`[stock] no se pudo descontar ${linea.cantidad} de ${linea.productoId}:`, err);
+      fallaron.push(linea.productoId);
+    }
+  }
+  return { stockPorProducto, fallaron };
+}

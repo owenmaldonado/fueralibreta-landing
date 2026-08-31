@@ -14,6 +14,9 @@
 --   2. Que las columnas de fecha vuelvan a ser DÍA y no instante
 --      (lo que llevaba la gráfica al día anterior)
 --   3. Lo que necesita el reporte de Cierres del dueño
+--   4. Que al cerrar turno el siguiente arranque en CERO en las tres apps
+--      (antes solo Fondita se acordaba del último cierre)
+--   5. Poder marcar un aviso de faltante como "ya lo revisé", con nota
 -- ============================================================================
 
 
@@ -575,3 +578,87 @@ create index if not exists abarrotera_cortes_negocio_fecha_idx on abarrotera_cor
 
 notify pgrst, 'reload schema';
 
+-- ==========================================================================
+-- ARCHIVO: 20260918000000_turno_cerrado_las_tres_apps.sql
+-- ==========================================================================
+-- El turno nuevo arranca en CERO, en las tres apps.
+--
+-- EL BUG
+-- Owen: "cierro turno y tal, y vuelvo a iniciar sesión y cierro turno,
+-- funciona pero tiene los mismos datos que se supone ya se cerraron, y pues
+-- los cuenta para el siguiente cierre".
+--
+-- Tenía razón y la causa estaba a la vista: de los tres wizards de cierre,
+-- solo el de Fondita sabe cuándo fue el último. Barbería y Abarrotera
+-- filtran así:
+--
+--     data.citas.filter((c) => c.fecha === hoy && ...)
+--     data.ventas.filter((v) => fechaCalendarioLocal(v.fecha) === hoy)
+--
+-- O sea: TODO el día, siempre, sin importar cuántos cierres hubo antes. El
+-- segundo turno del día vuelve a contar lo del primero, y el vendedor de la
+-- tarde queda cuadrando dinero que ya entregó el de la mañana.
+--
+-- Fondita no lo tenía porque a esa sí se le agregó `turno_fonda_cerrado_en`
+-- en su momento. Esta migración generaliza esa idea a las tres.
+--
+-- POR QUÉ EL CORTE ES DEL NEGOCIO Y NO DE CADA PERSONA
+-- El corte se compara contra el dinero que hay en el cajón, y el cajón es
+-- uno solo. Si dos personas trabajan el mismo turno y comparten caja, no
+-- existe forma de partir el efectivo físico entre las dos, así que "cada
+-- quien cuenta lo suyo" nunca cuadraría contra lo que de verdad hay. Por eso
+-- la marca es del negocio: el turno nuevo cuenta lo vendido después del
+-- último cierre, lo haya hecho quien lo haya hecho. Quién cerró sí queda
+-- registrado (empleado_nombre_cache), que es lo que el reporte de /app/cortes
+-- necesita para señalar diferencias.
+
+-- Columna genérica para los tres giros.
+alter table negocios add column if not exists turno_cerrado_en timestamptz;
+
+-- Fondita ya venía guardando su marca aparte: se copia para no perder el
+-- turno en curso de ningún negocio al soltar este cambio. Sin esto, una
+-- fonda que cerró hace media hora vería su siguiente corte arrancando desde
+-- la medianoche otra vez — justo el bug que estamos cerrando.
+--
+-- `turno_fonda_cerrado_en` NO se borra: si algo sale mal, el dato viejo
+-- sigue ahí para volver atrás.
+update negocios
+set turno_cerrado_en = turno_fonda_cerrado_en
+where turno_cerrado_en is null and turno_fonda_cerrado_en is not null;
+
+notify pgrst, 'reload schema';
+
+
+-- ==========================================================================
+-- ARCHIVO: 20260919000000_cortes_revisados.sql
+-- ==========================================================================
+-- "Ya lo revisé": apagar el aviso rojo de un cierre sin borrar el dato.
+--
+-- LO QUE PIDIÓ OWEN
+-- "que pueda editar o eliminar el msj de arriba porque sale así en grande y
+-- rojo, para que no le salga siempre; solo si lo necesita lo puede borrar,
+-- pero que quede ahí guardado, ¿sería bueno que lo pueda editar?"
+--
+-- El aviso es útil la primera vez y ruido a partir de la segunda: si un
+-- faltante ya se aclaró con el vendedor, seguir viéndolo en rojo cada vez que
+-- se entra a Cierres solo entrena a ignorarlo — y el día que aparezca uno de
+-- verdad, ya no lo va a ver.
+--
+-- LO QUE **NO** SE PUEDE EDITAR, A PROPÓSITO
+-- La diferencia, el efectivo contado y lo esperado se quedan como se
+-- registraron. Si el número se pudiera corregir a mano, este reporte dejaría
+-- de ser evidencia de nada: cualquiera podría dejarlo en cero y no quedaría
+-- rastro. Lo que se agrega es una NOTA al lado — "le di mal el cambio a un
+-- cliente" — que explica el faltante sin taparlo.
+--
+-- Así, dentro de un mes, el dueño no ve solo "faltaron $80" ni "esto ya se
+-- revisó": ve las dos cosas, y por qué.
+
+alter table barberia_cortes   add column if not exists revisado_at timestamptz;
+alter table barberia_cortes   add column if not exists revisado_nota text;
+alter table fondita_cortes    add column if not exists revisado_at timestamptz;
+alter table fondita_cortes    add column if not exists revisado_nota text;
+alter table abarrotera_cortes add column if not exists revisado_at timestamptz;
+alter table abarrotera_cortes add column if not exists revisado_nota text;
+
+notify pgrst, 'reload schema';

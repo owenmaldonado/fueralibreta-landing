@@ -3,6 +3,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
+import { descontarStockEnServidor } from "@/lib/data";
 import { ArrowLeft, X, ScanLine, Plus, Minus, Trash2, Zap, ShoppingCart } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -63,7 +64,10 @@ interface VentaCartProps {
   open: boolean;
   data: NonNullable<TenantData["abarrotes"]>;
   onClose: () => void;
-  update: (fn: (prev: TenantData) => TenantData, opciones?: { ventaOffline?: boolean }) => void;
+  update: (
+    fn: (prev: TenantData) => TenantData,
+    opciones?: { ventaOffline?: boolean; yaSincronizado?: boolean }
+  ) => void;
 }
 
 /**
@@ -242,6 +246,11 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
     let ventaCreada: GrocerySale | null = null;
     let productosActualizados: GroceryProduct[] = [];
     let negocioId = "";
+    // Se decide UNA sola vez y antes de tocar nada: las dos ramas de abajo
+    // tienen que estar de acuerdo sobre quién descuenta el stock. Si se
+    // preguntara dos veces (aquí y después del update) y la señal cambiara
+    // justo en medio, el stock se descontaría dos veces o ninguna.
+    const sinRed = typeof navigator !== "undefined" && !navigator.onLine;
     update(
       (prev) => {
         const a = prev.abarrotes!;
@@ -264,10 +273,20 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
           fecha: new Date().toISOString(),
           ...camposEmpleado(),
         };
-        const productos = a.productos.map((p) => {
-          const linea = cart.find((l) => l.productoId === p.id);
-          return linea ? { ...p, stock: Math.max(0, p.stock - linea.cantidad) } : p;
-        });
+        // CON RED el stock NO se toca aquí, a propósito. Este update() pasa
+        // por syncTenantDiff, que manda `stock = <valor final calculado en el
+        // cliente>` — justo lo que causa el bug de la venta doble. Si además
+        // se llamara a descontar_stock_atomico, el descuento se aplicaría DOS
+        // veces (el diff deja 8, y la función resta otros 2 y deja 6). Con
+        // red hay un solo escritor: Postgres. Sin red no hay a quién
+        // preguntarle, así que se descuenta en el caché local — y esa misma
+        // lista viaja en la cola pendiente.
+        const productos = sinRed
+          ? a.productos.map((p) => {
+              const linea = cart.find((l) => l.productoId === p.id);
+              return linea ? { ...p, stock: Math.max(0, p.stock - linea.cantidad) } : p;
+            })
+          : a.productos;
         ventaCreada = venta;
         productosActualizados = productos;
         negocioId = prev.business.id;
@@ -279,7 +298,7 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
     // local para no perderse en un reload y para el contador del TopBar —
     // con stock ya descontado en el mismo caché, así no se puede vender dos
     // veces el mismo producto sin señal.
-    if (typeof navigator !== "undefined" && !navigator.onLine && ventaCreada) {
+    if (sinRed && ventaCreada) {
       encolarVentaPendiente({
         id: ventaId,
         negocioId,
@@ -288,6 +307,78 @@ export function VentaCart({ open, data, onClose, update }: VentaCartProps) {
         productosActualizados,
         ...camposEmpleado(),
       }).catch((err) => console.error("No se pudo encolar la venta pendiente:", err));
+    } else {
+      // CON RED: el stock se descuenta en Postgres, no aquí.
+      //
+      // EL BUG QUE CIERRA — Owen: "hay algo en lo de venta doble en
+      // abarrotera, sí hay bug: solo se cuenta en 1 lado y solo se descuenta
+      // 1".
+      //
+      // El descuento atómico (descontar_stock_atomico) existía desde hace
+      // rato, pero SOLO lo usaba la subida de la cola offline. La venta
+      // normal iba por el camino de siempre: update() -> syncTenantDiff, que
+      // manda `stock = <valor final calculado en el cliente>`. Con dos cajas
+      // vendiendo el mismo producto a la vez, cada una calcula sobre SU copia
+      // (10-2=8 y 10-1=9) y la última en escribir gana — se pierde un
+      // descuento. Es exactamente lo que describió.
+      //
+      // La función resta la CANTIDAD contra el stock real, con
+      // `select ... for update`, así que la segunda llamada ve el stock ya
+      // descontado por la primera. Después se escribe en el estado local el
+      // valor que devolvió el servidor (yaSincronizado, para que
+      // syncTenantDiff no lo vuelva a pisar con el cálculo del cliente).
+      descontarStockEnServidor(cart)
+        .then(({ stockPorProducto, fallaron }) => {
+          // Lo que SÍ descontó el servidor: se copia su número tal cual, con
+          // yaSincronizado para que syncTenantDiff no lo vuelva a pisar con
+          // un cálculo del cliente.
+          if (stockPorProducto.size > 0) {
+            update(
+              (prev) => {
+                const a = prev.abarrotes!;
+                return {
+                  ...prev,
+                  abarrotes: {
+                    ...a,
+                    productos: a.productos.map((p) =>
+                      stockPorProducto.has(p.id) ? { ...p, stock: stockPorProducto.get(p.id)! } : p
+                    ),
+                  },
+                };
+              },
+              { ventaOffline: true, yaSincronizado: true }
+            );
+          }
+          // Lo que NO se pudo descontar allá (falta correr la migración, se
+          // cayó la red justo ahí) se descuenta por el camino de siempre.
+          // Vuelve a estar expuesto a la carrera de dos cajas, pero eso es
+          // exactamente como se comportaba antes de este arreglo: lo
+          // inaceptable sería dejar la venta cobrada con el stock intacto.
+          if (fallaron.length > 0) {
+            update((prev) => {
+              const a = prev.abarrotes!;
+              return {
+                ...prev,
+                abarrotes: {
+                  ...a,
+                  productos: a.productos.map((p) => {
+                    if (!fallaron.includes(p.id)) return p;
+                    const linea = cart.find((l) => l.productoId === p.id);
+                    return linea ? { ...p, stock: Math.max(0, p.stock - linea.cantidad) } : p;
+                  }),
+                },
+              };
+            });
+          }
+        })
+        .catch((err) => {
+          // La VENTA ya quedó guardada; lo que pudo fallar es la
+          // reconciliación del stock. Se avisa en consola y el refresco de
+          // respaldo traerá el número bueno del servidor en la siguiente
+          // vuelta — no se molesta a quien está cobrando con un toast por
+          // algo que se corrige solo.
+          console.error("[venta] no se pudo descontar el stock en el servidor:", err);
+        });
     }
     onClose();
   }
