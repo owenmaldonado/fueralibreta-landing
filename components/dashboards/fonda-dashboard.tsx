@@ -20,6 +20,7 @@ import { fetchPedidosPendientes } from "@/lib/data";
 import { camposEmpleado } from "@/lib/empleados";
 import { usePlan } from "@/lib/planes";
 import { obtenerOCrearTurno } from "@/lib/turno-fonda";
+import { enTurnoActual as enTurnoActualCompartido } from "@/lib/turno";
 import { encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import { cn } from "@/lib/utils";
 import type { TenantData, SessionUpdater, FondaOrder, Dish, DishVariant } from "@/lib/types";
@@ -135,14 +136,25 @@ export function FondaDashboard({ session, update }: { session: TenantData; updat
   // comparando el DÍA del negocio (string contra string) y solo el caso
   // "hay un cierre previo" compara instantes — que sí es lo correcto ahí,
   // porque un turno arranca en un momento exacto, no a medianoche.
-  const cerradoEn = negocio.turnoFondaCerradoEn ? new Date(negocio.turnoFondaCerradoEn) : null;
-  // Pedidos sin creadoEn (no debería pasar — created_at es not null desde
-  // que existe la tabla — pero por las dudas) caen a filtrar por fecha.
-  function enTurnoActual(p: FondaOrder): boolean {
-    if (!p.creadoEn) return p.fecha === hoyEnSuZona;
-    if (cerradoEn) return new Date(p.creadoEn) >= cerradoEn;
-    return diaDelNegocio(p.creadoEn, negocio.timezone) === hoyEnSuZona;
-  }
+  // ESTA COPIA LOCAL ERA EL BUG (Owen: "en fonda, en las ventas de la página
+  // principal en vez de aparecer con 0 apareció con la cuenta de ayer, no se
+  // reseteó").
+  //
+  // Fonda llevaba su propia versión de "¿esto entra en el turno?" mientras
+  // barbería y abarrotera usaban lib/turno.ts. Dos copias de la misma regla
+  // siempre terminan separándose, y esta se separó en dos puntos:
+  //
+  //   1. Solo miraba turnoFondaCerradoEn, no la marca genérica
+  //      turnoCerradoEn que ahora usan los tres giros.
+  //   2. Con un cierre previo comparaba `creadoEn >= cerradoEn` y ya. Nadie
+  //      miraba el día: un cierre de ayer a las 8pm dejaba pasar los pedidos
+  //      de ayer a las 8:30pm, hoy y todos los días siguientes. Eso es
+  //      exactamente "aparece la cuenta de ayer".
+  //
+  // Ahora usa la misma función que los otros dos giros, que ya exige las dos
+  // condiciones: de hoy Y posterior al último cierre.
+  const enTurnoActual = (p: FondaOrder) =>
+    enTurnoActualCompartido({ creadoEn: p.creadoEn, fecha: p.fecha }, negocio, hoyEnSuZona);
 
   const ventas =
     filtro === "hoy"

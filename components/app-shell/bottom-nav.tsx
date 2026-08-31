@@ -24,15 +24,29 @@ const NAV_BARBERIA: NavItem[] = [
   { href: "/app/mi-plan", label: "Mi Plan", icon: CreditCard },
 ];
 
-// "Más" también aquí: sin esa entrada, el dueño de una fonda no tenía
-// NINGUNA forma de llegar a Configuración, Empleados ni al reporte de
-// Cierres desde la navegación — solo escribiendo la URL a mano.
+// Fonda y Abarrotera NO llevan "Más", y esa pestaña se quitó a propósito.
+//
+// Owen: "las opciones de configuración de fonda y abarrotera, me gustaría
+// que no estén al menos ahora, ya que solo guardan la sección de usuarios
+// con PIN, lo que ya tienen un botón directo arriba a la derecha, y esa
+// sección de disque configuración no me sirve de nada".
+//
+// Tiene razón y es fácil de comprobar: después de sacar de ahí Productos y
+// Configuración (que llevaban a pantallas de barbería y daban error) y de
+// mover Cierres a Mi Plan, a estos dos giros les quedaba UNA sola entrada,
+// Empleados — y ese botón vive siempre en la barra de arriba (ver
+// accederEmpleados en components/app-shell/top-bar.tsx). Una pestaña entera
+// para repetir un botón que ya está a la vista solo gasta un espacio de los
+// pocos que hay abajo.
+//
+// Barbería SÍ la conserva: ahí "Más" tiene Servicios, Productos,
+// Configuración, Empleados e Historial — cinco pantallas de verdad que no
+// están en ningún otro lado.
 const NAV_FONDA: NavItem[] = [
   { href: "/app/inicio", label: "Hoy", icon: Home },
   { href: "/app/pedidos", label: "Pedidos", icon: ClipboardList },
   { href: "/app/menu", label: "Menú", icon: UtensilsCrossed },
   { href: "/app/gastos", label: "Gastos", icon: Receipt },
-  { href: "/app/mas", label: "Más", icon: Settings },
   { href: "/app/mi-plan", label: "Mi Plan", icon: CreditCard },
 ];
 
@@ -42,7 +56,6 @@ const NAV_ABARROTES: NavItem[] = [
   { href: "/app/fiados", label: "Fiados", icon: HandCoins },
   { href: "/app/frutas-verdura", label: "Frutas y Verdura", emoji: "🥑" },
   { href: "/app/gastos", label: "Gastos", icon: Receipt },
-  { href: "/app/mas", label: "Más", icon: Settings },
   { href: "/app/mi-plan", label: "Mi Plan", icon: CreditCard },
 ];
 

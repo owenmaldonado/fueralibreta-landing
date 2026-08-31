@@ -86,6 +86,9 @@ export function VentaRapidaSheet({ open, onClose, session, update, hoy }: Props)
           hora,
           estado: "listo",
           metodo,
+          // Una venta rápida se cobra en el momento, así que el instante del
+          // cobro es ahora. Ver lib/turno.ts.
+          cobradoEn: new Date().toISOString(),
           ...camposEmpleado(),
         };
         citaCreada = cita;

@@ -611,9 +611,23 @@ export default function GastosPage() {
         )
       ) : modulo === "abarrotes" ? null : (
         <div className="px-4 pt-3">
-          <div className="grid grid-cols-3 gap-3">
+          {/*
+            Mismo arreglo que en la Caja de barbería: si hay costos
+            capturados, "Ganancia real" NO es ventas menos gastos — también
+            se le restó lo que costó la mercancía. Sin ese renglón a la
+            vista, quien mira la pantalla hace la resta de cabeza, no le
+            cuadra, y concluye que la app suma mal. Con el costo enseñado la
+            cuenta se sigue con el dedo:
+                ventas - gastos - costo = ganancia real
+            Sin costos capturados no hay renglón que enseñar y se quedan las
+            tres tarjetas de siempre.
+          */}
+          <div className={cn("grid gap-3", hayCostosCapturados ? "grid-cols-2" : "grid-cols-3")}>
             <StatTile label="Total ventas" value={formatMoney(totalVentas)} />
             <StatTile label="Total gastos" value={formatMoney(totalGastos)} />
+            {hayCostosCapturados && (
+              <StatTile label="Costo de lo vendido" value={formatMoney(totalVentas - totalGananciaBruta)} />
+            )}
             <StatTile
               label={hayCostosCapturados ? "Ganancia real" : "Ventas − gastos"}
               value={formatMoney(hayCostosCapturados ? totalGananciaNeta : ventasMenosGastosPeriodo)}

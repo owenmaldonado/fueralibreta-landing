@@ -94,7 +94,14 @@ export function BarberiaDashboard({ session, update }: { session: TenantData; up
           ...prev,
           barberia: {
             ...b,
-            citas: b.citas.map((c) => (c.id === citaId ? { ...c, estado: "listo" as const, metodo, ...camposEmpleado() } : c)),
+            // cobradoEn: el instante real del cobro. El corte de turno lo
+            // necesita para no volver a contar una cita solo porque estaba
+            // agendada a una hora posterior al cierre (ver lib/turno.ts).
+            citas: b.citas.map((c) =>
+              c.id === citaId
+                ? { ...c, estado: "listo" as const, metodo, cobradoEn: new Date().toISOString(), ...camposEmpleado() }
+                : c
+            ),
           },
         };
       },

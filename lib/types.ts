@@ -147,6 +147,15 @@ export interface Appointment {
   estado: AppointmentStatus;
   /** Cómo se cobró el corte. Se pide al marcar la cita como "listo"; ausente en citas viejas o que nunca se cobraron. */
   metodo?: "efectivo" | "transferencia";
+  /**
+   * CUÁNDO se cobró (instante en que pasó a "listo"). No confundir con
+   * `hora`, que es a la que está AGENDADA: una cita de las 8pm se puede
+   * cobrar a las 5pm y una de las 10am a las 7pm. El corte de turno necesita
+   * el instante real del cobro — usar `hora` era justo el bug que hacía
+   * aparecer ventas fantasma en el segundo cierre del día. Ausente en citas
+   * de antes de este campo (ver migración 20260923000000).
+   */
+  cobradoEn?: string | null;
   /** Quién atendió/cobró (ver Multiusuario > modo PIN, lib/empleados.ts) — ausente en citas de antes de este campo o cobradas por el dueño directo. */
   empleadoId?: string;
   empleadoNombreCache?: string;

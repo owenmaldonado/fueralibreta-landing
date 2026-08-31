@@ -109,7 +109,14 @@ export default function AgendaPage() {
           ...prev,
           barberia: {
             ...b,
-            citas: b.citas.map((c) => (c.id === id ? { ...c, estado: "listo" as const, metodo, ...camposEmpleado() } : c)),
+            // cobradoEn: ver el mismo cambio en barberia-dashboard.tsx y el
+            // porqué en lib/turno.ts — la hora de la cita no es la hora del
+            // cobro, y usarla metía ventas fantasma en el corte.
+            citas: b.citas.map((c) =>
+              c.id === id
+                ? { ...c, estado: "listo" as const, metodo, cobradoEn: new Date().toISOString(), ...camposEmpleado() }
+                : c
+            ),
           },
         };
       },

@@ -53,8 +53,25 @@ export function enTurnoActual(
     // que ningún movimiento viejo desaparece de golpe de un corte.
     return mov.fecha ? mov.fecha === hoy : false;
   }
-  if (desde) return new Date(mov.creadoEn) > desde;
-  return diaDelNegocio(mov.creadoEn, business.timezone) === hoy;
+
+  // TIENE QUE SER DE HOY. SIEMPRE. Esta línea es el arreglo.
+  //
+  // EL BUG QUE CIERRA (Owen: "en fonda, en las ventas de la página principal
+  // en vez de aparecer con 0 apareció con la cuenta de ayer, no se reseteó")
+  // Antes, si había un cierre previo, la única condición era `creadoEn >
+  // desde`. Nadie miraba el día. Así que un negocio que cerró ayer a las
+  // 8pm y vendió a las 8:30pm arrancaba HOY contando esa venta de ayer: la
+  // marca del cierre es de ayer, y la venta es posterior a ella, así que
+  // pasaba el filtro. Y se quedaba pegada día tras día hasta el siguiente
+  // cierre.
+  //
+  // Las dos condiciones tienen que cumplirse a la vez: del día de hoy Y
+  // después del último cierre. Con una sola no alcanza — por "solo después
+  // del cierre" entraba lo de ayer, y por "solo de hoy" el segundo turno del
+  // día volvía a contar lo del primero, que era el bug anterior.
+  if (diaDelNegocio(mov.creadoEn, business.timezone) !== hoy) return false;
+
+  return desde ? new Date(mov.creadoEn) > desde : true;
 }
 
 /**
@@ -88,12 +105,36 @@ export function desdeCuandoCuenta(
  * "2026-08-28 09:00" se ordena solo, sin que ninguna zona participe.
  */
 export function enTurnoActualPorDiaYHora(
-  mov: { fecha: string; hora?: string },
+  mov: { fecha: string; hora?: string; cobradoEn?: string | null },
   business: Pick<Business, "turnoCerradoEn" | "turnoFondaCerradoEn" | "timezone">,
   hoy: string
 ): boolean {
+  // EL BUG DE LOS $300 (Owen: "le di la 2da vez a cerrar turno y sale que se
+  // hicieron 300 en cortes, debería estar en 0 porque no hice ningún
+  // movimiento")
+  //
+  // `hora` es la hora a la que está AGENDADA la cita, no a la que se cobró.
+  // Son cosas distintas y aquí se estaban usando como si fueran la misma.
+  // Con un cierre a las 6:45pm, una cita agendada a las 8pm que ya se había
+  // cobrado a las 5pm daba `"20:00" > "18:45"` = true y volvía a contar en
+  // el turno nuevo, sin que nadie hubiera hecho nada. Al revés también
+  // fallaba: un cliente que llega tarde y se cobra a las 7pm con cita de las
+  // 10am quedaba FUERA del turno en el que de verdad entró el dinero.
+  //
+  // `cobradoEn` es el instante real en que se marcó "listo" (se cobró). Es
+  // el dato correcto y se usa siempre que exista.
+  if (mov.cobradoEn) {
+    return enTurnoActual({ creadoEn: mov.cobradoEn }, business, hoy);
+  }
+
+  // Citas de antes de que se guardara ese instante: se sigue con el criterio
+  // viejo de día + hora. No es exacto, pero es lo único que hay para el
+  // histórico, y así ninguna cita vieja desaparece de golpe de un corte.
   const desde = inicioDelTurno(business);
   if (!desde) return mov.fecha === hoy;
+  // Mismo arreglo que en enTurnoActual: además de ser posterior al cierre,
+  // tiene que ser de HOY, o lo de ayer se queda pegado.
+  if (mov.fecha !== hoy) return false;
 
   const diaCierre = diaDelNegocio(desde.toISOString(), business.timezone);
   const horaCierre = desde.toLocaleTimeString("en-GB", {

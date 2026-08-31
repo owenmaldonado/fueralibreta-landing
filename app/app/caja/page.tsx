@@ -25,7 +25,7 @@ import { insertCajaEntryDirecto, updateCajaEntryDirecto, deleteCajaEntryDirecto 
 import { formatMoney, uid } from "@/lib/mock";
 import { useHoy } from "@/lib/use-hoy";
 import { VentaRapidaSheet, VentaRapidaBoton } from "@/components/dashboards/barberia-venta-rapida";
-import { aggregateTwoByRange, type RangoTiempo } from "@/lib/chart-buckets";
+import { aggregateTwoByRange, type RangoTiempo, filterByRango } from "@/lib/chart-buckets";
 import { camposEmpleado, permisosActuales, ROL_LABEL } from "@/lib/empleados";
 import { usePendingSalesQueue, encolarVentaPendiente } from "@/lib/offline-sales-queue";
 import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
@@ -123,8 +123,34 @@ export default function CajaPage() {
     return empleadoId === personaFiltro;
   }
 
-  const cajaFiltrada = data.caja.filter((e) => coincidePersona(e.empleadoId));
-  const cortes = cortesSinFiltroPersona.filter((c) => coincidePersona(c.empleadoId));
+  // LAS TARJETAS DE ARRIBA TIENEN QUE SER DEL MISMO PERIODO QUE LA GRÁFICA.
+  //
+  // EL BUG QUE CIERRA — Owen: "puedes checar estas gráficas... me confundo
+  // un poco". Con razón: aquí solo se filtraba por PERSONA. Nunca por
+  // fecha. Así que Ingresos / Gastos / Ganancia neta / Efectivo /
+  // Transferencia sumaban TODO el histórico del negocio desde el día uno,
+  // mientras la gráfica de abajo sí respetaba Semanal/Mensual/Anual.
+  //
+  // El resultado es una pantalla que se contradice sola: picas Semanal,
+  // picas Mensual, picas Anual — y los números de arriba no se mueven ni un
+  // peso. La única lectura posible es "la app está mal", y no había forma de
+  // que cuadraran con la gráfica porque estaban contando cosas distintas.
+  //
+  // Mismo ctxRango y mismo filtro que usa la gráfica (día del NEGOCIO, no
+  // del dispositivo), para que las dos cosas midan exactamente lo mismo.
+  const ctxRango = { hoy, timezone: session.business.timezone };
+  const cajaFiltrada = filterByRango(
+    data.caja.filter((e) => coincidePersona(e.empleadoId)),
+    rango,
+    (e) => e.fecha,
+    ctxRango
+  );
+  const cortes = filterByRango(
+    cortesSinFiltroPersona.filter((c) => coincidePersona(c.empleadoId)),
+    rango,
+    (c) => c.fecha,
+    ctxRango
+  );
   const totalCortes = cortes.reduce((acc, c) => acc + c.precio, 0);
 
   const ventas = cajaFiltrada.filter((e) => e.tipo === "venta").reduce((acc, e) => acc + e.monto, 0);
@@ -294,11 +320,39 @@ export default function CajaPage() {
       <div className="px-4 pt-3">
         <VentaRapidaBoton onClick={() => setVentaRapidaOpen(true)} />
       </div>
-      <div className="grid grid-cols-3 gap-2 px-4 pt-3">
-        <StatTile label="Ingresos" value={formatMoney(ingresos)} />
-        <StatTile label="Gastos" value={formatMoney(gastos)} />
-        <StatTile label="Ganancia neta" value={formatMoney(gananciaNeta)} />
-      </div>
+      {/*
+        LA CUENTA TIENE QUE CUADRAR A LA VISTA.
+
+        Owen: "lo de la ganancia de los productos de la barbería sigue igual,
+        mal" — con Ingresos $2,000, Gastos $79 y Ganancia neta $1,711.
+
+        El número estaba BIEN: 2000 - 79 - 210 de costo de mercancía = 1711.
+        Lo que estaba mal es que esos $210 no se enseñaban en ningún lado, así
+        que quien mira la pantalla hace 2000 - 79 = 1921, ve 1711, y concluye
+        que la app está sumando mal. No hay forma de que le cuadre, porque le
+        falta un renglón.
+
+        Con el costo a la vista, la resta se sigue con el dedo:
+            2,000 - 79 - 210 = 1,711
+
+        Solo aparece si de verdad hubo costo. Una barbería que solo da cortes
+        (servicios, sin mercancía) no tiene por qué ver una tarjeta en cero:
+        ahí Ingresos - Gastos = Ganancia y ya cuadra sin ayuda.
+      */}
+      {costoMercancia > 0 ? (
+        <div className="grid grid-cols-2 gap-2 px-4 pt-3">
+          <StatTile label="Ingresos" value={formatMoney(ingresos)} />
+          <StatTile label="Gastos" value={formatMoney(gastos)} />
+          <StatTile label="Costo de lo vendido" value={formatMoney(costoMercancia)} />
+          <StatTile label="Ganancia neta" value={formatMoney(gananciaNeta)} />
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2 px-4 pt-3">
+          <StatTile label="Ingresos" value={formatMoney(ingresos)} />
+          <StatTile label="Gastos" value={formatMoney(gastos)} />
+          <StatTile label="Ganancia neta" value={formatMoney(gananciaNeta)} />
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 px-4 pt-3">
         <StatTile label="Efectivo" value={formatMoney(efectivo)} />
         <StatTile label="Transferencia" value={formatMoney(transferencia)} />
