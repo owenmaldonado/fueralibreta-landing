@@ -38,22 +38,46 @@
 -- pg_temp va al final SIEMPRE, y a propósito: si fuera al principio,
 -- cualquiera podría crear una tabla temporal que suplante a una real.
 
-alter function public.is_admin()                                set search_path = public, extensions, pg_temp;
-alter function public.is_negocio_owner(uuid)                    set search_path = public, extensions, pg_temp;
-alter function public.pin_dueno_configurado(uuid)               set search_path = public, extensions, pg_temp;
-alter function public.borrar_pin_dueno(uuid)                    set search_path = public, extensions, pg_temp;
-alter function public.verificar_pin_dueno(uuid, text)           set search_path = public, extensions, pg_temp;
-alter function public.verificar_pin_empleado(uuid, uuid, text)  set search_path = public, extensions, pg_temp;
-alter function public.admin_delete_negocios_data(uuid[])        set search_path = public, extensions, pg_temp;
-alter function public.handle_new_or_updated_user()              set search_path = public, extensions, pg_temp;
-
--- Las que ya tenían `search_path = public` a secas: se les agrega
--- extensions y pg_temp para dejarlas todas iguales. Ninguna usa crypt hoy,
--- pero que la regla sea una sola evita el próximo 42883.
-alter function public.es_negocio_activo(uuid)                       set search_path = public, extensions, pg_temp;
-alter function public.find_or_create_barberia_cliente(uuid, text, text) set search_path = public, extensions, pg_temp;
-alter function public.get_citas_por_telefono(uuid, text)            set search_path = public, extensions, pg_temp;
-alter function public.negocio_publico_por_slug(text)                set search_path = public, extensions, pg_temp;
+-- SE HACE EN UN CICLO, NO NOMBRANDO CADA FUNCIÓN, Y ESA DECISIÓN COSTÓ
+-- La primera versión de este archivo listaba las doce funciones con su
+-- firma exacta:
+--     alter function public.negocio_publico_por_slug(text) set search_path = ...
+-- y al probarlo contra una base que NO tenía esa función tronó con
+--     ERROR: function public.negocio_publico_por_slug(text) does not exist
+-- y, por ser todo una sola transacción, se cayó la migración COMPLETA: ni
+-- el candado del PIN ni lo de las citas se aplicaban. Justo el mismo tipo
+-- de falla que esta auditoría encontró en 20260911000010.
+--
+-- No sé con certeza el estado exacto de cada base, así que el ciclo agarra
+-- las que HAY: recorre las funciones `security definer` de public que no
+-- tengan search_path fijo y se los pone. Si alguna falta, no pasa nada; si
+-- mañana alguien agrega una nueva y se le olvida el search_path, volver a
+-- correr esto la cubre también.
+do $$
+declare
+  f record;
+begin
+  for f in
+    select p.oid::regprocedure as firma
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.prosecdef
+      and (
+        p.proconfig is null
+        -- Las que ya traían `search_path = public` a secas: les falta
+        -- `extensions`, que es donde vive pgcrypto. Ninguna usa crypt hoy,
+        -- pero que la regla sea una sola evita el próximo 42883.
+        or not exists (
+          select 1 from unnest(p.proconfig) as c(v)
+          where c.v like 'search_path=%' and c.v like '%extensions%'
+        )
+      )
+  loop
+    execute format('alter function %s set search_path = public, extensions, pg_temp', f.firma);
+    raise notice 'search_path fijado en %', f.firma;
+  end loop;
+end $$;
 
 
 -- ============================================================================
@@ -253,6 +277,16 @@ $$;
 
 grant execute on function public.citas_publicas_de_negocio(uuid, date) to anon, authenticated;
 
-revoke select on barberia_citas_publicas from anon, authenticated;
+-- Con `if exists` por lo mismo que el ciclo de arriba: si en alguna base la
+-- vista no está, un revoke a secas tumbaría toda la migración.
+do $$
+begin
+  if exists (
+    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'barberia_citas_publicas'
+  ) then
+    revoke select on public.barberia_citas_publicas from anon, authenticated;
+  end if;
+end $$;
 
 notify pgrst, 'reload schema';
