@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 
 import { useConsent } from "@/lib/consent";
 import { formatMoney } from "@/lib/mock";
@@ -25,7 +25,28 @@ interface TrendBarChartProps {
 /** Gráfica de barras compacta, tema oscuro, para tendencias semanal/mensual/anual. */
 export function TrendBarChart({ data, bars, emptyText = "Sin datos en este periodo" }: TrendBarChartProps) {
   const consent = useConsent();
-  const total = data.reduce((acc, row) => acc + bars.reduce((a, b) => a + Number(row[b.key] ?? 0), 0), 0);
+
+  // "No hay nada que graficar" = TODOS los valores en cero, no "la suma da
+  // cero".
+  //
+  // EL BUG QUE CIERRA
+  // Antes esto sumaba todos los valores y trataba el 0 como "sin datos". Con
+  // una serie que puede ser NEGATIVA — "Ventas − gastos", "Ganancia real" —
+  // eso se rompe de dos formas, y las dos pasan seguido:
+  //   - Una semana buena y una mala que se cancelan (+400 y −400): la
+  //     gráfica decía "Sin movimientos en este periodo" con dos semanas
+  //     llenas de movimientos.
+  //   - Un mes que cerró exactamente en tablas (ventas $3,000, gastos
+  //     $3,000): tampoco pintaba nada, cuando "quedaste en ceros" es
+  //     justamente lo que hay que enseñar.
+  // Mirando cada valor por separado eso ya no puede pasar.
+  const hayAlgo = data.some((row) => bars.some((b) => Number(row[b.key] ?? 0) !== 0));
+
+  // ¿Alguna barra va para abajo? Sin una línea en el cero, una barra negativa
+  // se ve igual que una positiva (este BarChart no dibuja eje Y a propósito,
+  // para que quepa en un celular). Con la línea se entiende de un vistazo de
+  // qué lado del cero está cada semana.
+  const hayNegativos = data.some((row) => bars.some((b) => Number(row[b.key] ?? 0) < 0));
 
   if (consent === "rejected") {
     return (
@@ -36,7 +57,7 @@ export function TrendBarChart({ data, bars, emptyText = "Sin datos en este perio
     );
   }
 
-  if (total === 0) {
+  if (!hayAlgo) {
     return (
       <div className="flex h-48 items-center justify-center rounded-xl border border-border bg-card">
         <p className="text-sm text-muted-foreground">{emptyText}</p>
@@ -59,6 +80,7 @@ export function TrendBarChart({ data, bars, emptyText = "Sin datos en este perio
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }} barCategoryGap={data.length > 20 ? 1 : "22%"}>
           <CartesianGrid vertical={false} stroke={GRID} strokeDasharray="3 3" />
+          {hayNegativos && <ReferenceLine y={0} stroke={AXIS} strokeWidth={1} />}
           <XAxis
             dataKey="label"
             tickLine={false}

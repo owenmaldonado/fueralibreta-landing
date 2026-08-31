@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 
 import { useConsent } from "@/lib/consent";
 import { formatMoney } from "@/lib/mock";
@@ -23,7 +23,13 @@ interface TrendLineChartProps {
 /** Gráfica de líneas (ventas vs gastos, y opcionalmente ganancia), para comparar varias series en un mismo periodo. */
 export function TrendLineChart({ data, gananciaLabel, emptyText = "Sin datos en este periodo" }: TrendLineChartProps) {
   const consent = useConsent();
-  const total = data.reduce((acc, row) => acc + row.ventas + row.gastos, 0);
+
+  // Mismo criterio que TrendBarChart: "sin datos" es que TODO esté en cero,
+  // no que la suma dé cero. Aquí además se mira `ganancia`, que es la única
+  // de las tres series que puede ser negativa — sin eso, un periodo con
+  // ventas y gastos iguales se declaraba vacío.
+  const hayAlgo = data.some((row) => row.ventas !== 0 || row.gastos !== 0 || (row.ganancia ?? 0) !== 0);
+  const hayNegativos = data.some((row) => (row.ganancia ?? 0) < 0);
 
   if (consent === "rejected") {
     return (
@@ -34,7 +40,7 @@ export function TrendLineChart({ data, gananciaLabel, emptyText = "Sin datos en 
     );
   }
 
-  if (total === 0) {
+  if (!hayAlgo) {
     return (
       <div className="flex h-48 items-center justify-center rounded-xl border border-border bg-card">
         <p className="text-sm text-muted-foreground">{emptyText}</p>
@@ -63,6 +69,7 @@ export function TrendLineChart({ data, gananciaLabel, emptyText = "Sin datos en 
       <ResponsiveContainer width="100%" height={180}>
         <LineChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
           <CartesianGrid vertical={false} stroke={GRID} strokeDasharray="3 3" />
+          {hayNegativos && <ReferenceLine y={0} stroke={AXIS} strokeWidth={1} />}
           <XAxis
             dataKey="label"
             tickLine={false}

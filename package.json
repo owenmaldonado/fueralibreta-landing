@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "tsx scripts/pruebas/graficas.ts && tsx scripts/pruebas/agenda.ts && tsx scripts/pruebas/turno.ts && tsx scripts/pruebas/mi-dia.ts"
+    "test": "tsx scripts/pruebas/graficas.ts && tsx scripts/pruebas/agenda.ts && tsx scripts/pruebas/turno.ts && tsx scripts/pruebas/ganancias.ts && tsx scripts/pruebas/mi-dia.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.1.0",

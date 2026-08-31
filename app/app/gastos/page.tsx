@@ -30,6 +30,7 @@ import { formatMoney, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
 import { useHoy } from "@/lib/use-hoy";
 import { aggregateByRange, filterByRango, type RangoTiempo } from "@/lib/chart-buckets";
 import { permisosActuales, getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
+import { gananciaDePedidoFonda, gananciaDeVentaAbarrotes } from "@/lib/ganancias";
 import { usePendingSalesQueue } from "@/lib/offline-sales-queue";
 import { usePlan } from "@/lib/planes";
 import { cn } from "@/lib/utils";
@@ -231,38 +232,45 @@ export default function GastosPage() {
   // precio o el costo del platillo DESPUÉS ya no mueve ventas ya hechas.
   // Pedidos de antes de este snapshot (sin precioUnitario guardado) siguen
   // cayendo al platillo/variante ACTUAL, único caso con ese trade-off.
+  // La cuenta de la ganancia vive en lib/ganancias.ts (con pruebas en
+  // scripts/pruebas/ganancias.ts), no escrita a mano aquí. Cada venta/pedido
+  // devuelve TRES números, no uno:
+  //   margen          -> lo que aporta a "Ganancia"
+  //   costoConocido   -> lo que de verdad costó (suma, no una resta)
+  //   ingresoSinCosto -> lo que se cobró sin saber su costo, para avisarlo
+  // Ver ahí por qué el costo se suma en vez de deducirse de `ventas − ganancia`.
   const costoPorProducto = new Map((session.abarrotes?.productos ?? []).map((p) => [p.id, p.costo]));
   const platillosPorId = new Map((session.fonda?.platillos ?? []).map((p) => [p.id, p]));
-  const gananciaPorVenta: Movimiento[] =
+  const resumenPorVenta =
     modulo === "fonda"
       ? pedidosEntregados.map((p) => ({
           id: p.id,
           fecha: p.fecha,
-          monto: p.items.reduce((acc, it) => {
-            if (it.precioUnitario != null) {
-              const costo = it.costoUnitario ?? 0;
-              return costo > 0 ? acc + (it.precioUnitario - costo) * it.cantidad : acc;
-            }
-            const platillo = platillosPorId.get(it.platilloId);
-            if (!platillo || platillo.costo == null) return acc;
-            const extra = it.varianteNombre ? platillo.variantes?.find((v) => v.valor === it.varianteNombre)?.precioExtra ?? 0 : 0;
-            return acc + (platillo.precio + extra - platillo.costo) * it.cantidad;
-          }, 0),
           label: p.clienteNombre || "Pedido",
           empleadoNombreCache: p.empleadoNombreCache,
           empleadoRolCache: p.empleadoRolCache,
+          resumen: gananciaDePedidoFonda(p, platillosPorId),
         }))
       : ventasAbarrotesActivas.map((v) => ({
           id: v.id,
           fecha: fechaCalendarioLocal(v.fecha, session.business.timezone),
-          monto: v.items.reduce((acc, it) => {
-            const costo = it.costoUnitario ?? (it.productoId ? costoPorProducto.get(it.productoId) ?? 0 : 0);
-            return acc + (it.precioUnitario - costo) * it.cantidad;
-          }, 0),
           label: v.items.length === 1 ? `${v.items[0].cantidad} ${v.items[0].productoNombre}` : `${v.items.length} productos`,
           empleadoNombreCache: v.empleadoNombreCache,
           empleadoRolCache: v.empleadoRolCache,
+          resumen: gananciaDeVentaAbarrotes(v, costoPorProducto),
         }));
+  const gananciaPorVenta: Movimiento[] = resumenPorVenta.map((r) => ({
+    id: r.id,
+    fecha: r.fecha,
+    monto: r.resumen.margen,
+    label: r.label,
+    empleadoNombreCache: r.empleadoNombreCache,
+    empleadoRolCache: r.empleadoRolCache,
+  }));
+  // Mismas fechas/ids que gananciaPorVenta, para poder filtrarlas por el
+  // MISMO rango sin que se puedan desalinear.
+  const costoPorVenta = resumenPorVenta.map((r) => ({ id: r.id, fecha: r.fecha, monto: r.resumen.costoConocido, label: r.label }));
+  const sinCostoPorVenta = resumenPorVenta.map((r) => ({ id: r.id, fecha: r.fecha, monto: r.resumen.ingresoSinCosto, label: r.label }));
 
   // Años con al menos un movimiento (para el selector de histórico), más el
   // año en curso aunque todavía no tenga nada — se lee el año directo del
@@ -345,6 +353,31 @@ export default function GastosPage() {
   const totalVentas = ventasFiltradas.reduce((acc, v) => acc + v.monto, 0);
   const totalGananciaBruta = gananciaPorVentaFiltrada.reduce((acc, g) => acc + g.monto, 0);
   const totalGananciaNeta = totalGananciaBruta - totalGastos;
+  /**
+   * Lo que de verdad costó lo vendido en el periodo: la SUMA de los costos
+   * capturados, no `totalVentas − totalGananciaBruta`.
+   *
+   * EL BUG QUE CIERRA
+   * Con esa resta, todo lo que se cobró sin tener un costo capturado
+   * aterrizaba en esta tarjeta como si hubiera costado exactamente su precio
+   * de venta. En Fondita, donde un platillo sin costo aporta $0 de margen,
+   * eso significaba que un platillo de $80 sin costo puesto salía como $80 de
+   * "costo de mercancía", y un cargo de "para llevar" de $10 salía como $10
+   * de costo. La app inventaba costos que nadie capturó — y siempre los
+   * peores posibles. Ver lib/ganancias.ts.
+   */
+  const totalCostoConocido = filtrarPorRango(costoPorVenta, (c) => c.fecha).reduce((acc, c) => acc + c.monto, 0);
+  /**
+   * Cuánto se cobró en el periodo sin saber su costo, y en cuántas ventas.
+   *
+   * Es el dato que faltaba para poder decir la verdad en pantalla: en
+   * Abarrotera ese dinero cuenta COMPLETO como ganancia (la sobreestima, igual
+   * que barbería — que sí lo avisaba) y en Fondita no cuenta NADA (la
+   * subestima, y solo se avisaba cuando ningún platillo tenía costo, nunca en
+   * el caso a medias, que es el más común). Ver SinCosto en lib/ganancias.ts.
+   */
+  const sinCostoEnRango = filtrarPorRango(sinCostoPorVenta, (c) => c.fecha).filter((c) => c.monto > 0);
+  const totalSinCosto = sinCostoEnRango.reduce((acc, c) => acc + c.monto, 0);
   // Va aquí y no arriba porque necesita totalVentas/totalGastos, que se
   // calculan unas líneas antes. Ver hayCostosCapturados.
   const ventasMenosGastosPeriodo = totalVentas - totalGastos;
@@ -371,6 +404,31 @@ export default function GastosPage() {
   const serieVentas = aggregateByRange(ventas, rango, (v) => v.fecha, (v) => v.monto, ctxRango);
   const serieGananciaBruta = aggregateByRange(gananciaPorVenta, rango, (g) => g.fecha, (g) => g.monto, ctxRango);
   const serieGananciaNeta = serieGananciaBruta.map((g, i) => ({ label: g.label, value: g.value - (serieGastos[i]?.value ?? 0) }));
+  /**
+   * Ventas − gastos, bucket a bucket. Es la versión graficada del número
+   * `ventasMenosGastosPeriodo` que se enseña cuando el negocio NO capturó
+   * costos.
+   *
+   * EL BUG QUE CIERRA
+   * Sin costos capturados, `gananciaPorVenta` vale CERO en cada línea (no hay
+   * costo que restar, así que no hay margen que calcular). Entonces
+   * serieGananciaNeta = 0 − gastos = MENOS GASTOS, nada más. Y esa era la
+   * serie que se graficaba en la pestaña Ganancias y en la línea de la
+   * pestaña Todos, debajo de un número que decía "Ventas − gastos".
+   *
+   * O sea: un negocio con $5,000 de ventas y $300 de gastos leía "$4,700"
+   * arriba y veía una gráfica de barras hundida en −$300. Los dos venían de
+   * la misma pantalla y ninguno explicaba al otro. Es exactamente el tipo de
+   * cosa que hace pensar que la app suma mal — y la gráfica sí sumaba mal.
+   */
+  const serieVentasMenosGastos = serieVentas.map((v, i) => ({ label: v.label, value: v.value - (serieGastos[i]?.value ?? 0) }));
+  /**
+   * "El resultado del periodo", graficado con la MISMA cuenta que muestra el
+   * número de arriba: ganancia real (margen − gastos) si hay costos
+   * capturados, ventas − gastos si no. Una sola variable para que la barra y
+   * el total no puedan volver a separarse.
+   */
+  const serieResultado = hayCostosCapturados ? serieGananciaNeta : serieVentasMenosGastos;
 
   function withGastos(prev: TenantData, next: (gastos: Expense[]) => Expense[]): TenantData {
     if (prev.fonda) return { ...prev, fonda: { ...prev.fonda, gastos: next(prev.fonda.gastos) } };
@@ -572,7 +630,15 @@ export default function GastosPage() {
       ) : chartTab === "ganancias" ? (
         <div className="px-4 pt-3">
           {hayCostosCapturados ? (
-            <StatTile label="Total ganancia" value={formatMoney(totalGananciaBruta)} />
+            <>
+              <StatTile label="Total ganancia" value={formatMoney(totalGananciaBruta)} />
+              <AvisoSinCosto
+                modulo={modulo}
+                hayCostosCapturados={hayCostosCapturados}
+                ventasSinCosto={sinCostoEnRango.length}
+                montoSinCosto={totalSinCosto}
+              />
+            </>
           ) : (
             <>
               {/*
@@ -625,9 +691,7 @@ export default function GastosPage() {
           <div className={cn("grid gap-3", hayCostosCapturados ? "grid-cols-2" : "grid-cols-3")}>
             <StatTile label="Total ventas" value={formatMoney(totalVentas)} />
             <StatTile label="Total gastos" value={formatMoney(totalGastos)} />
-            {hayCostosCapturados && (
-              <StatTile label="Costo de lo vendido" value={formatMoney(totalVentas - totalGananciaBruta)} />
-            )}
+            {hayCostosCapturados && <StatTile label="Costo de lo vendido" value={formatMoney(totalCostoConocido)} />}
             <StatTile
               label={hayCostosCapturados ? "Ganancia real" : "Ventas − gastos"}
               value={formatMoney(hayCostosCapturados ? totalGananciaNeta : ventasMenosGastosPeriodo)}
@@ -639,6 +703,12 @@ export default function GastosPage() {
           {faltaCostoEnFonda && (
             <p className="mt-2 px-1 text-xs text-muted-foreground">Agrega costo a tus platillos para ver ganancia real (con mermas incluidas).</p>
           )}
+          <AvisoSinCosto
+            modulo={modulo}
+            hayCostosCapturados={hayCostosCapturados}
+            ventasSinCosto={sinCostoEnRango.length}
+            montoSinCosto={totalSinCosto}
+          />
         </div>
       )}
 
@@ -681,7 +751,7 @@ export default function GastosPage() {
               // "Ventas − gastos": dos cuentas distintas en la misma
               // pantalla. Se grafica la neta, que sí es lo que el total dice.
               <TrendBarChart
-                data={hayCostosCapturados ? serieGananciaBruta : serieGananciaNeta}
+                data={hayCostosCapturados ? serieGananciaBruta : serieVentasMenosGastos}
                 bars={[
                   {
                     key: "value",
@@ -698,7 +768,7 @@ export default function GastosPage() {
                   label: v.label,
                   ventas: v.value,
                   gastos: serieGastos[i]?.value ?? 0,
-                  ganancia: serieGananciaNeta[i]?.value ?? 0,
+                  ganancia: serieResultado[i]?.value ?? 0,
                 }))}
                 // Antes Fondita no tenía costo por platillo, así que su
                 // "ganancia real" era idéntica a ventas - gastos (línea sin
@@ -708,7 +778,12 @@ export default function GastosPage() {
                 // Abarrotes, pero solo en cuanto al menos un platillo tiene
                 // costo puesto (si no, sería solo -gastos disfrazado de
                 // "ganancia", el mismo número engañoso que ya evitamos arriba).
-                gananciaLabel={modulo === "abarrotes" || algunPlatilloConCosto ? "Ganancia real" : undefined}
+                // La tercera línea siempre dice qué cuenta es, y siempre trae
+                // esa cuenta (serieResultado). Antes la etiqueta era fija
+                // ("Ganancia real") mientras el dato podía ser otra cosa: en
+                // una abarrotera sin costos capturados esa línea era −gastos
+                // presentada como ganancia real, que es peor que no mostrarla.
+                gananciaLabel={hayCostosCapturados ? "Ganancia real" : "Ventas − gastos"}
                 emptyText="Sin ventas ni gastos en este periodo"
               />
             )}
@@ -1113,5 +1188,53 @@ function VentaFondaForm({
         </Button>
       </SheetFooter>
     </>
+  );
+}
+
+
+/**
+ * "Este pedazo de tus ventas no tiene costo capturado."
+ *
+ * POR QUÉ HACÍA FALTA
+ * Poner costos es opcional, y lo normal es tenerlos a MEDIAS: la mitad del
+ * menú sí, la otra no. En ese caso a medias, "Ganancia real" es un número que
+ * no dice la verdad completa y la pantalla se quedaba callada:
+ *
+ * - Fondita: lo que no tiene costo aporta $0 de margen, así que la ganancia
+ *   sale MÁS BAJA de lo que es. Solo se avisaba cuando NINGÚN platillo tenía
+ *   costo (faltaCostoEnFonda) — nunca en el caso a medias.
+ * - Abarrotera: lo que no tiene costo cuenta COMPLETO como margen, así que la
+ *   ganancia sale MÁS ALTA de lo que es. No se avisaba nunca, aunque barbería
+ *   (/app/caja) sí lo avisa desde hace rato con este mismo texto.
+ *
+ * En los dos casos la salida es la misma: capturar el costo. Por eso el aviso
+ * dice para dónde va cada número Y adónde ir a arreglarlo.
+ *
+ * Solo aparece si el negocio ya capturó ALGÚN costo: quien no capturó ninguno
+ * ya ve la pantalla de "Ventas − gastos", que no promete ninguna ganancia.
+ */
+function AvisoSinCosto({
+  modulo,
+  hayCostosCapturados,
+  ventasSinCosto,
+  montoSinCosto,
+}: {
+  modulo: "fonda" | "abarrotes";
+  hayCostosCapturados: boolean;
+  ventasSinCosto: number;
+  montoSinCosto: number;
+}) {
+  if (!hayCostosCapturados || ventasSinCosto === 0 || montoSinCosto <= 0) return null;
+  const cosa = modulo === "fonda" ? "platillos" : "productos";
+  const donde = modulo === "fonda" ? "Menú" : "Más → Productos";
+  return (
+    <p className="mt-2 px-1 text-xs text-muted-foreground">
+      {formatMoney(montoSinCosto)} de lo cobrado en este periodo ({ventasSinCosto === 1 ? "1 venta" : `${ventasSinCosto} ventas`}) viene
+      de {cosa} sin costo registrado, así que{" "}
+      {modulo === "fonda"
+        ? "no aporta ganancia conocida y tu ganancia real se ve más baja de lo que es"
+        : "cuenta completo como ganancia y tu ganancia real se ve más alta de lo que es"}
+      . Ponles costo en <span className="font-medium text-foreground">{donde}</span> y la cuenta se corrige sola de ahí en adelante.
+    </p>
   );
 }
