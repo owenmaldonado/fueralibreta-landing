@@ -12,8 +12,10 @@ import { supabase } from "@/lib/supabase";
 import { cleanInsert } from "@/lib/data";
 import { useOnlineStatus } from "@/lib/use-online-status";
 import { CierreBloqueado } from "./cierre-bloqueado";
+import { enTurnoActual, enTurnoActualPorDiaYHora, desdeCuandoCuenta } from "@/lib/turno";
 import { formatMoney, formatMoneyExacto, fechaCalendarioLocal, redondear2, uid } from "@/lib/mock";
 import { MensajeCorte } from "./mensaje-corte";
+import { DesgloseCorte, type RenglonCorte } from "./desglose-corte";
 import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado, permisosActuales } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, CajaEntry, InventoryProduct } from "@/lib/types";
@@ -129,7 +131,14 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
     };
   }, [open, esNegocioReal, negocio.id, hoy]);
 
-  const citasHoyListo = data.citas.filter((c) => c.fecha === hoy && c.estado === "listo");
+  // DESDE EL ÚLTIMO CIERRE, no "todo el día".
+  //
+  // Antes esto era `c.fecha === hoy`: el segundo turno del día volvía a
+  // contar lo del primero, y el vendedor de la tarde terminaba cuadrando
+  // dinero que el de la mañana ya había entregado. Ver lib/turno.ts.
+  const citasHoyListo = data.citas.filter(
+    (c) => c.estado === "listo" && enTurnoActualPorDiaYHora(c, negocio, hoy)
+  );
   // El corte solo sumaba citas — cualquier "Nueva venta"/"Nuevo gasto"
   // manual (Caja > Nuevo, o el FAB de Caja) hecho por CUALQUIER empleado
   // hoy quedaba fuera de "Ventas de hoy"/esperado, aunque sí aparecía en
@@ -138,7 +147,9 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
   // (no comparar el ISO crudo) porque CajaEntry.fecha lleva hora — un
   // movimiento de las 11pm en UTC puede seguir siendo "hoy" en la zona del
   // negocio.
-  const cajaHoy = data.caja.filter((m) => fechaCalendarioLocal(m.fecha, negocio.timezone) === hoy);
+  // barberia_caja.fecha SÍ es un instante real (timestamptz), así que aquí
+  // se compara contra el momento del cierre directo.
+  const cajaHoy = data.caja.filter((m) => enTurnoActual({ creadoEn: m.fecha, fecha: fechaCalendarioLocal(m.fecha, negocio.timezone) }, negocio, hoy));
   const ventasCajaHoy = cajaHoy.filter((m) => m.tipo === "venta");
   const propinasCajaHoyEfectivo = cajaHoy.filter((m) => m.tipo === "propina" && m.metodo === "efectivo");
   const gastosCajaHoy = cajaHoy.filter((m) => m.tipo === "gasto");
@@ -170,6 +181,18 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
   const propinasCajaHoyTotal = propinasCajaHoyEfectivo.reduce((acc, m) => acc + m.monto, 0);
   const gastosCajaHoyTotal = gastosCajaHoy.reduce((acc, m) => acc + m.monto, 0);
   const esperado = redondear2(ventasHoyTotal + propinasCajaHoyTotal + fondoInicialNum - gastoPaso1Num - gastosCajaHoyTotal);
+
+  // Los mismos sumandos de `esperado`, uno por uno, para que el dueño pueda
+  // auditar de dónde sale el total (ver DesgloseCorte). Se arman de las
+  // MISMAS variables a propósito: si se recalcularan aparte, podrían
+  // discrepar del número real y la pantalla mentiría.
+  const renglonesCorte: RenglonCorte[] = [
+    { concepto: "Cortes y ventas", monto: ventasHoyTotal, tipo: "suma" },
+    { concepto: "Propinas en efectivo", monto: propinasCajaHoyTotal, tipo: "suma" },
+    { concepto: "Fondo inicial", monto: fondoInicialNum, tipo: "suma" },
+    { concepto: "Gastos ya registrados", monto: gastosCajaHoyTotal, tipo: "resta" },
+    { concepto: "Gasto que estás capturando", monto: gastoPaso1Num, tipo: "resta" },
+  ];
   const efectivoValido = efectivoReal.trim() !== "" && !isNaN(Number(efectivoReal)) && Number(efectivoReal) >= 0;
   // Redondeado al peso entero: mismo criterio que mensajeDiferencia() (lib/mock.ts)
   // — así el color de arriba y el mensaje nunca se contradicen, y lo que se
@@ -302,6 +325,12 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
       ganancia: ventasHoyTotal - gastosTotal,
       gastoConceptos,
     });
+    // Marca el momento del cierre en `negocios`: es lo que hace que el
+    // SIGUIENTE corte arranque en cero, en todos los dispositivos a la vez
+    // (esa tabla ya tiene canal de realtime). Sin esto, barbería y
+    // abarrotera volvían a contar todo el día en el segundo turno — ver
+    // lib/turno.ts y la migración 20260918000000.
+    update((prev) => ({ ...prev, business: { ...prev.business, turnoCerradoEn: new Date().toISOString() } }));
     setGuardando(false);
     setPaso("resumen");
   }
@@ -367,6 +396,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
                 onChange={(e) => setEfectivoReal(e.target.value)}
                 placeholder="$0"
               />
+              <DesgloseCorte renglones={renglonesCorte} esperado={esperado} desdeCuando={desdeCuandoCuenta(negocio, negocio.timezone)} />
               <MensajeCorte diferencia={diferencia} esperado={esperado} />
             </div>
             <div className="space-y-1.5">

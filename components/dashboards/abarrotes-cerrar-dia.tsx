@@ -13,8 +13,10 @@ import { insertGastoDirecto, cleanInsert } from "@/lib/data";
 import { supabase } from "@/lib/supabase";
 import { useOnlineStatus } from "@/lib/use-online-status";
 import { CierreBloqueado } from "./cierre-bloqueado";
+import { enTurnoActual, desdeCuandoCuenta } from "@/lib/turno";
 import { formatMoney, formatMoneyExacto, fechaCalendarioLocal, redondear2, uid } from "@/lib/mock";
 import { MensajeCorte } from "./mensaje-corte";
+import { DesgloseCorte, type RenglonCorte } from "./desglose-corte";
 import { hoyEnZona } from "@/lib/fecha";
 import { camposEmpleado } from "@/lib/empleados";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
@@ -106,7 +108,12 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
     };
   }, [open, esNegocioReal, online, negocio.id, hoy]);
 
-  const ventasHoyList = data.ventas.filter((v) => !v.cancelada && fechaCalendarioLocal(v.fecha, negocio.timezone) === hoy);
+  // DESDE EL ÚLTIMO CIERRE, no "todo el día" — misma corrección que en
+  // barbería (ver lib/turno.ts). abarrotes_ventas.fecha es un instante real,
+  // así que se compara directo contra el momento del cierre.
+  const ventasHoyList = data.ventas.filter(
+    (v) => !v.cancelada && enTurnoActual({ creadoEn: v.fecha, fecha: fechaCalendarioLocal(v.fecha, negocio.timezone) }, negocio, hoy)
+  );
   const ventasHoyTotal = ventasHoyList.reduce((acc, v) => acc + v.total, 0);
   const ventasPorEmpleado = React.useMemo(() => {
     const mapa = new Map<string, number>();
@@ -135,11 +142,27 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
   // mismo paso — cualquier gasto registrado hoy desde Gastos/Ventas (por
   // cualquier empleado) no se restaba, así que el corte podía decir que
   // sobraba dinero que en realidad ya se había gastado en otro lado.
+  // Los gastos SOLO guardan el día (no la hora), así que no se pueden partir
+  // entre dos turnos del mismo día. Se quedan por día a propósito: partirlos
+  // mal sería peor que contarlos completos, y el dueño los ve desglosados en
+  // /app/cortes. Es justo lo que Owen reportó como "las ventas inician en 0
+  // pero siguen ahí los mismos gastos" — es real, y esta es la razón.
   const gastosHoyDelDia = data.gastos.filter((g) => fechaCalendarioLocal(g.fecha, negocio.timezone) === hoy);
   const fondoInicialNum = fondoInicial.trim() === "" ? 0 : Number(fondoInicial) || 0;
   const gastoNum = gastoMonto.trim() === "" ? 0 : Number(gastoMonto) || 0;
   const gastosHoyDelDiaTotal = gastosHoyDelDia.reduce((acc, g) => acc + g.monto, 0);
   const esperado = redondear2(ventasHoyTotal + fondoInicialNum - gastoNum - gastosHoyDelDiaTotal);
+
+  // Los mismos sumandos del renglón de arriba, pero uno por uno para que el
+  // dueño pueda auditar de dónde sale el total. Si el orden o los signos de
+  // aquí no coinciden con `esperado`, la pantalla estaría mintiendo — por eso
+  // se arman a partir de las MISMAS variables, no de un cálculo aparte.
+  const renglonesCorte: RenglonCorte[] = [
+    { concepto: "Vendido", monto: ventasHoyTotal, tipo: "suma" },
+    { concepto: "Fondo inicial", monto: fondoInicialNum, tipo: "suma" },
+    { concepto: "Gastos ya registrados hoy", monto: gastosHoyDelDiaTotal, tipo: "resta" },
+    { concepto: "Gasto que estás capturando", monto: gastoNum, tipo: "resta" },
+  ];
   const efectivoValido = efectivoReal.trim() !== "" && !isNaN(Number(efectivoReal)) && Number(efectivoReal) >= 0;
   // Redondeado al peso entero: mismo criterio que mensajeDiferencia() (lib/mock.ts)
   // — así el color de arriba y el mensaje nunca se contradicen, y lo que se
@@ -294,6 +317,13 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
       }, { yaSincronizado: true });
     }
 
+    // Marca el momento del cierre en `negocios`: es lo que hace que el
+    // SIGUIENTE corte arranque en cero, en todos los dispositivos a la vez
+    // (esa tabla ya tiene canal de realtime). Sin esto, abarrotera volvía a
+    // contar todo el día en el segundo cierre — ver lib/turno.ts y la
+    // migración 20260918000000.
+    update((prev) => ({ ...prev, business: { ...prev.business, turnoCerradoEn: new Date().toISOString() } }));
+
     setGuardando(false);
     resetYCerrar();
     onCompletado?.();
@@ -337,6 +367,7 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
             <div className="space-y-1.5">
               <Label>¿Efectivo real en mano?</Label>
               <Input type="number" inputMode="decimal" autoFocus value={efectivoReal} onChange={(e) => setEfectivoReal(e.target.value)} placeholder="$0" />
+              <DesgloseCorte renglones={renglonesCorte} esperado={esperado} desdeCuando={desdeCuandoCuenta(negocio, negocio.timezone)} />
               <MensajeCorte diferencia={diferencia} esperado={esperado} />
             </div>
             <div className="space-y-1.5">

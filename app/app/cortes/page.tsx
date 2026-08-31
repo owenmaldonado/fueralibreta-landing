@@ -35,8 +35,21 @@ import { cn } from "@/lib/utils";
  * es lo único que puede hacer un software honesto con este dato.
  */
 
-/** Un faltante/sobrante de $20 o menos es ruido de cambio, no algo que valga la pena señalar. */
-const TOLERANCIA = 20;
+/**
+ * Umbral SOLO para el aviso rojo de arriba, no para lo que dice cada cierre.
+ *
+ * Owen: "hay una diferencia de 11 pesos pero dice que cuadró; si no es
+ * perfecto entonces no cuadra". Tiene razón, y era mi error: la tolerancia
+ * de $20 se estaba aplicando también a la etiqueta de cada cierre, así que
+ * un faltante real de $11 se pintaba en verde como "Cuadró". Eso no es
+ * tolerar ruido, es esconder dinero.
+ *
+ * Ahora cada cierre dice SIEMPRE su número exacto — "Cuadró" solo cuando la
+ * diferencia es cero de verdad. Este umbral se queda únicamente para decidir
+ * si el aviso rojo de arriba grita o no, que es otra pregunta: no toda
+ * diferencia amerita una alarma, pero todas se muestran.
+ */
+const UMBRAL_ALARMA = 20;
 
 function fechaLegible(fecha: string): string {
   const [y, m, d] = fecha.split("-").map(Number);
@@ -74,7 +87,7 @@ export default function CortesPage() {
   if (!ready || !session) return <LoadingBlock />;
 
   const queEs = tipo === "abarrotes" ? "día" : "turno";
-  const conFaltante = (cortes ?? []).filter((c) => c.diferencia != null && c.diferencia < -TOLERANCIA);
+  const conFaltante = (cortes ?? []).filter((c) => c.diferencia != null && c.diferencia < -UMBRAL_ALARMA);
   const faltanteTotal = conFaltante.reduce((acc, c) => acc + Math.abs(c.diferencia ?? 0), 0);
 
   return (
@@ -123,14 +136,17 @@ export default function CortesPage() {
             // que debía haber. Así el número que ve el dueño sale del mismo
             // dato que se guardó al cerrar y no puede desincronizarse.
             const esperado = c.efectivoReal != null ? c.efectivoReal - dif : null;
-            const falta = dif < -TOLERANCIA;
-            const sobra = dif > TOLERANCIA;
+            // Exacto: cualquier diferencia distinta de cero se muestra tal
+            // cual. Solo el color se suaviza si es chica.
+            const falta = dif < 0;
+            const sobra = dif > 0;
+            const fuerte = Math.abs(dif) > UMBRAL_ALARMA;
             return (
               <div
                 key={c.id}
                 className={cn(
                   "rounded-2xl border bg-card p-4",
-                  falta ? "border-destructive/40" : sobra ? "border-primary/40" : "border-border"
+                  falta && fuerte ? "border-destructive/40" : sobra && fuerte ? "border-primary/40" : "border-border"
                 )}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -193,12 +209,12 @@ export default function CortesPage() {
                   </span>
                 </div>
 
-                {falta && (
+                {falta && fuerte && (
                   <p className="mt-3 rounded-xl bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
                     Faltaron {formatMoney(-dif)} contra lo que debía haber en la caja.
                   </p>
                 )}
-                {sobra && (
+                {sobra && fuerte && (
                   <p className="mt-3 rounded-xl bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
                     Sobraron {formatMoney(dif)}. Suele ser una venta que no se registró.
                   </p>

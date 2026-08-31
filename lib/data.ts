@@ -99,6 +99,9 @@ export function businessFromRow(row: Row): Business {
     diasRecordatorio: row.dias_recordatorio != null ? Number(row.dias_recordatorio) : 28,
     acceptedTermsAt: (row.accepted_terms_at as string) ?? undefined,
     turnoFondaCerradoEn: (row.turno_fonda_cerrado_en as string | null) ?? null,
+    // Cae a la columna vieja de fonda mientras la migración no haya
+    // corrido en esa base — así el turno en curso no se pierde.
+    turnoCerradoEn: ((row.turno_cerrado_en as string | null) ?? (row.turno_fonda_cerrado_en as string | null)) ?? null,
     timezone: (row.timezone as string) ?? undefined,
   };
 }
@@ -1344,6 +1347,9 @@ export async function syncTenantDiff(prev: TenantData, next: TenantData): Promis
   }
   if (prev.business.turnoFondaCerradoEn !== next.business.turnoFondaCerradoEn) {
     businessChanges.turno_fonda_cerrado_en = next.business.turnoFondaCerradoEn ?? null;
+  }
+  if (prev.business.turnoCerradoEn !== next.business.turnoCerradoEn) {
+    businessChanges.turno_cerrado_en = next.business.turnoCerradoEn ?? null;
   }
   if (Object.keys(businessChanges).length > 0) {
     await actualizarNegocioTolerante(negocioId, businessChanges);

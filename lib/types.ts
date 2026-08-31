@@ -83,6 +83,8 @@ export interface Business {
    * turno, cae a "desde el inicio del día calendario".
    */
   turnoFondaCerradoEn?: string | null;
+  /** Momento del ÚLTIMO cierre de turno/día, en los tres giros. El corte siguiente cuenta solo lo posterior a esto — ver la migración 20260918000000. Sustituye a turnoFondaCerradoEn, que se queda por compatibilidad. */
+  turnoCerradoEn?: string | null;
 }
 
 // ---------- Barbería ----------

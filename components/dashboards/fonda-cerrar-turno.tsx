@@ -12,9 +12,11 @@ import { VentasPorEmpleado } from "./ventas-por-empleado";
 import { insertGastoDirecto, cleanInsert } from "@/lib/data";
 import { useOnlineStatus } from "@/lib/use-online-status";
 import { diaDelNegocio } from "@/lib/chart-buckets";
+import { desdeCuandoCuenta } from "@/lib/turno";
 import { CierreBloqueado } from "./cierre-bloqueado";
 import { formatMoney, formatMoneyExacto, redondear2, uid } from "@/lib/mock";
 import { MensajeCorte } from "./mensaje-corte";
+import { DesgloseCorte, type RenglonCorte } from "./desglose-corte";
 import { camposEmpleado } from "@/lib/empleados";
 import { cerrarTurno } from "@/lib/turno-fonda";
 import type { TenantData, SessionUpdater, Expense } from "@/lib/types";
@@ -139,6 +141,15 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
   const gastoNum = gastoMonto.trim() === "" ? 0 : Number(gastoMonto) || 0;
   const gastosHoyDelDiaTotal = gastosHoyDelDia.reduce((acc, g) => acc + g.monto, 0);
   const esperado = redondear2(ventasHoy + fondoInicialNum - gastoNum - gastosHoyDelDiaTotal);
+
+  // Los mismos sumandos de `esperado`, uno por uno, para que el dueño pueda
+  // auditar de dónde sale el total (ver DesgloseCorte).
+  const renglonesCorte: RenglonCorte[] = [
+    { concepto: "Pedidos entregados", monto: ventasHoy, tipo: "suma" },
+    { concepto: "Fondo inicial", monto: fondoInicialNum, tipo: "suma" },
+    { concepto: "Gastos ya registrados hoy", monto: gastosHoyDelDiaTotal, tipo: "resta" },
+    { concepto: "Gasto que estás capturando", monto: gastoNum, tipo: "resta" },
+  ];
   const efectivoValido = efectivoReal.trim() !== "" && !isNaN(Number(efectivoReal)) && Number(efectivoReal) >= 0;
   // Redondeado al peso entero: mismo criterio que mensajeDiferencia() (lib/mock.ts)
   // — así el color de arriba y el mensaje nunca se contradicen, y lo que se
@@ -305,7 +316,11 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
     // syncTenantDiff lo suba a `negocios` y el canal de realtime que esa
     // tabla ya tiene lo propague al resto de dispositivos del negocio.
     cerrarTurno(negocio.id);
-    update((prev) => ({ ...prev, business: { ...prev.business, turnoFondaCerradoEn: new Date().toISOString() } }));
+    // Se escriben las DOS: turnoCerradoEn es la genérica que ahora usan los
+    // tres giros, y turno_fonda_cerrado_en se sigue guardando por si hay
+    // que volver atrás sin perder el turno en curso.
+    const ahora = new Date().toISOString();
+    update((prev) => ({ ...prev, business: { ...prev.business, turnoFondaCerradoEn: ahora, turnoCerradoEn: ahora } }));
     setGuardando(false);
     resetYCerrar();
     onCompletado?.();
@@ -347,6 +362,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, hoyEnSuZona, 
             <div className="space-y-1.5">
               <Label>¿Efectivo real en mano?</Label>
               <Input type="number" inputMode="decimal" autoFocus value={efectivoReal} onChange={(e) => setEfectivoReal(e.target.value)} placeholder="$0" />
+              <DesgloseCorte renglones={renglonesCorte} esperado={esperado} desdeCuando={desdeCuandoCuenta(negocio, negocio.timezone)} />
               <MensajeCorte diferencia={diferencia} esperado={esperado} />
             </div>
             <div className="space-y-1.5">

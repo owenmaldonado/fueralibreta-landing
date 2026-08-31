@@ -35,9 +35,13 @@ export function MensajeCorte({ diferencia, esperado }: { diferencia: number | nu
 
   if (!puedeVer) {
     return (
-      <p className="px-1 text-xs font-medium text-muted-foreground">
-        Cuenta el efectivo y anótalo tal cual, aunque no cuadre. El dueño revisa el corte después.
-      </p>
+      <div className="rounded-xl border border-border bg-card p-3">
+        <p className="text-xs font-semibold">Cuenta todo el efectivo del cajón y anótalo tal cual.</p>
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          No hagas cuentas ni le quites nada: el sistema ya sabe lo que se vendió y lo que se gastó, y hace la resta
+          solo. Si no cuadra, no pasa nada — anota lo que de verdad hay.
+        </p>
+      </div>
     );
   }
 
