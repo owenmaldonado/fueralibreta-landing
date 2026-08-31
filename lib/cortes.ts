@@ -41,6 +41,10 @@ export interface Corte {
   diferencia: number | null;
   empleadoNombreCache?: string;
   empleadoRolCache?: RolEmpleado;
+  /** Cuándo el dueño marcó este cierre como revisado. Apaga el aviso rojo; la diferencia NO cambia. */
+  revisadoAt?: string | null;
+  /** Por qué se dio por bueno — "le di mal el cambio a un cliente". Explica el faltante sin taparlo. */
+  revisadoNota?: string | null;
 }
 
 function aNumero(v: unknown): number | null {
@@ -76,5 +80,34 @@ export async function fetchCortes(negocioId: string, tipo: BusinessType, limite 
     diferencia: aNumero(r.diferencia),
     empleadoNombreCache: (r.empleado_nombre_cache as string) ?? undefined,
     empleadoRolCache: (r.empleado_rol_cache as RolEmpleado) ?? undefined,
+    revisadoAt: (r.revisado_at as string | null) ?? null,
+    revisadoNota: (r.revisado_nota as string | null) ?? null,
   }));
+}
+
+/**
+ * Marca un cierre como revisado, con la nota del dueño.
+ *
+ * Solo escribe `revisado_at` y `revisado_nota`. La diferencia, el efectivo
+ * contado y lo esperado NO se tocan nunca: si se pudieran corregir a mano,
+ * este reporte dejaría de ser evidencia de nada. La nota explica el
+ * faltante; no lo borra.
+ *
+ * `nota` vacía quita la marca (vuelve a salir el aviso) — sirve para
+ * deshacer si se marcó por error.
+ */
+export async function marcarCorteRevisado(
+  tipo: BusinessType,
+  corteId: string,
+  nota: string,
+  revisar = true
+): Promise<{ revisadoAt: string | null; revisadoNota: string | null }> {
+  const revisadoAt = revisar ? new Date().toISOString() : null;
+  const revisadoNota = revisar ? nota.trim() || null : null;
+  const { error } = await supabase
+    .from(TABLA_CORTES[tipo])
+    .update({ revisado_at: revisadoAt, revisado_nota: revisadoNota })
+    .eq("id", corteId);
+  if (error) throw error;
+  return { revisadoAt, revisadoNota };
 }

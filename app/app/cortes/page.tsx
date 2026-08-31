@@ -9,7 +9,10 @@ import { EmptyState } from "@/components/dashboards/empty-state";
 import { StatTile } from "@/components/dashboards/stat-tile";
 import { EmpleadoBadge } from "@/components/dashboards/empleado-badge";
 import { useSession } from "@/lib/session";
-import { fetchCortes, TABLA_CORTES, type Corte } from "@/lib/cortes";
+import { fetchCortes, marcarCorteRevisado, TABLA_CORTES, type Corte } from "@/lib/cortes";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { formatMoney, formatMoneyExacto } from "@/lib/mock";
 import { cn } from "@/lib/utils";
@@ -66,6 +69,10 @@ export default function CortesPage() {
   const { session, ready } = useSession();
   const [cortes, setCortes] = React.useState<Corte[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  // Qué cierre tiene el cuadro de nota abierto, y qué se lleva escrito.
+  const [revisando, setRevisando] = React.useState<string | null>(null);
+  const [nota, setNota] = React.useState("");
+  const [guardando, setGuardando] = React.useState(false);
 
   const negocioId = session?.business.id;
   const tipo = session?.business.tipo;
@@ -119,10 +126,35 @@ export default function CortesPage() {
     };
   }, [negocioId, tipo]);
 
+  async function guardarRevision(corte: Corte, revisar: boolean) {
+    if (!tipo) return;
+    setGuardando(true);
+    try {
+      const res = await marcarCorteRevisado(tipo, corte.id, nota, revisar);
+      setCortes((prev) =>
+        (prev ?? []).map((c) => (c.id === corte.id ? { ...c, revisadoAt: res.revisadoAt, revisadoNota: res.revisadoNota } : c))
+      );
+      setRevisando(null);
+      setNota("");
+      toast.success(revisar ? "Cierre marcado como revisado." : "Se quitó la marca de revisado.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo guardar. Revisa tu conexión.");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
   if (!ready || !session) return <LoadingBlock />;
 
   const queEs = tipo === "abarrotes" ? "día" : "turno";
-  const conFaltante = (cortes ?? []).filter((c) => c.diferencia != null && c.diferencia < -UMBRAL_ALARMA);
+  // Un cierre ya revisado deja de contar para el aviso rojo. Owen: "para
+  // que no le salga siempre, solo si lo necesita lo puede borrar". El aviso
+  // es útil la primera vez y ruido a partir de la segunda: si un faltante ya
+  // se aclaró con el vendedor, seguir viéndolo en rojo solo entrena a
+  // ignorarlo — y el día que aparezca uno de verdad ya no se ve.
+  const conFaltante = (cortes ?? []).filter(
+    (c) => c.diferencia != null && c.diferencia < -UMBRAL_ALARMA && !c.revisadoAt
+  );
   const faltanteTotal = conFaltante.reduce((acc, c) => acc + Math.abs(c.diferencia ?? 0), 0);
 
   return (
@@ -244,15 +276,67 @@ export default function CortesPage() {
                   </span>
                 </div>
 
-                {falta && fuerte && (
+                {falta && fuerte && !c.revisadoAt && (
                   <p className="mt-3 rounded-xl bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
                     Faltaron {formatMoney(-dif)} contra lo que debía haber en la caja.
                   </p>
                 )}
-                {sobra && fuerte && (
+                {sobra && fuerte && !c.revisadoAt && (
                   <p className="mt-3 rounded-xl bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
                     Sobraron {formatMoney(dif)}. Suele ser una venta que no se registró.
                   </p>
+                )}
+
+                {/*
+                  La nota del dueño. Nunca reemplaza a la diferencia — se
+                  muestra AL LADO, para explicar el faltante sin taparlo.
+                */}
+                {c.revisadoAt && (
+                  <div className="mt-3 rounded-xl border border-border bg-background/40 px-3 py-2">
+                    <p className="text-xs font-medium text-ledger">✓ Revisado</p>
+                    {c.revisadoNota && <p className="mt-0.5 text-xs text-muted-foreground">{c.revisadoNota}</p>}
+                    <button
+                      type="button"
+                      onClick={() => guardarRevision(c, false)}
+                      disabled={guardando}
+                      className="mt-1.5 text-[11px] text-muted-foreground underline underline-offset-2 disabled:opacity-50"
+                    >
+                      Quitar la marca
+                    </button>
+                  </div>
+                )}
+
+                {dif !== 0 && !c.revisadoAt && (
+                  revisando === c.id ? (
+                    <div className="mt-3 flex flex-col gap-2">
+                      <Input
+                        autoFocus
+                        value={nota}
+                        onChange={(e) => setNota(e.target.value)}
+                        placeholder="¿Por qué? Ej. le di mal el cambio a un cliente"
+                        maxLength={140}
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        La diferencia se queda como está — esto solo apaga el aviso y guarda tu explicación.
+                      </p>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => guardarRevision(c, true)} disabled={guardando}>
+                          {guardando ? "Guardando..." : "Ya lo revisé"}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => { setRevisando(null); setNota(""); }}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { setRevisando(c.id); setNota(""); }}
+                      className="mt-3 text-xs text-primary underline underline-offset-2"
+                    >
+                      Ya lo revisé
+                    </button>
+                  )
                 )}
               </div>
             );
