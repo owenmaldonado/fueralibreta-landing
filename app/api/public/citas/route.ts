@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { createSupabasePublicClient } from "@/lib/supabase-public";
+import { createSupabaseAdminClient, isServiceRoleConfigured } from "@/lib/supabase-admin";
 import { citaPublicaSchema } from "@/lib/validation";
 import { getAvailableSlotsForDuracion } from "@/lib/agenda";
 import type { Appointment, HorarioDia } from "@/lib/types";
@@ -134,7 +135,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Ese horario ya no está disponible, elige otro." }, { status: 409 });
   }
 
-  const { data: clienteId, error: clienteError } = await supabase.rpc("find_or_create_barberia_cliente", {
+  // service_role SOLO para este RPC (ver la ruta de lookup para el porqué
+  // completo). `find_or_create_barberia_cliente` es `security definer` y
+  // estaba abierta a `anon`: cualquiera con la llave pública podía saltarse
+  // esta ruta y meter clientes inventados en la lista de CUALQUIER barbería,
+  // sin tope, solo necesitando el id del negocio (que sale del slug, que es
+  // público). Es una escritura anónima sin dueño.
+  //
+  // El resto de la ruta se queda con el cliente público a propósito: ahí sí
+  // hay lecturas e inserts de tablas normales, y RLS es la red de seguridad
+  // que no quiero quitar. Si no hay service_role configurada se sigue con el
+  // cliente público, para que reservar nunca deje de funcionar.
+  const paraCliente = isServiceRoleConfigured ? createSupabaseAdminClient() : supabase;
+  const { data: clienteId, error: clienteError } = await paraCliente.rpc("find_or_create_barberia_cliente", {
     p_negocio_id: negocio.id,
     p_nombre: input.nombre,
     p_telefono: input.telefono,

@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { createSupabasePublicClient } from "@/lib/supabase-public";
+import { createSupabaseAdminClient, isServiceRoleConfigured } from "@/lib/supabase-admin";
 import { citaLookupSchema } from "@/lib/validation";
 
 /**
@@ -11,6 +12,21 @@ import { citaLookupSchema } from "@/lib/validation";
  * probar números al azar y leer nombre/hora de citas ajenas vía
  * get_citas_por_telefono (security definer). Con 10 req/min por IP se
  * vuelve impráctico hacer ese barrido.
+ *
+ * POR QUÉ EL RPC DE BÚSQUEDA VA CON service_role
+ * El rate limit de arriba solo existe DENTRO de esta ruta. Mientras
+ * `get_citas_por_telefono` estuviera abierta a `anon`, cualquiera podía
+ * saltarse esta ruta y pegarle directo a /rest/v1/rpc/... con la llave
+ * pública (que va en el navegador, es pública por diseño) — sin tope
+ * ninguno. El límite decía "con 10 req/min se vuelve impráctico", y era
+ * cierto por aquí, pero no por la puerta de al lado.
+ *
+ * Ahora esa función solo la puede ejecutar service_role, así que esta ruta
+ * es el ÚNICO camino y el rate limit ya no se puede rodear.
+ *
+ * Que cambie el cliente no cambia qué datos se ven: las dos funciones son
+ * `security definer`, o sea que ya corrían saltándose RLS. Lo único que
+ * cambia es QUIÉN puede llamarlas.
  */
 export async function POST(req: Request) {
   const ip = getClientIp(req);
@@ -50,7 +66,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Negocio no encontrado o inactivo." }, { status: 404 });
   }
 
-  const { data, error } = await supabase.rpc("get_citas_por_telefono", {
+  // Si por lo que sea no hay service_role configurada, se sigue con el
+  // cliente público en vez de tronar: una reserva que no se puede consultar
+  // es peor que una consulta sin el candado extra. En producción sí está
+  // (la usan /api/admin/* y el cron), así que el camino normal es el de
+  // arriba.
+  const paraBuscar = isServiceRoleConfigured ? createSupabaseAdminClient() : supabase;
+  const { data, error } = await paraBuscar.rpc("get_citas_por_telefono", {
     p_negocio_id: negocio.id,
     p_telefono: input.telefono,
   });
