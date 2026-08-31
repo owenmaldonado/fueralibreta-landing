@@ -210,7 +210,8 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
    */
   function handleSesionCambiada(empleado: EmpleadoActual | null) {
     if (empleado) {
-      setEmpleadoActual(empleado);
+      // Sellada con el negocio activo — ver limpiarEmpleadoDeOtroNegocio.
+      setEmpleadoActual({ ...empleado, negocioId: session?.business.id });
     } else {
       clearEmpleadoActual();
     }

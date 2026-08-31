@@ -147,7 +147,10 @@ export function SeleccionarEmpleado({
 
       if (resultado.ok && resultado.empleado) {
         limpiarIntentos(seleccionado.id);
-        setEmpleadoActual(resultado.empleado);
+        // Se sella con el negocio: sin esto, esta identidad sobrevivía al
+        // cambio de cuenta y metía a alguien como el vendedor de OTRO
+        // negocio (ver limpiarEmpleadoDeOtroNegocio en lib/empleados.ts).
+        setEmpleadoActual({ ...resultado.empleado, negocioId });
         onExito(resultado.empleado);
         return;
       }

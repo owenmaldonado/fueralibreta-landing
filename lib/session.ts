@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { supabase, isSupabaseConfigured } from "./supabase";
 import { iniciarRefrescoDeRespaldo } from "./refresco-respaldo";
+import { limpiarEmpleadoDeOtroNegocio } from "./empleados";
 import {
   fetchNegocioByOwner,
   fetchTenantData,
@@ -1141,6 +1142,19 @@ export function useSession() {
           huboExito = true;
           // Refresca el catálogo local (productos/precios, clientes,
           // empleados) en segundo plano — nunca bloquea lo de arriba.
+          // ANTES de pintar nada: si la cookie de empleado que trae este
+          // navegador es de OTRO negocio (o de antes de que se guardara
+          // cuál), se descarta. Es el bug de "entré con otra cuenta de
+          // Google y me metió como el vendedor de un negocio que ya había
+          // borrado": borrar el negocio en el servidor no borra una cookie
+          // del navegador. Se recarga para que el shell y el middleware
+          // vuelvan a resolver el rol desde cero, en vez de quedarse con lo
+          // que ya habían leído.
+          if (limpiarEmpleadoDeOtroNegocio(tenant.business.id)) {
+            window.location.reload();
+            return;
+          }
+
           sincronizarCacheLocalEnSegundoPlano(userId, tenant);
           // Catálogo en vivo: aplica a los 3 giros (precios/servicios/
           // platillos/stock/empleados), por eso va antes del switch por tipo.

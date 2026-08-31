@@ -29,6 +29,15 @@ export interface EmpleadoActual {
   id: string;
   nombre: string;
   rol: RolEmpleado;
+  /**
+   * A QUÉ NEGOCIO pertenece esta identidad. Sin esto, la cookie sobrevivía
+   * al cambio de cuenta: Owen creó un negocio nuevo con OTRA cuenta de
+   * Google y la app lo metió como el vendedor con PIN 7021 de un negocio
+   * anterior — uno que además ya había borrado desde /admin. La sesión de
+   * Supabase era la correcta; lo que estaba pegado era esta cookie, que no
+   * tenía forma de saber que era de otro lado. Ver limpiarEmpleadoDeOtroNegocio.
+   */
+  negocioId?: string;
 }
 
 export interface Business {

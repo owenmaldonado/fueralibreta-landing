@@ -97,6 +97,34 @@ export function setEmpleadoActual(empleado: EmpleadoActual) {
 }
 
 /** "Cambiar usuario / Cerrar turno": limpia la cookie y regresa a ¿Quién atiende? — nunca al menú de dueño directo. */
+/**
+ * Tira la identidad de empleado si NO es de este negocio.
+ *
+ * EL BUG QUE CIERRA (reportado en producción)
+ * La cookie `fl_empleado` guardaba solo {id, nombre, rol} — nunca a qué
+ * negocio pertenecía. Así que al entrar con otra cuenta de Google, a otro
+ * negocio, la app seguía viendo "soy el vendedor Fulano" y lo metía como
+ * ese vendedor. Owen lo vio con un negocio que incluso ya había borrado
+ * desde /admin: borrar el negocio en el servidor no borra una cookie que
+ * vive en el navegador. Se destrabó picando "Dueño" en el selector, que es
+ * exactamente lo que hace esta función pero a mano.
+ *
+ * Una cookie SIN negocioId es de antes de este arreglo y no hay forma de
+ * saber de quién era: se descarta. El costo es que quien esté atendiendo
+ * ahorita vuelva a elegir su nombre y teclear su PIN una vez; el beneficio
+ * es que nadie hereda la identidad de otro negocio.
+ */
+export function limpiarEmpleadoDeOtroNegocio(negocioId: string): boolean {
+  const actual = getEmpleadoActual();
+  if (!actual) return false;
+  if (actual.negocioId === negocioId) return false;
+  console.warn(
+    "[empleados] la sesión de empleado guardada es de otro negocio (o de antes de que se guardara cuál) — se descarta."
+  );
+  clearEmpleadoActual();
+  return true;
+}
+
 export function clearEmpleadoActual() {
   if (typeof document === "undefined") return;
   document.cookie = `${COOKIE_NAME}=; path=/; max-age=0`;
