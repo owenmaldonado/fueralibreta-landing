@@ -396,7 +396,7 @@ export function CerrarTurnoSheet({ open, onClose, session, update, onCompletado 
                 onChange={(e) => setEfectivoReal(e.target.value)}
                 placeholder="$0"
               />
-              <DesgloseCorte renglones={renglonesCorte} esperado={esperado} desdeCuando={desdeCuandoCuenta(negocio, negocio.timezone)} />
+              <DesgloseCorte renglones={renglonesCorte} esperado={esperado} desdeCuando={desdeCuandoCuenta(negocio, negocio.timezone, hoy)} />
               <MensajeCorte diferencia={diferencia} esperado={esperado} />
             </div>
             <div className="space-y-1.5">

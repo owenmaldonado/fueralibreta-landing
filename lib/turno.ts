@@ -75,22 +75,94 @@ export function enTurnoActual(
 }
 
 /**
+ * ¿Este GASTO entra en el turno que estoy cerrando?
+ *
+ * EL BUG QUE CIERRA (Owen: "en la misma fonda los gastos no se van a 0, se
+ * cuenta lo de todo el día en vez de iniciar en cero... lo mismo de los
+ * gastos con abarrotera")
+ *
+ * Las ventas ya arrancaban en cero en cada turno (enTurnoActual, arriba),
+ * pero los gastos no: fonda_gastos y abarrotes_gastos solo guardaban `fecha`
+ * (un DÍA, no un instante), así que no había forma de saber de qué lado del
+ * cierre había caído cada uno y se contaban todos los del día. El turno de
+ * la tarde volvía a restar los gastos que el de la mañana ya había
+ * entregado, y el corte le salía corto a quien cerraba de noche.
+ *
+ * La migración 20260925000000 le agrega `created_at` a las dos tablas; con
+ * ese instante los gastos se parten por turno igual que las ventas.
+ *
+ * POR QUÉ NO ES `enTurnoActual` A SECAS
+ * Un gasto puede estar PROGRAMADO a futuro ("pagar la renta el día 1"): se
+ * captura hoy pero el dinero sale otro día. `fecha` es el día en que sale el
+ * dinero y es lo que manda para saber a qué caja pertenece — por eso se
+ * exige `fecha === hoy` en vez de mirar el día del instante de captura.
+ *
+ * COMPATIBILIDAD
+ * Un gasto sin `creadoEn` (capturado antes de la migración) se sigue
+ * contando en el turno en curso, exactamente como antes. Es a propósito:
+ * hacer desaparecer gastos viejos de un corte sería peor que contarlos de
+ * más, y se cura solo en cuanto cambia el día.
+ */
+export function gastoEnTurnoActual(
+  gasto: { creadoEn?: string | null; fecha: string },
+  business: Pick<Business, "turnoCerradoEn" | "turnoFondaCerradoEn" | "timezone">,
+  hoy: string
+): boolean {
+  // El día en que sale el dinero. Un gasto programado a futuro no toca la
+  // caja de hoy; uno con fecha de ayer tampoco.
+  if (gasto.fecha !== hoy) return false;
+
+  const desde = inicioDelTurno(business);
+  if (!desde) return true; // nunca se ha cerrado nada: el turno es el día entero
+  if (!gasto.creadoEn) return true; // gasto viejo sin instante: se cuenta, como siempre
+
+  const capturado = new Date(gasto.creadoEn);
+  if (Number.isNaN(capturado.getTime())) return true;
+  return capturado > desde;
+}
+
+/**
  * Etiqueta para la pantalla de cierre: desde cuándo cuenta este turno. Sirve
  * para que quien cierra entienda por qué el número es el que es (y para que
  * el segundo turno del día no parezca que "perdió" ventas).
  */
 export function desdeCuandoCuenta(
   business: Pick<Business, "turnoCerradoEn" | "turnoFondaCerradoEn">,
-  timezone?: string
+  timezone: string | undefined,
+  /**
+   * Día de hoy del negocio ("YYYY-MM-DD"). Obligatorio: sin él esta etiqueta
+   * MENTÍA en el caso más común de todos.
+   *
+   * enTurnoActual() exige dos cosas — que el movimiento sea de HOY y que sea
+   * posterior al último cierre — pero esta etiqueta solo miraba la segunda.
+   * Un negocio que cerró ayer a las 8pm abría hoy contando desde la
+   * medianoche (correcto), mientras la pantalla del corte decía "Desde el
+   * último cierre, a las 8:00 p.m." — o sea, anunciaba una ventana que
+   * incluiría toda la noche de ayer, que es justo lo que el código NO hace.
+   * Quien leía eso y no le cuadraba el número no tenía forma de saber quién
+   * de los dos estaba mal.
+   */
+  hoy: string
 ): string {
   const desde = inicioDelTurno(business);
-  if (!desde) return "Desde que abrieron hoy";
+  // Sin cierres, o con el último cierre en un día anterior: hoy el turno
+  // arranca cuando abrieron, no en la marca vieja.
+  if (!desde || diaDelNegocio(desde.toISOString(), timezone) !== hoy) return "Desde que abrieron hoy";
   const hora = desde.toLocaleTimeString("es-MX", {
     timeZone: timezone,
     hour: "numeric",
     minute: "2-digit",
   });
   return `Desde el último cierre, a las ${hora}`;
+}
+
+/** ¿Ya hubo un cierre HOY? Es lo que decide si vale la pena explicar por qué los números arrancaron en cero. */
+export function huboCierreHoy(
+  business: Pick<Business, "turnoCerradoEn" | "turnoFondaCerradoEn" | "timezone">,
+  hoy: string
+): boolean {
+  const desde = inicioDelTurno(business);
+  return desde != null && diaDelNegocio(desde.toISOString(), business.timezone) === hoy;
 }
 
 /**

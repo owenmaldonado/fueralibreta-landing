@@ -13,7 +13,7 @@ import { insertGastoDirecto, cleanInsert } from "@/lib/data";
 import { supabase } from "@/lib/supabase";
 import { useOnlineStatus } from "@/lib/use-online-status";
 import { CierreBloqueado } from "./cierre-bloqueado";
-import { enTurnoActual, desdeCuandoCuenta } from "@/lib/turno";
+import { enTurnoActual, gastoEnTurnoActual, desdeCuandoCuenta } from "@/lib/turno";
 import { formatMoney, formatMoneyExacto, fechaCalendarioLocal, redondear2, uid } from "@/lib/mock";
 import { MensajeCorte } from "./mensaje-corte";
 import { DesgloseCorte, type RenglonCorte } from "./desglose-corte";
@@ -142,12 +142,22 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
   // mismo paso — cualquier gasto registrado hoy desde Gastos/Ventas (por
   // cualquier empleado) no se restaba, así que el corte podía decir que
   // sobraba dinero que en realidad ya se había gastado en otro lado.
-  // Los gastos SOLO guardan el día (no la hora), así que no se pueden partir
-  // entre dos turnos del mismo día. Se quedan por día a propósito: partirlos
-  // mal sería peor que contarlos completos, y el dueño los ve desglosados en
-  // /app/cortes. Es justo lo que Owen reportó como "las ventas inician en 0
-  // pero siguen ahí los mismos gastos" — es real, y esta es la razón.
-  const gastosHoyDelDia = data.gastos.filter((g) => fechaCalendarioLocal(g.fecha, negocio.timezone) === hoy);
+  //
+  // Y HASTA AQUÍ CONTABA TODO EL DÍA. Aquí mismo estaba escrito el porqué:
+  // los gastos solo guardaban el día, no la hora, así que no había forma de
+  // partirlos entre dos cierres del mismo día. Owen lo reportó tal cual
+  // ("las ventas inician en 0 pero siguen ahí los mismos gastos", "lo mismo
+  // de los gastos con abarrotera") y era real: el segundo cierre del día
+  // volvía a restar los gastos que el primero ya había entregado, y a quien
+  // cerraba en la tarde le salía un faltante que no era suyo.
+  //
+  // La migración 20260925000000 le agrega `created_at` a abarrotes_gastos,
+  // así que ya se pueden partir por turno igual que las ventas. Un gasto de
+  // antes de esa migración (sin instante) se sigue contando como siempre —
+  // ver gastoEnTurnoActual en lib/turno.ts.
+  const gastosHoyDelDia = data.gastos.filter((g) =>
+    gastoEnTurnoActual({ creadoEn: g.creadoEn, fecha: fechaCalendarioLocal(g.fecha, negocio.timezone) }, negocio, hoy)
+  );
   const fondoInicialNum = fondoInicial.trim() === "" ? 0 : Number(fondoInicial) || 0;
   const gastoNum = gastoMonto.trim() === "" ? 0 : Number(gastoMonto) || 0;
   const gastosHoyDelDiaTotal = gastosHoyDelDia.reduce((acc, g) => acc + g.monto, 0);
@@ -160,7 +170,7 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
   const renglonesCorte: RenglonCorte[] = [
     { concepto: "Vendido", monto: ventasHoyTotal, tipo: "suma" },
     { concepto: "Fondo inicial", monto: fondoInicialNum, tipo: "suma" },
-    { concepto: "Gastos ya registrados hoy", monto: gastosHoyDelDiaTotal, tipo: "resta" },
+    { concepto: "Gastos ya registrados en el turno", monto: gastosHoyDelDiaTotal, tipo: "resta" },
     { concepto: "Gasto que estás capturando", monto: gastoNum, tipo: "resta" },
   ];
   const efectivoValido = efectivoReal.trim() !== "" && !isNaN(Number(efectivoReal)) && Number(efectivoReal) >= 0;
@@ -212,6 +222,10 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
         categoria: gastoConcepto.trim() || "Gasto del día",
         monto: Number(gastoMonto),
         fecha: hoy,
+        // Se captura ANTES de que se escriba la marca del cierre (más abajo,
+        // en terminarCierre), así que este gasto queda del lado del turno
+        // que se está cerrando — no del siguiente. Ver gastoEnTurnoActual.
+        creadoEn: new Date().toISOString(),
         ...camposEmpleado(),
       };
 
@@ -267,7 +281,16 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
       });
 
       if (decision.accion === "caduco" && cantidad && cantidad > 0 && perdida && perdida > 0) {
-        nuevosGastos.push({ id: uid("exp"), categoria: `Merma: ${p.nombre} x${cantidad}`, monto: perdida, fecha: hoy, ...camposEmpleado() });
+        nuevosGastos.push({
+          id: uid("exp"),
+          categoria: `Merma: ${p.nombre} x${cantidad}`,
+          monto: perdida,
+          fecha: hoy,
+          // Igual que el gasto del paso 1: se registra antes de la marca de
+          // cierre, así que pertenece al turno que se está cerrando.
+          creadoEn: new Date().toISOString(),
+          ...camposEmpleado(),
+        });
       }
     }
 
@@ -367,7 +390,7 @@ export function CerrarDiaSheet({ open, onClose, session, update, onCompletado }:
             <div className="space-y-1.5">
               <Label>¿Efectivo real en mano?</Label>
               <Input type="number" inputMode="decimal" autoFocus value={efectivoReal} onChange={(e) => setEfectivoReal(e.target.value)} placeholder="$0" />
-              <DesgloseCorte renglones={renglonesCorte} esperado={esperado} desdeCuando={desdeCuandoCuenta(negocio, negocio.timezone)} />
+              <DesgloseCorte renglones={renglonesCorte} esperado={esperado} desdeCuando={desdeCuandoCuenta(negocio, negocio.timezone, hoy)} />
               <MensajeCorte diferencia={diferencia} esperado={esperado} />
             </div>
             <div className="space-y-1.5">

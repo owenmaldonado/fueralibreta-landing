@@ -365,8 +365,28 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
         </div>
       )}
 
+      {/*
+        OJO: `children` SE MONTA SIEMPRE, aunque la pantalla esté bloqueada
+        por falta de conexión — se esconde con `hidden`, no se desmonta.
+
+        EL BUG QUE CIERRA (Owen: "me pasé poniendo el PIN de dueño y creando
+        otro y pues se borraba")
+
+        Antes esto era un ternario: sin señal, `children` desaparecía del
+        árbol de React. Y `online` viene de navigator.onLine, que en un
+        celular con señal irregular parpadea solo — un bajón de un segundo
+        bastaba para desmontar la pantalla entera y volverla a montar en
+        blanco. En /app/empleados (que está en RUTAS_BLOQUEADAS_SIN_CONEXION)
+        eso significaba perder el PIN a medio teclear y el formulario del
+        empleado nuevo, sin ningún aviso y sin nada que se pudiera "deshacer".
+
+        Manteniéndolo montado y solo oculto, el estado de React sobrevive: en
+        cuanto vuelve la señal, lo que estaba escrito sigue ahí. El bloqueo
+        real (no poder GUARDAR sin conexión) no depende de esto — lo hace el
+        guardia central de update() en lib/session.ts.
+      */}
       <div className="mx-auto max-w-md">
-        {rutaBloqueadaSinConexion ? (
+        {rutaBloqueadaSinConexion && (
           <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary">
               <WifiOff className="h-7 w-7 text-muted-foreground" />
@@ -374,13 +394,13 @@ export function AuthenticatedShell({ children }: { children: React.ReactNode }) 
             <div>
               <h2 className="font-display text-lg font-bold">No disponible sin conexión</h2>
               <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-                Sin señal solo puedes seguir vendiendo. Esta pantalla vuelve a estar disponible en cuanto regrese la conexión.
+                Sin señal solo puedes seguir vendiendo. Esta pantalla vuelve a estar disponible en cuanto regrese la conexión —
+                lo que ya habías escrito sigue ahí.
               </p>
             </div>
           </div>
-        ) : (
-          children
         )}
+        <div hidden={rutaBloqueadaSinConexion}>{children}</div>
       </div>
 
       <Fab actions={actions} onSelect={setQuickAdd} />

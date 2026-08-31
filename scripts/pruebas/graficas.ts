@@ -79,5 +79,81 @@ const comoLlegaDeLaBase = [{ fecha: diaDeColumnaFecha("2026-08-28T00:00:00+00:00
 eq(aggregateByRange(comoLlegaDeLaBase, "semanal", i => i.fecha, i => i.monto, ctx).find(x => x.label === "Vie")!.value,
    190, "pedido del viernes 28 se pinta en la barra del VIERNES");
 
+// ---------------------------------------------------------------------------
+// LA INVARIANTE QUE CONECTA EL PANEL DE ARRIBA CON LA GRÁFICA DE ABAJO
+// ---------------------------------------------------------------------------
+// En /app/gastos y /app/caja, el número grande de arriba ("Total ventas",
+// "Total gastos", "Ganancia real") sale de filterByRango(...).reduce(), y las
+// barras de abajo salen de aggregateByRange(). Son dos funciones distintas
+// mirando los mismos datos, y si alguna vez dejan de coincidir la pantalla se
+// contradice sola: el dueño ve $5,000 arriba y barras que suman $4,200, sin
+// forma de saber cuál creer. Ya pasó una vez (la lista recalculaba la ventana
+// Lunes-Domingo a mano con Dates).
+//
+// Esto lo prueba a lo bruto: 400 movimientos con fechas repartidas a lo largo
+// de dos años (incluyendo timestamptz, fechas basura y montos negativos, que
+// es lo que aparece en la serie de "Ventas − gastos"), contra los tres rangos
+// y con anclas distintas. Si alguien vuelve a escribir una de las dos ventanas
+// a mano, esto truena.
+function fechaPseudoAleatoria(i: number): string {
+  // Determinista a propósito: una prueba que falla solo a veces no sirve.
+  const dias = (i * 37) % 730; // ~2 años
+  const base = Date.UTC(2025, 0, 1) + dias * 86_400_000;
+  const d = new Date(base);
+  const iso = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+  if (i % 11 === 0) return `${iso}T18:30:00+00:00`; // timestamptz (venta de abarrotes)
+  if (i % 97 === 0) return "no-es-fecha";           // fila corrupta
+  return iso;
+}
+const universo = Array.from({ length: 400 }, (_, i) => ({
+  fecha: fechaPseudoAleatoria(i),
+  // Montos negativos incluidos: "Ventas − gastos" y "Ganancia real" pueden
+  // serlo, y una suma que se cancela no debe romper la comparación.
+  monto: ((i * 13) % 500) - 150,
+}));
+
+let descuadres = 0;
+for (const rango of ["semanal", "mensual", "anual"] as const) {
+  for (const ancla of ["2026-08-28", "2026-01-01", "2026-12-31", "2025-12-31", "2026-02-15"]) {
+    const ctxP = { hoy: ancla, timezone: "America/Mexico_City" };
+    const enLaLista = filterByRango(universo, rango, (i) => i.fecha, ctxP).reduce((acc, i) => acc + i.monto, 0);
+    const enLaGrafica = aggregateByRange(universo, rango, (i) => i.fecha, (i) => i.monto, ctxP).reduce((acc, b) => acc + b.value, 0);
+    if (Math.abs(enLaLista - enLaGrafica) > 1e-9) {
+      console.log("FALLO: el total de la lista no coincide con la suma de las barras", { rango, ancla, enLaLista, enLaGrafica });
+      descuadres++;
+    }
+  }
+}
+eq(descuadres, 0, "panel y gráfica siempre suman lo mismo (3 rangos x 5 anclas x 400 movimientos)");
+
+// Y la otra mitad de esa invariante: dos series en una pasada
+// (aggregateTwoByRange, la de "ingresos vs gastos" de /app/caja) tiene que dar
+// exactamente lo mismo que dos pasadas separadas.
+const dos = aggregateTwoByRange(
+  universo.map((i) => ({ ...i, a: i.monto, b: i.monto * 2 })),
+  "anual",
+  (i) => i.fecha,
+  (i) => ({ a: i.a, b: i.b }),
+  { hoy: "2026-08-28", timezone: "America/Mexico_City" }
+);
+const unaA = aggregateByRange(universo, "anual", (i) => i.fecha, (i) => i.monto, { hoy: "2026-08-28", timezone: "America/Mexico_City" });
+eq(dos.map((x) => x.a), unaA.map((x) => x.value), "aggregateTwoByRange da lo mismo que aggregateByRange, bucket por bucket");
+eq(dos.every((x, i) => Math.abs(x.b - unaA[i].value * 2) < 1e-9), true, "y la segunda serie tampoco se corre de bucket");
+
+// Un rango vacío devuelve TODOS los buckets en cero, no un arreglo vacío: la
+// gráfica tiene que seguir dibujando los 7 días / 4 semanas / 12 meses aunque
+// no haya ningún movimiento.
+const vacio = aggregateByRange([], "semanal", (i: { fecha: string }) => i.fecha, () => 0, ctx);
+eq(vacio.length, 7, "una semana sin movimientos sigue teniendo sus 7 barras");
+eq(aggregateByRange([], "mensual", (i: { fecha: string }) => i.fecha, () => 0, ctx).length, 4, "un mes sin movimientos sigue teniendo sus 4 semanas");
+eq(aggregateByRange([], "anual", (i: { fecha: string }) => i.fecha, () => 0, ctx).length, 12, "un año sin movimientos sigue teniendo sus 12 meses");
+
+// Febrero de año bisiesto y meses de 30: la semana 4 se estira hasta el último
+// día real del mes, sin dejar días fuera de la gráfica.
+eq(aggregateByRange([{ fecha: "2028-02-29", monto: 5 }], "mensual", (i) => i.fecha, (i) => i.monto, { hoy: "2028-02-15" })[3].value,
+  5, "el 29 de febrero bisiesto entra en la semana 4");
+eq(aggregateByRange([{ fecha: "2026-04-30", monto: 5 }], "mensual", (i) => i.fecha, (i) => i.monto, { hoy: "2026-04-10" })[3].value,
+  5, "el 30 de un mes de 30 días entra en la semana 4");
+
 console.log(fallos === 0 ? "\nTODO OK" : `\n${fallos} FALLOS`);
 process.exit(fallos ? 1 : 0);

@@ -43,13 +43,23 @@ export function AbarrotesDashboard({ session }: { session: TenantData; update: S
   const fiadosConSaldo = data.fiados.filter((f) => f.saldo > 0 && !ignorados.has(`fiado-${f.id}`));
   const gastosPendientes = data.gastos.filter((g) => g.recordatorio && !ignorados.has(`gasto-${g.id}`));
   // abarrotes_ventas.fecha es timestamptz en UTC — fechaCalendarioLocal lo
-  // convierte al día calendario del dispositivo (no una zona hardcodeada)
-  // antes de comparar, para que una venta ya tarde en el día no cuente
-  // como "de mañana" ni "Ventas de hoy" salga en $0.
-  // Mismo filtro de siempre para "Ventas hoy" (sin excluir cancelada — no
-  // es parte de este cambio, se deja tal cual estaba). ventasDeHoy solo se
-  // usa para "Equipo hoy" abajo.
-  const ventasDeHoy = data.ventas.filter((v) => fechaCalendarioLocal(v.fecha, session.business.timezone) === hoy);
+  // convierte al día calendario del NEGOCIO antes de comparar, para que una
+  // venta ya tarde en el día no cuente como "de mañana" ni "Ventas hoy"
+  // salga en $0.
+  //
+  // `!v.cancelada` FALTABA AQUÍ, y solo aquí.
+  //
+  // Una venta cancelada (un rol "vendedor" no puede borrar, solo cancelar —
+  // ver PERMISOS en lib/empleados.ts) ya salía de las cuentas en TODAS las
+  // demás pantallas: el reporte de Gastos/Ventas la excluye, el corte de
+  // Cerrar Día la excluye. Menos este panel, que es justo el primero que ve
+  // el dueño al abrir la app. Así que cancelar una venta de $500 la sacaba
+  // del corte y del reporte pero la dejaba en "Ventas hoy" — y en "Equipo
+  // hoy" seguía apuntada a nombre de quien la hizo. Es exactamente el tipo
+  // de descuadre que hace desconfiar de todos los demás números.
+  const ventasDeHoy = data.ventas.filter(
+    (v) => !v.cancelada && fechaCalendarioLocal(v.fecha, session.business.timezone) === hoy
+  );
   const ventasHoy = ventasDeHoy.reduce((acc, v) => acc + v.total, 0);
 
   // "Equipo hoy" (PR #121, trazabilidad vendedor/encargado) — quién vendió

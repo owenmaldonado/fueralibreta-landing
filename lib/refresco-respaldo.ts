@@ -154,7 +154,14 @@ export function hayCambios(actual: TenantData, mezclado: TenantData): boolean {
  */
 export function iniciarRefrescoDeRespaldo(
   leerActual: () => TenantData | null,
-  aplicar: (mezclar: (prev: TenantData) => TenantData) => void
+  aplicar: (mezclar: (prev: TenantData) => TenantData) => void,
+  /**
+   * "¿Hay algo guardándose en Supabase ahora mismo?" — lo pasa lib/session.ts
+   * (haySincronizacionPendiente). Se recibe como parámetro en vez de
+   * importarlo: session.ts ya importa este archivo, e importarlo de vuelta
+   * dejaría un ciclo entre los dos módulos.
+   */
+  hayEscriturasPendientes: () => boolean = () => false
 ): () => void {
   let cancelado = false;
   let enVuelo = false;
@@ -166,10 +173,29 @@ export function iniciarRefrescoDeRespaldo(
     if (typeof navigator !== "undefined" && !navigator.onLine) return;
     if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
 
+    // NUNCA refrescar encima de una escritura en vuelo.
+    //
+    // update() (lib/session.ts) es optimista: pinta el cambio al instante y
+    // manda el INSERT/UPDATE a Supabase en segundo plano. Si el temporizador
+    // cae justo en ese hueco, `fetchTenantData` trae un estado del servidor
+    // que TODAVÍA no incluye lo que se acaba de guardar, y mezclarLista() —
+    // que para las filas que el servidor sí conoce se queda con la versión
+    // del servidor — deshace el cambio en pantalla. El pedido recién marcado
+    // como entregado volvía a "pendiente" solo, y quien lo estaba cobrando
+    // veía deshacerse su trabajo aunque al final sí quedara guardado.
+    //
+    // No se pierde nada por esperar: en cuanto la escritura termina, la
+    // siguiente vuelta (o el propio realtime) trae todo al día.
+    if (hayEscriturasPendientes()) return;
+
     enVuelo = true;
     try {
       const fresco = await fetchTenantData(actual.business);
       if (cancelado) return;
+      // Se vuelve a preguntar DESPUÉS del fetch: la escritura pudo haber
+      // arrancado mientras la consulta viajaba, y en ese caso los datos que
+      // acaban de llegar ya nacieron viejos.
+      if (hayEscriturasPendientes()) return;
       aplicar((prev) => {
         const mezclado = mezclarTenant(prev, fresco);
         if (!hayCambios(prev, mezclado)) return prev;
