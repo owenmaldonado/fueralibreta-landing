@@ -26,7 +26,7 @@ import { PendingSaleStatus } from "@/components/app-shell/pending-sale-status";
 import { VentaForm } from "@/components/abarrotes/venta-form";
 import { useSession } from "@/lib/session";
 import { insertGastoDirecto, updateGastoDirecto, deleteGastoDirecto } from "@/lib/data";
-import { formatMoney, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
+import { formatMoney, formatFechaCorta, fechaCalendarioLocal, todayISO, uid } from "@/lib/mock";
 import { useHoy } from "@/lib/use-hoy";
 import { aggregateByRange, filterByRango, type RangoTiempo } from "@/lib/chart-buckets";
 import { permisosActuales, getEmpleadoActual, camposEmpleado } from "@/lib/empleados";
@@ -66,11 +66,6 @@ interface Movimiento {
 
 /** Valor de personaFiltro para "sin empleado_nombre_cache" — un movimiento hecho por el dueño directo, sin pasar por el kiosko. */
 const PERSONA_DUENO = "__dueno__";
-
-function formatFechaCorta(fecha: string): string {
-  const d = /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? new Date(`${fecha}T00:00:00`) : new Date(fecha);
-  return d.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
-}
 
 /** Página compartida por Fonda y Abarrotes: ambas guardan gastos con la misma forma. */
 export default function GastosPage() {

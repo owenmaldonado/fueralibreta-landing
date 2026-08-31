@@ -105,6 +105,19 @@ export function formatRelativeTime(iso: string): string {
   return `Hace ${years} año${years === 1 ? "" : "s"}`;
 }
 
+/**
+ * "31 ago" — para las listas de movimientos. Acepta tanto un día calendario
+ * ("2026-08-31", que es como guardan gastos/pedidos/citas) como un instante
+ * ISO. El día suelto se ancla con "T00:00:00" a propósito: `new Date("2026-08-31")`
+ * lo interpretaría como MEDIANOCHE UTC, que en México es el 30 a las 6pm — el
+ * corrimiento de un día que este archivo lleva evitando desde hace rato (ver
+ * lib/chart-buckets.ts).
+ */
+export function formatFechaCorta(fecha: string): string {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? new Date(`${fecha}T00:00:00`) : new Date(fecha);
+  return d.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+}
+
 /** "14:00" -> "2:00 PM". Para mostrar horas de 24h guardadas en la base como 12h. */
 export function formatHora12(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);

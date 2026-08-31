@@ -22,7 +22,7 @@ import { EmpleadoBadge } from "@/components/dashboards/empleado-badge";
 import { useSession } from "@/lib/session";
 import { usePlan } from "@/lib/planes";
 import { insertCajaEntryDirecto, updateCajaEntryDirecto, deleteCajaEntryDirecto } from "@/lib/data";
-import { formatMoney, uid } from "@/lib/mock";
+import { formatMoney, formatFechaCorta, formatHora12, uid } from "@/lib/mock";
 import { useHoy } from "@/lib/use-hoy";
 import { VentaRapidaSheet, VentaRapidaBoton } from "@/components/dashboards/barberia-venta-rapida";
 import { aggregateTwoByRange, type RangoTiempo, filterByRango } from "@/lib/chart-buckets";
@@ -204,10 +204,44 @@ export default function CajaPage() {
     tipo: CajaEntry["tipo"] | "corte";
     concepto: string;
     monto: number;
-    fecha: string;
+    /** Lo que se muestra: "31 ago, 01:05 p.m." ya en la hora del NEGOCIO. */
+    cuando: string;
+    /**
+     * Clave de orden "YYYY-MM-DDTHH:MM", en día y hora del NEGOCIO.
+     *
+     * EL BUG QUE CIERRA
+     * Antes se ordenaba por el campo `fecha` crudo de cada fuente, y las dos
+     * fuentes no hablan el mismo idioma: un corte trae "2026-08-31T13:00"
+     * (día y hora del negocio, sin zona) y un movimiento de barberia_caja
+     * trae "2026-08-31T19:05:00+00:00" (un instante en UTC). Comparados como
+     * texto, CUALQUIER movimiento de caja se iba arriba de CUALQUIER corte
+     * del mismo día — la "T19" le gana a la "T13" aunque en la barbería las
+     * dos hayan sido a la una de la tarde. La lista salía revuelta sin que
+     * nada lo explicara.
+     */
+    orden: string;
     metodo: CajaEntry["metodo"] | undefined;
     empleadoNombreCache?: string;
     empleadoRolCache?: RolEmpleado;
+  }
+  const tz = session.business.timezone;
+  /** "2026-08-31T13:05" en la zona del negocio — el formato sueco es el único que sale ya ordenable. */
+  function diaYHoraDelNegocio(instante: string): string {
+    const d = new Date(instante);
+    if (Number.isNaN(d.getTime())) return instante;
+    return d.toLocaleString("sv-SE", tz ? { timeZone: tz } : undefined).replace(" ", "T").slice(0, 16);
+  }
+  /** Lo que lee el dueño: día, mes y hora del NEGOCIO (antes salía en la hora del dispositivo). */
+  function etiquetaDeFecha(instante: string): string {
+    const d = new Date(instante);
+    if (Number.isNaN(d.getTime())) return instante;
+    return d.toLocaleString("es-MX", {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      ...(tz ? { timeZone: tz } : {}),
+    });
   }
   const movimientos: MovimientoVisual[] = [
     ...cajaFiltrada.map((m) => ({
@@ -215,7 +249,8 @@ export default function CajaPage() {
       tipo: m.tipo,
       concepto: m.concepto,
       monto: m.monto,
-      fecha: m.fecha,
+      cuando: etiquetaDeFecha(m.fecha),
+      orden: diaYHoraDelNegocio(m.fecha),
       metodo: m.metodo,
       empleadoNombreCache: m.empleadoNombreCache,
       empleadoRolCache: m.empleadoRolCache,
@@ -225,12 +260,18 @@ export default function CajaPage() {
       tipo: "corte" as const,
       concepto: c.clienteNombre ? `${c.servicioNombre} · ${c.clienteNombre}` : c.servicioNombre,
       monto: c.precio,
-      fecha: `${c.fecha}T${c.hora}`,
+      // barberia_citas ya guarda día y hora DEL NEGOCIO por separado: se
+      // arman a mano en vez de pasar por new Date(), que volvería a
+      // interpretar ese texto como un instante en la zona del dispositivo —
+      // el corrimiento de un día que este archivo lleva evitando desde hace
+      // rato (ver lib/chart-buckets.ts).
+      cuando: `${formatFechaCorta(c.fecha)}, ${formatHora12(c.hora)}`,
+      orden: `${c.fecha}T${c.hora}`,
       metodo: c.metodo,
       empleadoNombreCache: c.empleadoNombreCache,
       empleadoRolCache: c.empleadoRolCache,
     })),
-  ].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  ].sort((a, b) => b.orden.localeCompare(a.orden));
   // La barra de "Ingreso" de una VENTA DE PRODUCTO lleva el margen
   // (monto - costo), no lo cobrado.
   //
@@ -479,7 +520,7 @@ export default function CajaPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{m.concepto}</p>
                   <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-                    {new Date(m.fecha).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    {m.cuando}
                     <CreditCard className="hidden h-3 w-3" />
                     · {m.metodo === "efectivo" ? "Efectivo" : "Transferencia"}
                   </p>
