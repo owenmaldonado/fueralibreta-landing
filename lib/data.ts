@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+
 import { supabase } from "./supabase";
 import { normalizarPlan } from "./planes";
 import { diaDeColumnaFecha } from "./chart-buckets";
@@ -188,6 +190,43 @@ function nombreColumnaFaltante(error: { code?: string; message?: string } | null
 }
 
 /**
+ * Avisar EN PANTALLA que se guardó una fila sin uno de sus campos.
+ *
+ * POR QUÉ EXISTE ESTO
+ * Guardar sin la columna que falta es lo correcto: más vale una venta sin su
+ * costo que perder la venta. Pero hasta ahora el único rastro era un
+ * console.warn, y nadie mira la consola del navegador. El resultado fue un
+ * bug que sobrevivió semanas:
+ *
+ *   a barberia_caja le faltaba la columna `costo` -> cada venta de producto
+ *   se guardaba sin costo -> la gráfica pintaba lo COBRADO en vez de lo
+ *   GANADO -> se reportó tres veces como "la ganancia sigue mal", y desde
+ *   afuera era imposible distinguirlo de un error de suma.
+ *
+ * Todo "funcionaba": la venta se guardaba, el diálogo mostraba la ganancia
+ * correcta (calculada en el momento, sin pasar por la base). El dato se
+ * perdía calladito en el camino.
+ *
+ * Una sola vez por columna y por sesión: quien esté cobrando no necesita ver
+ * el mismo aviso en cada venta, pero sí enterarse de que hay algo que
+ * arreglar.
+ */
+const columnasYaAvisadas = new Set<string>();
+
+function avisarColumnaFaltante(tabla: string, columna: string) {
+  const llave = `${tabla}.${columna}`;
+  console.warn(
+    `[base de datos] "${tabla}" no tiene la columna "${columna}": la fila se guardó SIN ese dato. ` +
+      "Falta correr una migración pendiente (ver correr-en-supabase.sql)."
+  );
+  if (columnasYaAvisadas.has(llave)) return;
+  columnasYaAvisadas.add(llave);
+  toast.error(`Se guardó, pero sin el campo "${columna}". Tu base necesita una actualización pendiente.`, {
+    duration: 10000,
+  });
+}
+
+/**
  * Insert resiliente al drift de columnas descrito arriba: si Supabase
  * rechaza el insert por PGRST204, reintenta UNA vez sin esa columna en vez
  * de perder la fila completa (antes: un negocio_id + empleado_rol_cache
@@ -217,9 +256,7 @@ export async function cleanInsert(table: string, rows: Row[]): Promise<void> {
     throw error;
   }
 
-  console.warn(
-    `cleanInsert: "${table}" no tiene la columna "${columna}" en el schema cache de Supabase (falta correr/reasertar una migración) — reintentando el insert sin ese campo para no perder la fila.`
-  );
+  avisarColumnaFaltante(table, columna);
   const rowsSinColumna = rows.map((r) => {
     const { [columna]: _omitida, ...resto } = r;
     return resto;
@@ -251,9 +288,7 @@ async function cleanUpdate(table: string, row: Row): Promise<void> {
     throw error;
   }
 
-  console.warn(
-    `cleanUpdate: "${table}" no tiene la columna "${columna}" en el schema cache de Supabase — reintentando el update sin ese campo.`
-  );
+  avisarColumnaFaltante(table, columna);
   const { [columna]: _omitida, ...resto } = row;
   const { error: error2 } = await supabase
     .from(table)
