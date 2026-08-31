@@ -88,11 +88,11 @@ export async function POST(req: Request) {
     supabase.from("barberia_horario").select("*").eq("negocio_id", negocio.id),
     supabase.from("barberia_excepciones").select("*").eq("negocio_id", negocio.id),
     supabase.from("barberia_servicios").select("id, nombre, precio, duracion_min").eq("negocio_id", negocio.id),
-    supabase
-      .from("barberia_citas_publicas")
-      .select("fecha, hora, estado, servicio_id")
-      .eq("negocio_id", negocio.id)
-      .eq("fecha", input.fecha),
+    // Ver el comentario en fetchPublicBookingData (lib/data.ts): la vista
+    // barberia_citas_publicas ya no se puede leer desde el navegador porque
+    // se podía pedir sin filtro de negocio. Esta función exige el negocio, y
+    // aquí además se le pasa el día.
+    supabase.rpc("citas_publicas_de_negocio", { p_negocio_id: negocio.id, p_fecha: input.fecha }),
   ]);
   for (const r of [horarioRes, excepcionesRes, todosServiciosRes, citasDelDiaRes]) {
     if (r.error) {
@@ -122,7 +122,7 @@ export async function POST(req: Request) {
       precio: Number(s.precio),
       duracion_min: s.duracion_min as number,
     })),
-    citas: (citasDelDiaRes.data ?? []).map((c) => ({
+    citas: ((citasDelDiaRes.data ?? []) as Record<string, unknown>[]).map((c) => ({
       fecha: c.fecha as string,
       hora: (c.hora as string).slice(0, 5),
       estado: c.estado as Appointment["estado"],

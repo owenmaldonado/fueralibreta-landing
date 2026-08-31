@@ -1199,7 +1199,13 @@ export async function fetchPublicBookingData(negocioId: string): Promise<PublicB
     supabase.from("barberia_servicios").select("*").eq("negocio_id", negocioId),
     supabase.from("barberia_horario").select("*").eq("negocio_id", negocioId),
     supabase.from("barberia_excepciones").select("*").eq("negocio_id", negocioId),
-    supabase.from("barberia_citas_publicas").select("*").eq("negocio_id", negocioId),
+    // RPC en vez de .from("barberia_citas_publicas"): esa vista se salta el
+    // RLS (no lleva security_invoker) y `anon` podía pedirla SIN filtro, o
+    // sea bajarse las citas de TODOS los negocios de un jalón. La función
+    // exige el negocio como parámetro, así que ya no hay forma de pedir
+    // "todas". Devuelve exactamente las mismas columnas. Ver migración
+    // 20260920000000.
+    supabase.rpc("citas_publicas_de_negocio", { p_negocio_id: negocioId }),
   ]);
   for (const r of [servicios, horario, excepciones, citas]) {
     if (r.error) throw r.error;
@@ -1208,7 +1214,7 @@ export async function fetchPublicBookingData(negocioId: string): Promise<PublicB
     servicios: (servicios.data ?? []).map(servicioFromRow),
     horario: (horario.data ?? []).map(horarioFromRow),
     excepciones: (excepciones.data ?? []).map(excepcionFromRow),
-    citas: (citas.data ?? []).map((r) => ({
+    citas: ((citas.data ?? []) as Row[]).map((r) => ({
       fecha: diaDeColumnaFecha(r.fecha),
       hora: (r.hora as string).slice(0, 5),
       estado: r.estado as Appointment["estado"],
