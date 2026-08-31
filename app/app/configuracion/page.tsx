@@ -22,12 +22,30 @@ import { formatMoney, todayISO, toISODate, uid } from "@/lib/mock";
 import { telefonoMxSchema } from "@/lib/validation";
 import type { Business, HorarioDia } from "@/lib/types";
 
-const SECTIONS = [
+// Horario, Excepciones y Servicios son de BARBERÍA y solo de barbería:
+// leen session.barberia (horarios de corte, días cerrados, catálogo de
+// servicios). Una fonda o una abarrotera no tienen nada de eso.
+//
+// EL BUG QUE CIERRA — Owen, desde el primer reporte: "en abarrotera y fonda
+// hay 2 opciones que se repiten y de una dan error... esa sección de disque
+// configuración no me sirve de nada".
+//
+// Los cuatro tabs se mostraban SIEMPRE, y el que abría por default era
+// "horario". Como esta pantalla hacía `session.barberia!` de entrada, en una
+// fonda eso es undefined y la pantalla tronaba al leer data.horario. De ahí
+// el "da error". Y el tab General — que es donde se guarda el teléfono y el
+// WhatsApp del negocio — quedaba escondido a un lado, así que tampoco se
+// llegaba a lo único que SÍ le servía.
+//
+// Ahora cada giro ve nada más lo que le aplica: una fonda entra directo a
+// General y no hay forma de tronar la pantalla.
+const SECTIONS_BARBERIA = [
   { value: "perfil", label: "General" },
   { value: "horario", label: "Horario" },
   { value: "excepciones", label: "Excepciones" },
   { value: "servicios", label: "Servicios" },
 ];
+const SECTIONS_OTROS = [{ value: "perfil", label: "General" }];
 
 // data.horario llega de Supabase con select("*") sin ORDER BY — el orden
 // físico de fila no está garantizado (menos aún tras un upsert), así que
@@ -38,7 +56,11 @@ const ORDEN_DIAS: HorarioDia["dia"][] = ["Lun", "Mar", "Mié", "Jue", "Vie", "S�
 export default function ConfiguracionPage() {
   const { session, ready, update } = useSession();
   const plan = usePlan();
-  const [tab, setTab] = React.useState("horario");
+  const esBarberia = session?.business.tipo === "barberia";
+  const SECTIONS = esBarberia ? SECTIONS_BARBERIA : SECTIONS_OTROS;
+  // Arranca en el primero que APLIQUE: "horario" fijo mandaba a una fonda a
+  // un tab de barbería que ni existe para ella.
+  const [tab, setTab] = React.useState("perfil");
   const [addExcepcion, setAddExcepcion] = React.useState(false);
   const [addServicio, setAddServicio] = React.useState(false);
 
@@ -53,9 +75,13 @@ export default function ConfiguracionPage() {
 
   if (!ready || !session) return <LoadingBlock />;
 
-  const data = session.barberia!;
+  // Sin `!`: en fonda/abarrotera esto es undefined y ANTES tronaba la
+  // pantalla entera al leer data.horario más abajo. Los bloques que lo usan
+  // ya solo se pintan cuando el tab es de barbería, que solo existe si el
+  // giro lo es.
+  const data = session.barberia;
   const maxServicios = plan.giroBarberia.maxServicios;
-  const tocoLimiteServicios = maxServicios !== null && data.servicios.length >= maxServicios;
+  const tocoLimiteServicios = maxServicios !== null && (data?.servicios.length ?? 0) >= maxServicios;
 
   function actualizarDia(dia: HorarioDia["dia"], cambios: Partial<HorarioDia>) {
     update((prev) => {
@@ -91,7 +117,7 @@ export default function ConfiguracionPage() {
 
       {tab === "perfil" && <PerfilSection business={session.business} update={update} />}
 
-      {tab === "horario" && (
+      {tab === "horario" && data && (
         <div className="flex flex-col gap-3 px-4 pb-6">
           {[...data.horario].sort((a, b) => ORDEN_DIAS.indexOf(a.dia) - ORDEN_DIAS.indexOf(b.dia)).map((h) => (
             // Card por día: SIEMPRE en columna (nunca lado a lado) — con
@@ -182,7 +208,7 @@ export default function ConfiguracionPage() {
         </div>
       )}
 
-      {tab === "excepciones" && (
+      {tab === "excepciones" && data && (
         <div className="px-4 pb-6">
           <BloqueoPlan activo={plan.giroBarberia.excepciones} texto="Días especiales (vacaciones, cierres) disponible en Pro y Pro+">
             <div className="flex flex-col gap-2">
@@ -211,7 +237,7 @@ export default function ConfiguracionPage() {
         </div>
       )}
 
-      {tab === "servicios" && (
+      {tab === "servicios" && data && (
         <div className="flex flex-col gap-2 px-4 pb-6">
           <Button
             size="sm"

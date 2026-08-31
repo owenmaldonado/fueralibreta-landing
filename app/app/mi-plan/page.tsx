@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, MessageCircle, Lock, ClipboardCheck } from "lucide-react";
+import { ArrowRight, MessageCircle, Lock, ClipboardCheck, Settings } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell/page-header";
 import { LoadingBlock } from "@/components/app-shell/loading";
@@ -157,6 +157,27 @@ export default function MiPlanPage() {
               <Button size="lg" variant="outline" asChild>
                 <Link href="/app/cortes">
                   <ClipboardCheck className="h-4 w-4" /> Ver cierres anteriores
+                </Link>
+              </Button>
+            )}
+            {/*
+              Datos del negocio, para fonda y abarrotera, por la misma razón
+              que Cierres: esta pantalla ya es solo del dueño.
+
+              Al quitarles la pestaña "Más" se quedaron sin NINGUNA forma de
+              llegar a Configuración — y ahí es donde se edita el teléfono, el
+              WhatsApp y los días de recordatorio. Owen: "en fonda sigue sin
+              guardar el número". No es que no guardara: es que ya no había
+              cómo llegar a la pantalla, y antes de eso la pantalla abría en
+              un tab de barbería y tronaba.
+
+              Barbería no lo necesita aquí: llega por Más → Configuración,
+              donde además tiene Horario, Excepciones y Servicios.
+            */}
+            {!esVendedor && tipo !== "barberia" && (
+              <Button size="lg" variant="outline" asChild>
+                <Link href="/app/configuracion">
+                  <Settings className="h-4 w-4" /> Datos del negocio
                 </Link>
               </Button>
             )}
