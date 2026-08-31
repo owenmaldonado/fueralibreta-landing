@@ -165,6 +165,23 @@ export default function CajaPage() {
   // el histórico no cambia.
   const costoMercancia = cajaFiltrada.filter((e) => e.tipo === "venta").reduce((acc, e) => acc + (e.costo ?? 0), 0);
   const gananciaNeta = ingresos - gastos - costoMercancia;
+
+  // POR QUÉ UNA VENTA PUEDE SEGUIR CONTANDO COMPLETA COMO GANANCIA.
+  //
+  // Owen: "los productos de barbería cobran toda la venta total, en vez de
+  // solo la ganancia".
+  //
+  // El descuento del costo SÍ funciona, pero solo puede aplicarse si el
+  // producto tiene un costo capturado. Si un gel de $200 no tiene costo
+  // puesto en Productos, la venta se guarda sin costo y sus $200 enteros
+  // cuentan como ganancia — no porque la cuenta esté mal, sino porque la app
+  // no tiene forma de saber cuánto costó, e inventarlo sería peor.
+  //
+  // Lo que estaba mal es que no lo DECÍA. Fondita sí avisa ("agrega costo a
+  // tus platillos para ver ganancia real") y barbería se quedaba callada:
+  // enseñaba el número inflado sin explicar por qué ni qué hacer para
+  // arreglarlo. Desde afuera es idéntico a un bug de suma.
+  const ventasSinCosto = cajaFiltrada.filter((e) => e.tipo === "venta" && !e.costo).length;
   const efectivo =
     cajaFiltrada.filter((e) => e.tipo !== "gasto" && e.metodo === "efectivo").reduce((acc, e) => acc + e.monto, 0) +
     cortes.filter((c) => (c.metodo ?? "efectivo") === "efectivo").reduce((acc, c) => acc + c.precio, 0);
@@ -352,6 +369,14 @@ export default function CajaPage() {
           <StatTile label="Gastos" value={formatMoney(gastos)} />
           <StatTile label="Ganancia neta" value={formatMoney(gananciaNeta)} />
         </div>
+      )}
+      {ventasSinCosto > 0 && (
+        <p className="px-4 pt-2 text-xs text-muted-foreground">
+          {ventasSinCosto === 1 ? "Hay 1 venta de producto" : `Hay ${ventasSinCosto} ventas de producto`} sin costo
+          registrado, así que {ventasSinCosto === 1 ? "cuenta completa" : "cuentan completas"} como ganancia. Ponle
+          costo a tus productos en <span className="font-medium text-foreground">Más → Productos</span> y la ganancia
+          real se calcula sola de ahí en adelante.
+        </p>
       )}
       <div className="grid grid-cols-2 gap-3 px-4 pt-3">
         <StatTile label="Efectivo" value={formatMoney(efectivo)} />
